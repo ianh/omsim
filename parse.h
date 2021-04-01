@@ -6,19 +6,22 @@
 #include <stdint.h>
 #include <string.h>
 
-struct puzzle_file;
-struct solution_file;
-
-struct puzzle_file *parse_puzzle_file(const char *path);
-void free_puzzle_file(struct puzzle_file *puzzle);
-
-struct solution_file *parse_solution_file(const char *path);
-void free_solution_file(struct solution_file *solution);
-
 struct byte_string {
     unsigned char *bytes;
     size_t length;
 };
+
+struct puzzle_file;
+struct solution_file;
+
+struct puzzle_file *parse_puzzle_file(const char *path);
+struct puzzle_file *parse_puzzle_byte_string(struct byte_string b);
+void free_puzzle_file(struct puzzle_file *puzzle);
+
+struct solution_file *parse_solution_file(const char *path);
+struct solution_file *parse_solution_byte_string(struct byte_string b);
+void free_solution_file(struct solution_file *solution);
+
 static inline bool byte_string_is(struct byte_string b, const char *str)
 {
     size_t len = strlen(str);
@@ -46,6 +49,7 @@ struct puzzle_file {
     // xx cabinets
 
     void *bytes;
+    bool owns_bytes;
 };
 struct puzzle_molecule {
     uint32_t number_of_atoms;
@@ -80,6 +84,7 @@ struct solution_file {
     struct solution_part *parts;
 
     void *bytes;
+    bool owns_bytes;
 };
 struct solution_part {
     struct byte_string name;
@@ -106,7 +111,7 @@ struct solution_part {
     struct solution_hex_offset *conduit_hexes;
 };
 struct solution_instruction {
-    uint32_t index;
+    int32_t index;
     char instruction;
 };
 struct solution_hex_offset {

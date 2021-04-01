@@ -1,0 +1,444 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset='utf-8'>
+        <title>ELU test harness</title>
+        <style>
+html {
+    min-height: 100%;
+    min-width: 100%;
+}
+body {
+    height: 100%;
+    background-color: #333344;
+    background: linear-gradient(to bottom, #333344, #2a2a3b);
+    /* https://bugzilla.mozilla.org/show_bug.cgi?id=627771 */
+    background: -moz-linear-gradient(#333344, #333344);
+    background-attachment: fixed;
+    color: #eee;
+    margin: 40px;
+    margin-bottom: 0;
+    font-family: 'Helvetica Neue', 'Helvetica', sans-serif;
+    font-size: 16px;
+}
+#container {
+    width: 768px;
+    margin: auto;
+}
+#canvas-container {
+    margin-top: 15px;
+    position: relative;
+}
+canvas {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+}
+#dim {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+        </style>
+    </head>
+    <body>
+        <div id='container'>
+            <p>
+                <b>for ELU testing purposes only</b><br>
+                this is not a licensed transmutation engine and has not been approved for general use<br>standard safety features such as collision checks and simultaneous motion interlocks are not present<br>
+            </p>
+            <p>choose solution file to test <i>(testing happens in the browser; the file won't be sent anywhere)</i><br><input type='file' id='solution'></p>
+            <div id='canvas-container'><canvas id='canvas' width=768 height=512></canvas><canvas style='display: none' id='data' width=512 height=256><canvas style='display: none' id='databg' width=512 height=256></canvas></div>
+            <div id='dim' style='display: none'></div>
+            <pre id='output' style='height: 120px; overflow: auto; position: relative'></pre>
+        </div>
+<script>
+var dim = document.getElementById('dim');
+var canvas = document.getElementById('canvas');
+var container = document.getElementById('canvas-container');
+var ctx = canvas.getContext('2d');
+var data = document.getElementById('data');
+var databg = document.getElementById('databg');
+var datactx = data.getContext('2d');
+if (!devicePixelRatio)
+    devicePixelRatio = 1;
+canvas.width *= devicePixelRatio;
+canvas.height *= devicePixelRatio;
+container.style.width = Math.floor(canvas.width / devicePixelRatio) + 'px';
+container.style.height = Math.floor(canvas.height / devicePixelRatio) + 'px';
+ctx.imageSmoothingEnabled = false;
+ctx.mozImageSmoothingEnabled = false;
+ctx.webkitImageSmoothingEnabled = false;
+ctx.msImageSmoothingEnabled = false;
+var results = new Int16Array(256 * 256);
+var messages = [];
+var mousepos = {x: 0, y: 0};
+var overlayhover = false;
+var overlaypress = false;
+function draw_byte(ctx, byte, x, y, empty) {
+    for (var i = 0; i < 8; ++i) {
+        if (byte === false)
+            ctx.fillStyle = empty;
+        else if ((byte >> (7 - i)) & 1)
+            ctx.fillStyle = '#e33';
+        else
+            ctx.fillStyle = '#eee';
+        ctx.beginPath();
+        ctx.ellipse(x - 20 * 3.5 + 20 * i, y, 7, 7, 0, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+}
+function set_data(ctx, a, b, style) {
+    ctx.fillStyle = style;
+    var x = 256 + 2*a - b;
+    var y = 128 + b;
+    ctx.fillRect(x, y, 2, 1);
+}
+var bgctx = databg.getContext('2d');
+for (var b = -128; b < 128; ++b) {
+    for (var a = -128; a < 128; ++a) {
+        if (a - b < -128 || a - b > 127)
+            continue;
+        set_data(bgctx, a, b, '#223');
+    }
+}
+function reset_data() {
+    datactx.clearRect(0, 0, data.width, data.height);
+}
+function draw_image_clamped(ctx, img, sx, sy, sw, sh, dx, dy, dw, dh) {
+    if (sx < 0) {
+        dx -= dw * sx / sw;
+        dw += dw * sx / sw;
+        sw += sx;
+        sx = 0;
+    }
+    if (sy < 0) {
+        dy -= dh * sy / sh;
+        dh += dh * sy / sh;
+        sh += sy;
+        sy = 0;
+    }
+    if (sx + sw > img.width) {
+        dw -= dw * (sw - img.width + sx) / sw;
+        sw = img.width - sx;
+    }
+    if (sy + sh > img.height) {
+        dh -= dh * (sh - img.height + sy) / sh;
+        sh = img.height - sy;
+    }
+    if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0)
+        return;
+    ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+reset_data();
+var raf = false;
+function draw() {
+    raf = false;
+    ctx.save();
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(databg, 0, 0, 512, 256, 0, 0, 512, 512);
+    ctx.drawImage(data, 0, 0, 512, 256, 0, 0, 512, 512);
+    draw_hud(ctx, '#223');
+    ctx.restore();
+}
+function numbers_for_point(p) {
+    var aa = Math.floor(p.x / 2 + p.y / 4) - 192;
+    var bb = Math.floor(p.y / 2) - 128;
+    var a = aa;
+    var b = bb;
+    if (a < -128 || b < -128 || a - b < -128 || a > 127 || b > 127 || a - b > 127) {
+        a = false;
+        b = false;
+    }
+    return { a: a, b: b, aa: aa, bb: bb };
+}
+// https://stackoverflow.com/a/7838871
+CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  this.beginPath();
+  this.moveTo(x+r, y);
+  this.arcTo(x+w, y,   x+w, y+h, r);
+  this.arcTo(x+w, y+h, x,   y+h, r);
+  this.arcTo(x,   y+h, x,   y,   r);
+  this.arcTo(x,   y,   x+w, y,   r);
+  this.closePath();
+  return this;
+}
+var cx = 640;
+var cy = 220.5;
+var button = {x: cx - 80, y: cy + 150, w: 160, h: 40};
+var show_messages = false;
+function draw_hud(ctx, empty) {
+    var type = 'zoomy';
+    var zoomy = 165;
+    ctx.save();
+    var n = numbers_for_point(mousepos);
+    var a = n.a;
+    var b = n.b;
+    draw_byte(ctx, a, cx, cy, empty);
+    draw_byte(ctx, b, cx, cy + 20, empty);
+    var result = false;
+    var did_not_produce_result = false;
+    var out = document.getElementById('output');
+    if (a !== false && b !== false) {
+        if (show_messages) {
+            var msg = messages[(n.b + 128) * 256 + n.a + 128];
+            if (msg != out.textContent)
+                out.textContent = msg;
+        } else
+            out.textContent = '';
+        var r = results[(b + 128) * 256 + a + 128];
+        if (r < 0 && r > -256)
+            result = -r;
+        else if (r > 0)
+            result = a - b;
+        else if (r <= -256)
+            did_not_produce_result = true;
+    } else
+        out.textContent = '';
+    draw_byte(ctx, result, cx, cy + 70, empty);
+    ctx.strokeStyle = result === false || did_not_produce_result ? empty : '#eee';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy + 40);
+    ctx.lineTo(cx, cy + 50);
+    ctx.moveTo(cx - 3.5, cy + 47);
+    ctx.lineTo(cx, cy + 50);
+    ctx.lineTo(cx + 3.5, cy + 47);
+    ctx.stroke();
+
+    if (did_not_produce_result || (result !== false && result !== a - b))
+        ctx.strokeStyle = '#e33';
+    else
+        ctx.strokeStyle = empty;
+    ctx.beginPath();
+    ctx.moveTo(cx + 3.5, cy + 89);
+    ctx.lineTo(cx - 3.5, cy + 101);
+    ctx.stroke();
+
+    if (result === false && !did_not_produce_result)
+        ctx.strokeStyle = empty;
+    else if (result === a - b)
+        ctx.strokeStyle = '#eee';
+    else
+        ctx.strokeStyle = '#e33';
+    ctx.beginPath();
+    ctx.moveTo(cx - 4.5, cy + 92);
+    ctx.lineTo(cx + 4.5, cy + 92);
+    ctx.moveTo(cx - 4.5, cy + 98);
+    ctx.lineTo(cx + 4.5, cy + 98);
+    ctx.stroke();
+    draw_byte(ctx, (a !== false && b !== false) ? a - b : false, cx, cy + 120, empty);
+
+    if (type == 'zoomy') {
+
+        ctx.fillStyle = empty;
+        ctx.fillRect(cx - 135/2, cy - zoomy, 135, 135);
+
+        var x = 256 + 2*n.aa - n.bb;
+        var y = 128 + n.bb;
+        draw_image_clamped(ctx, data, x - 8, y - 4, 18, 9, cx - 135/2, cy - zoomy, 135, 135);
+
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(cx - 135/2 + 135 * 4/9 - 1, cy - zoomy + 135 * 4/9 - 1, 135/9 + 2, 135/9 + 2);
+    }
+
+    if (ctx.canvas.id == 'overlay') {
+        ctx.globalCompositeOperation = 'source-over';
+        if (overlaypress && overlayhover)
+            ctx.fillStyle = '#99a';
+        else if (overlayhover)
+            ctx.fillStyle = '#eee';
+        else
+            ctx.fillStyle = '#eee';
+        ctx.roundRect(button.x, button.y, button.w, button.h, 5).fill();
+        ctx.fillStyle = '#445';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = "bold 16px 'Helvetica Neue', 'Helvetica', sans-serif";
+        ctx.fillText('download .puzzle', cx, cy + 170, 160);
+
+        ctx.globalCompositeOperation = 'destination-over';
+        ctx.fillStyle = '#445';
+        ctx.roundRect(cx - 90, cy - zoomy - 22, 180, 222 + zoomy, 8).fill();
+    }
+
+    ctx.restore();
+}
+draw();
+
+var workers = [];
+function output(str) {
+    var elem = document.getElementById('output');
+    elem.textContent = str + '\n' + elem.textContent;
+}
+function style_for_result(r) {
+    return r > 0 ? '#eee' : '#e33';
+}
+document.getElementById('solution').onclick = function () {
+    this.value = '';
+}
+document.getElementById('solution').onchange = function () {
+    if (this.files.length < 1)
+        return;
+    var reader = new FileReader();
+    reader.onload = function (e) {
+        for (var i = 0; i < workers.length; ++i)
+            workers[i].terminate();
+        workers = [];
+        results.fill(0);
+        messages = [];
+        reset_data();
+        draw();
+        document.getElementById('output').textContent = '';
+        var number_of_workers = 4;
+        var workers_begin_at = [-128, -54, 0, 54, 128];
+        for (var i = 0; i < number_of_workers; ++i) {
+            var worker = new Worker('elu-test-harness-worker.js');
+            worker.onmessage = function (e) {
+                if (e.data.type == 'output')
+                    output(e.data.string);
+                else if (e.data.type == 'result') {
+                    var r = e.data.r;
+                    set_data(datactx, e.data.a, e.data.b, style_for_result(r));
+                    if (e.data.output != "")
+                        messages[(e.data.b + 128) * 256 + e.data.a + 128] = e.data.output;
+                    results[(e.data.b + 128) * 256 + e.data.a + 128] = r;
+                    if (raf === false)
+                        raf = requestAnimationFrame(draw);
+                }
+            };
+            var begin = workers_begin_at[i];
+            var end = workers_begin_at[i + 1];
+            worker.postMessage({type: 'solution', solution: reader.result, start: begin, end: end});
+            workers.push(worker);
+        }
+    };
+    reader.readAsArrayBuffer(this.files[0]);
+};
+function locationOf(e, elem) {
+    return {x: e.pageX - elem.offsetLeft, y: e.pageY - elem.offsetTop};
+}
+function drawoverlay() {
+    var overlay = document.getElementById('overlay');
+    if (!overlay)
+        return;
+    var ctx = overlay.getContext('2d');
+    ctx.save();
+    ctx.scale(devicePixelRatio, devicePixelRatio);
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    draw_hud(ctx, '#334');
+    ctx.restore();
+}
+window.onmousemove = function (e) {
+    if (dim.style.display != 'none') {
+        var m = locationOf(e, container);
+        overlayhover = m.x >= button.x && m.x <= button.x + button.w &&
+            m.y >= button.y && m.y <= button.y + button.h;
+        drawoverlay();
+        return;
+    }
+    mousepos = locationOf(e, container);
+    draw();
+};
+window.onmouseup = function (e) {
+    if (overlaypress && overlayhover) {
+        var anchor = document.createElement("a");
+        var n = numbers_for_point(mousepos);
+        if (n.a === false || n.b === false)
+            return;
+        function f(x, bit) {
+            if ((x >> bit) & 1)
+                return 4;
+            else
+                return 1;
+        }
+        var r = n.a - n.b;
+        var file = new Blob([Uint8Array.from([
+            0x03, 0x00, 0x00, 0x00, 0x14, 0x45, 0x58, 0x50, 0x4c, 0x4f, 0x53,
+            0x49, 0x56, 0x45, 0x20, 0x4c, 0x4f, 0x47, 0x49, 0x43, 0x20, 0x55,
+            0x4e, 0x49, 0x54, 0x62, 0x7f, 0x8b, 0x02, 0x01, 0x00, 0x10, 0x01,
+            0x0f, 0x3f, 0xc7, 0x17, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00,
+            0x00, 0x08, 0x00, 0x00, 0x00, f(n.a, 7), 0xfd, 0x00, f(n.a, 6), 0xfe, 0x00,
+            f(n.a, 5), 0xff, 0x00, f(n.a, 4), 0x00, 0x00, f(n.a, 3), 0x01, 0x00, f(n.a, 2), 0x02,
+            0x00, f(n.a, 1), 0x03, 0x00, f(n.a, 0), 0x04, 0x00, 0x07, 0x00, 0x00, 0x00,
+            0x01, 0xfd, 0x00, 0xfe, 0x00, 0x01, 0xfe, 0x00, 0xff, 0x00, 0x01,
+            0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x01,
+            0x00, 0x02, 0x00, 0x01, 0x02, 0x00, 0x03, 0x00, 0x01, 0x03, 0x00,
+            0x04, 0x00, 0x08, 0x00, 0x00, 0x00, f(n.b, 7), 0xfd, 0x00, f(n.b, 6), 0xfe,
+            0x00, f(n.b, 5), 0xff, 0x00, f(n.b, 4), 0x00, 0x00, f(n.b, 3), 0x01, 0x00, f(n.b, 2),
+            0x02, 0x00, f(n.b, 1), 0x03, 0x00, f(n.b, 0), 0x04, 0x00, 0x07, 0x00, 0x00,
+            0x00, 0x01, 0xfd, 0x00, 0xfe, 0x00, 0x01, 0xfe, 0x00, 0xff, 0x00,
+            0x01, 0xff, 0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0x03, 0x00, 0x01,
+            0x03, 0x00, 0x04, 0x00, 0x01, 0x01, 0x00, 0x02, 0x00, 0x01, 0x00,
+            0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x01,
+            0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00,
+            0x02, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01,
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
+            0x00, 0x08, 0x00, 0x00, 0x00, f(r, 7), 0xfd, 0x00, f(r, 6), 0xfe, 0x00,
+            f(r, 4), 0x00, 0x00, f(r, 5), 0xff, 0x00, f(r, 3), 0x01, 0x00, f(r, 2), 0x02,
+            0x00, f(r, 1), 0x03, 0x00, f(r, 0), 0x04, 0x00, 0x07, 0x00, 0x00, 0x00,
+            0x01, 0x03, 0x00, 0x04, 0x00, 0x01, 0x02, 0x00, 0x03, 0x00, 0x01,
+            0x01, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0xff,
+            0x00, 0x00, 0x00, 0x01, 0xfe, 0x00, 0xff, 0x00, 0x01, 0xfd, 0x00,
+            0xfe, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00
+        ])]);
+        anchor.href = URL.createObjectURL(file);
+        anchor.download = "OM2021_W9_00.puzzle";
+        anchor.click();
+        URL.revokeObjectURL(anchor.href);
+    }
+    overlaypress = false;
+    if (overlayhover)
+        drawoverlay();
+};
+dim.onmousedown = function (e) {
+    dim.style.display = 'none';
+    var overlay = document.getElementById('overlay');
+    overlay.parentNode.removeChild(overlay);
+    mousepos = locationOf(e, container);
+    draw();
+};
+canvas.onmousedown = function (e) {
+    mousepos = locationOf(e, container);
+    var n = numbers_for_point(mousepos);
+    if (n.a !== false && n.b !== false) {
+        dim.style.display = '';
+        var overlay = canvas.cloneNode();
+        overlay.id = 'overlay';
+        overlay.style.zIndex = 1;
+        overlayhover = false;
+        overlaypress = false;
+        overlay.onmousedown = function (e) {
+            if (overlayhover) {
+                overlaypress = true;
+                drawoverlay();
+            } else
+                dim.onmousedown(e);
+        };
+        var ctx = overlay.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
+        container.appendChild(overlay);
+        drawoverlay();
+    }
+};
+window.onkeydown = function (e) {
+    if (e.key == "m") {
+        show_messages = !show_messages;
+        draw();
+    }
+};
+
+</script>
+    </body>
+</html>

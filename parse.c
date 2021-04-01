@@ -101,10 +101,9 @@ static void parse_puzzle_molecule(struct byte_string *b, struct puzzle_molecule 
     }
 }
 
-struct puzzle_file *parse_puzzle_file(const char *path)
+struct puzzle_file *parse_puzzle_byte_string(struct byte_string b)
 {
     struct puzzle_file *puzzle = calloc(1, sizeof(struct puzzle_file));
-    struct byte_string b = read_file(path);
     puzzle->bytes = b.bytes;
     if (read_uint32(&b) != 3) {
         free_puzzle_file(puzzle);
@@ -126,6 +125,16 @@ struct puzzle_file *parse_puzzle_file(const char *path)
     return puzzle;
 }
 
+struct puzzle_file *parse_puzzle_file(const char *path)
+{
+    struct byte_string b = read_file(path);
+    struct puzzle_file *puzzle = parse_puzzle_byte_string(b);
+    if (!puzzle)
+        free(b.bytes);
+    puzzle->owns_bytes = true;
+    return puzzle;
+}
+
 void free_puzzle_file(struct puzzle_file *puzzle)
 {
     for (uint32_t i = 0; i < puzzle->number_of_inputs; ++i) {
@@ -138,14 +147,14 @@ void free_puzzle_file(struct puzzle_file *puzzle)
         free(puzzle->outputs[i].bonds);
     }
     free(puzzle->outputs);
-    free(puzzle->bytes);
+    if (puzzle->owns_bytes)
+        free(puzzle->bytes);
     free(puzzle);
 }
 
-struct solution_file *parse_solution_file(const char *path)
+struct solution_file *parse_solution_byte_string(struct byte_string b)
 {
     struct solution_file *solution = calloc(1, sizeof(struct solution_file));
-    struct byte_string b = read_file(path);
     solution->bytes = b.bytes;
     if (read_uint32(&b) != 7) {
         free_solution_file(solution);
@@ -185,7 +194,7 @@ struct solution_file *parse_solution_file(const char *path)
         part->number_of_instructions = read_uint32(&b);
         part->instructions = calloc(part->number_of_instructions, sizeof(struct solution_instruction));
         for (uint32_t j = 0; j < part->number_of_instructions; ++j) {
-            part->instructions[j].index = read_uint32(&b);
+            part->instructions[j].index = read_int32(&b);
             part->instructions[j].instruction = read_byte(&b);
         }
         if (byte_string_is(part->name, "track")) {
@@ -210,6 +219,16 @@ struct solution_file *parse_solution_file(const char *path)
     return solution;
 }
 
+struct solution_file *parse_solution_file(const char *path)
+{
+    struct byte_string b = read_file(path);
+    struct solution_file *solution = parse_solution_byte_string(b);
+    if (!solution)
+        free(b.bytes);
+    solution->owns_bytes = true;
+    return solution;
+}
+
 void free_solution_file(struct solution_file *solution)
 {
     for (uint32_t i = 0; i < solution->number_of_parts; ++i) {
@@ -218,6 +237,7 @@ void free_solution_file(struct solution_file *solution)
         free(solution->parts[i].conduit_hexes);
     }
     free(solution->parts);
-    free(solution->bytes);
+    if (solution->owns_bytes)
+        free(solution->bytes);
     free(solution);
 }

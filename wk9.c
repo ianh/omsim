@@ -806,6 +806,14 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
 
         // xx collision detection / error handling
     }
+    if (board->half_cycle == 2) {
+        for (uint32_t i = 0; i < n; ++i) {
+            struct mechanism m = solution->arms[i];
+            atom a = *lookup_atom(board, m.position);
+            if ((a & VALID) && !(a & REMOVED))
+                report_collision(board, m.position, "arm base collided with atom");
+        }
+    }
 }
 
 static void flag_blocked_inputs(struct solution *solution, struct board *board)
@@ -845,6 +853,9 @@ static void spawn_inputs(struct solution *solution, struct board *board)
     }
 }
 
+static int output_value;
+static bool wrong_output;
+
 static void consume_outputs(struct solution *solution, struct board *board)
 {
     uint32_t m = solution->number_of_output_molecules;
@@ -852,28 +863,48 @@ static void consume_outputs(struct solution *solution, struct board *board)
         uint32_t n = solution->output_molecule_lengths[i];
         // first, check the entire output to see if it matches.
         bool match = true;
+        wrong_output = true;
+        output_value = 0;
         for (uint32_t j = 0; j < n; ++j) {
             struct vector p = solution->output_atom_positions[molecule + j];
             atom output = solution->output_atoms[molecule + j];
             atom *a = lookup_atom(board, p);
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
                 match = false;
+                wrong_output = false;
                 break;
             }
-            if ((*a & (ANY_ATOM | ALL_BONDS)) != output || (*a & GRABBED)) {
-                // printf("no match: %llx vs %llx - %llx\n", output, (*a & (ANY_ATOM | ALL_BONDS)), (*a & GRABBED));
+            if ((*a & ALL_BONDS) != (output & ALL_BONDS) || (*a & GRABBED)) {
                 match = false;
+                wrong_output = false;
                 break;
+            }
+            int k = j;
+            if (j == 4)
+                k = 5;
+            else if (j == 5)
+                k = 4;
+            output_value <<= 1;
+            output_value |= !(*a & SALT);
+            if ((*a & (ANY_ATOM | ALL_BONDS)) != output) {
+                // this could be a "wrong output".
+                match = false;
             }
         }
         // if the output is a match, remove it and increment the output counter.
         if (match) {
+            wrong_output = false;
             for (uint32_t j = 0; j < n; ++j) {
                 struct vector p = solution->output_atom_positions[molecule + j];
                 atom *a = lookup_atom(board, p);
                 remove_atom(board, a);
             }
             solution->output_molecule_number_of_outputs[i]++;
+        } else if (wrong_output) {
+            board->collision = true;
+            board->collision_location = solution->output_atom_positions[molecule];
+            board->collision_reason = "output didn't match";
+            break;
         }
         molecule += n;
     }
@@ -904,6 +935,37 @@ static bool check_completion(struct solution *solution)
     return min >= solution->target_number_of_outputs;
 }
 
+static int _last_cycle = 0;
+static int _last_capacity = 0;
+static int _last_query_u = 0;
+static int _last_query_v = 0;
+static int _last_used = 0;
+static int _last_removed = 0;
+int last_cycle(void)
+{
+    return _last_cycle;
+}
+int last_capacity(void)
+{
+    return _last_capacity;
+}
+int last_query_u(void)
+{
+    return _last_query_u;
+}
+int last_query_v(void)
+{
+    return _last_query_v;
+}
+int last_used(void)
+{
+    return _last_used;
+}
+int last_removed(void)
+{
+    return _last_removed;
+}
+
 static void cycle(struct solution *solution, struct board *board)
 {
     for (board->half_cycle = 1; board->half_cycle <= 2; board->half_cycle++) {
@@ -916,6 +978,7 @@ static void cycle(struct solution *solution, struct board *board)
     }
     board->complete = check_completion(solution);
     board->cycle++;
+    _last_cycle = board->cycle;
 }
 
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
@@ -926,7 +989,7 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
     *a = VALID | GRABBED_ONCE | VAN_BERLO | element;
 }
 
-#if 1
+#if 0
 static void print_board(struct board *board)
 {
     for (uint32_t i = 0; i < board->capacity; ++i) {
@@ -943,31 +1006,47 @@ static void print_board(struct board *board)
 static bool decode_solution(struct solution *solution, struct puzzle_file *pf,
  struct solution_file *sf);
 
-int main(int argc, char *argv[])
+// wk9 specific
+static struct puzzle_file *pf;
+static struct solution_file *sf;
+int test(int a, int b)
 {
-    // read input files.
-    if (argc < 3) {
-        fprintf(stderr, "usage: omsim [puzzle] [solution]\n");
-        return -1;
-    }
-    struct puzzle_file *pf = parse_puzzle_file(argv[1]);
-    if (!pf) {
-        fprintf(stderr, "%s is not a valid puzzle file\n", argv[1]);
-        return -1;
-    }
-    struct solution_file *sf = parse_solution_file(argv[2]);
-    if (!sf) {
-        fprintf(stderr, "%s is not a valid solution file\n", argv[2]);
-        return -1;
-    }
-
     struct solution solution = { 0 };
     struct board board = { 0 };
-    if (!decode_solution(&solution, pf, sf))
-        return -1;
-    free_puzzle_file(pf);
 
-    // first-time setup.
+    if (!decode_solution(&solution, pf, sf))
+        return -999;
+
+    if (solution.number_of_output_molecules != 1) {
+        fprintf(stderr, "output must be placed\n");
+        return -999;
+    }
+
+    uint32_t atom_index = 0;
+    for (uint32_t i = 0; i < solution.number_of_input_molecules; ++i) {
+        if (solution.input_molecule_puzzle_index[i] == 0) {
+            for (int j = 0; j < 8; ++j) {
+                solution.input_atoms[atom_index + 7 - j] &= ~ANY_ATOM;
+                solution.input_atoms[atom_index + 7 - j] |= ((a >> j) & 1) ? FIRE : SALT;
+            }
+        } else if (solution.input_molecule_puzzle_index[i] == 1) {
+            for (int j = 0; j < 8; ++j) {
+                solution.input_atoms[atom_index + 7 - j] &= ~ANY_ATOM;
+                solution.input_atoms[atom_index + 7 - j] |= ((b >> j) & 1) ? FIRE : SALT;
+            }
+        }
+        atom_index += solution.input_molecule_lengths[i];
+    }
+    for (int i = 0; i < 8; ++i) {
+        int j = i;
+        if (i == 4)
+            j = 5;
+        else if (i == 5)
+            j = 4;
+        solution.output_atoms[7 - j] &= ~ANY_ATOM;
+        solution.output_atoms[7 - j] |= (((a - b) >> i) & 1) ? FIRE : SALT;
+    }
+
     ensure_capacity(&board, 1);
     spawn_inputs(&solution, &board);
     for (size_t i = 0; i < solution.number_of_arms; ++i) {
@@ -983,23 +1062,127 @@ int main(int argc, char *argv[])
         create_van_berlo_atom(&board, solution.arms[i], -1, 1, EARTH);
     }
 
-    // run the solution.
-    printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);
-    while (board.cycle < 1000000 && !board.complete) {
-        // printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
-        // print_board(&board);
+    while (board.cycle < 10000 * (1 + solution.output_molecule_number_of_outputs[0]) && !board.complete) {
         cycle(&solution, &board);
         if (board.collision) {
-            fprintf(stderr, "collision at %" PRId32 ", %" PRId32 ": %s\n",
+            fprintf(stderr, "collision on cycle %llu at %" PRId32 ", %" PRId32 ": %s\n", board.cycle,
              board.collision_location.u, board.collision_location.v,
              board.collision_reason);
             break;
         }
     }
-    printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
-    printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
-    free_solution_file(sf);
-    return 0;
+    fflush(stdout);
+    fflush(stderr);
+
+    free(solution.glyphs);
+    free(solution.arms);
+    for (uint32_t i = 0; i < solution.number_of_arms; ++i)
+        free(solution.arm_tape[i]);
+    free(solution.arm_tape);
+    free(solution.arm_tape_length);
+    free(solution.arm_tape_start_cycle);
+    free(solution.track_positions);
+    free(solution.track_plus_motions);
+    free(solution.track_minus_motions);
+    free(solution.input_atoms);
+    free(solution.input_atom_positions);
+    free(solution.input_molecule_lengths);
+    free(solution.input_molecule_is_blocked);
+    free(solution.input_molecule_puzzle_index);
+    free(solution.output_atoms);
+    free(solution.output_atom_positions);
+    free(solution.output_molecule_lengths);
+    free(solution.output_molecule_number_of_outputs);
+
+    free(board.atoms_at_positions);
+    free(board.movements.elements);
+
+    if (wrong_output) {
+        // fix output value.
+        int bit4 = (output_value >> 4) & 1;
+        int bit5 = (output_value >> 5) & 1;
+        int fixed = output_value;
+        fixed &= ~(0x3 << 4);
+        fixed |= bit4 << 5;
+        fixed |= bit5 << 4;
+        return -fixed;
+    }
+    if (!board.complete)
+        return -998;
+    return board.cycle;
+    // printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
+    // printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
+}
+
+static unsigned char OM2021_W9_00_puzzle_bytes[] = {
+  0x03, 0x00, 0x00, 0x00, 0x14, 0x45, 0x58, 0x50, 0x4c, 0x4f, 0x53, 0x49,
+  0x56, 0x45, 0x20, 0x4c, 0x4f, 0x47, 0x49, 0x43, 0x20, 0x55, 0x4e, 0x49,
+  0x54, 0x62, 0x7f, 0x8b, 0x02, 0x01, 0x00, 0x10, 0x01, 0x0f, 0x3f, 0xc7,
+  0x17, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00,
+  0x00, 0x01, 0xfd, 0x00, 0x01, 0xfe, 0x00, 0x01, 0xff, 0x00, 0x04, 0x00,
+  0x00, 0x01, 0x01, 0x00, 0x04, 0x02, 0x00, 0x04, 0x03, 0x00, 0x01, 0x04,
+  0x00, 0x07, 0x00, 0x00, 0x00, 0x01, 0xfd, 0x00, 0xfe, 0x00, 0x01, 0xfe,
+  0x00, 0xff, 0x00, 0x01, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
+  0x00, 0x01, 0x01, 0x00, 0x02, 0x00, 0x01, 0x02, 0x00, 0x03, 0x00, 0x01,
+  0x03, 0x00, 0x04, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0xfd, 0x00, 0x01,
+  0xfe, 0x00, 0x01, 0xff, 0x00, 0x04, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01,
+  0x02, 0x00, 0x04, 0x03, 0x00, 0x04, 0x04, 0x00, 0x07, 0x00, 0x00, 0x00,
+  0x01, 0xfd, 0x00, 0xfe, 0x00, 0x01, 0xfe, 0x00, 0xff, 0x00, 0x01, 0xff,
+  0x00, 0x00, 0x00, 0x01, 0x02, 0x00, 0x03, 0x00, 0x01, 0x03, 0x00, 0x04,
+  0x00, 0x01, 0x01, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x02,
+  0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00,
+  0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x04, 0x00,
+  0x00, 0x01, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01,
+  0x00, 0x01, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0xfd, 0x00,
+  0x01, 0xfe, 0x00, 0x01, 0x00, 0x00, 0x01, 0xff, 0x00, 0x01, 0x01, 0x00,
+  0x01, 0x02, 0x00, 0x04, 0x03, 0x00, 0x04, 0x04, 0x00, 0x07, 0x00, 0x00,
+  0x00, 0x01, 0x03, 0x00, 0x04, 0x00, 0x01, 0x02, 0x00, 0x03, 0x00, 0x01,
+  0x01, 0x00, 0x02, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0xff, 0x00,
+  0x00, 0x00, 0x01, 0xfe, 0x00, 0xff, 0x00, 0x01, 0xfd, 0x00, 0xfe, 0x00,
+  0x01, 0x00, 0x00, 0x00, 0x00
+};
+static struct byte_string OM2021_W9_00_puzzle =
+    { OM2021_W9_00_puzzle_bytes, sizeof(OM2021_W9_00_puzzle_bytes) };
+
+void init(void)
+{
+    pf = parse_puzzle_byte_string(OM2021_W9_00_puzzle);
+}
+
+void load_solution(unsigned char *bytes, size_t len)
+{
+    if (sf)
+        free_solution_file(sf);
+    struct byte_string b = { malloc(len), len };
+    memcpy(b.bytes, bytes, len);
+    sf = parse_solution_byte_string(b);
+    if (!sf) {
+        fprintf(stderr, "not a valid solution file\n");
+        free(b.bytes);
+    }
+    sf->owns_bytes = true;
+}
+
+int main(int argc, char *argv[])
+{
+    // read input files.
+    if (argc < 2) {
+        fprintf(stderr, "usage: wk9 [solution]\n");
+        return -1;
+    }
+    init();
+    sf = parse_solution_file(argv[1]);
+    if (!sf) {
+        fprintf(stderr, "%s is not a valid solution file\n", argv[1]);
+        return -1;
+    }
+    for (int a = -128; a < 127; ++a) {
+        for (int b = -128; b < 127; ++b) {
+            if (a - b < -128 || a - b > 127)
+                continue;
+            printf("%d %d %d\n", a, b, test(a, b));
+        }
+    }
 }
 
 // appendix A -- hash table functions.
@@ -1039,6 +1222,11 @@ static bool lookup_track(struct solution *solution, struct vector query, uint32_
 
 static atom *lookup_atom(struct board *board, struct vector query)
 {
+    _last_used = board->used;
+    _last_removed = board->removed;
+    _last_capacity = board->capacity;
+    _last_query_u = query.u;
+    _last_query_v = query.v;
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
@@ -1059,6 +1247,11 @@ static atom *lookup_atom(struct board *board, struct vector query)
 
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
 {
+    _last_used = board->used;
+    _last_removed = board->removed;
+    _last_capacity = board->capacity;
+    _last_query_u = query.u;
+    _last_query_v = query.v;
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
@@ -1083,8 +1276,8 @@ static atom *insert_atom(struct board *board, struct vector query, const char *c
         index = (index + 1) & mask;
         if (index == (hash & mask)) {
             if (removed != UINT32_MAX) {
-                board->removed--;
                 index = removed;
+                board->removed--;
                 board->atoms_at_positions[index].position = query;
                 break;
             }
@@ -1522,7 +1715,7 @@ static bool decode_solution(struct solution *solution, struct puzzle_file *pf, s
                 last_end = n + 1;
             }
         }
-#if 1
+#if 0
         printf("%4u (%4u): %*s", part.arm_number, tape_length, min_tape, "");
         for (uint32_t j = 0; j < tape_length; ++j) {
             if (!tape[j])
