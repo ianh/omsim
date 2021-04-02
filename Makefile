@@ -13,8 +13,8 @@ web/elu-test-harness.js: wk9.c parse.c Makefile
 web/visualize.js: visualize.c parse.c Makefile
 	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS='["_load_puzzle","_load_solution","_render","_command_buffer","_command_buffer_length","_reset","_step"]' -o $@ -Wno-gnu-folding-constant visualize.c parse.c
 
-omsim: main.c parse.c Makefile
-	$(CC) $(CFLAGS) -o $@ main.c parse.c
+omsim: main.c parse.c sim.c Makefile
+	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c
 
 clean:
 	rm omsim
