@@ -779,6 +779,7 @@ static bool lookup_track(struct solution *solution, struct vector query, uint32_
 
 static atom *lookup_atom(struct board *board, struct vector query)
 {
+    lookups++;
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
@@ -799,6 +800,7 @@ static atom *lookup_atom(struct board *board, struct vector query)
 
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
 {
+    inserts++;
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
@@ -818,7 +820,7 @@ static atom *insert_atom(struct board *board, struct vector query, const char *c
             break;
         }
         struct vector position = board->atoms_at_positions[index].position;
-        if (position.u == query.u && position.v == query.v && !(*a & REMOVED))
+        if (!memcmp(&position, &query, sizeof(position)) && !(*a & REMOVED))
             break;
         index = (index + 1) & mask;
         if (index == (hash & mask)) {

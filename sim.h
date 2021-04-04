@@ -209,6 +209,9 @@ struct board {
     bool complete;
 };
 
+uint64_t lookups;
+uint64_t inserts;
+
 struct puzzle_file;
 struct solution_file;
 

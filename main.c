@@ -19,6 +19,8 @@ static void print_board(struct board *board)
 
 int main(int argc, char *argv[])
 {
+    lookups = 0;
+    inserts = 0;
     // read input files.
     if (argc < 3) {
         fprintf(stderr, "usage: omsim [puzzle] [solution]\n");
@@ -59,6 +61,7 @@ int main(int argc, char *argv[])
     }
     printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
+    printf("lookups = %" PRIu64 " inserts = %" PRIu64 "\n", lookups, inserts);
     free_solution_file(sf);
     return 0;
 }
