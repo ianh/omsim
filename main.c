@@ -19,8 +19,6 @@ static void print_board(struct board *board)
 
 int main(int argc, char *argv[])
 {
-    lookups = 0;
-    inserts = 0;
     // read input files.
     if (argc < 3) {
         fprintf(stderr, "usage: omsim [puzzle] [solution]\n");
@@ -48,9 +46,9 @@ int main(int argc, char *argv[])
 
     // run the solution.
     printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);
-    while (board.cycle < 20000 && !board.complete) {
-        // printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
-        // print_board(&board);
+    while (board.cycle < 200 && !board.complete) {
+        printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
+        print_board(&board);
         cycle(&solution, &board);
         if (board.collision) {
             fprintf(stderr, "collision at %" PRId32 ", %" PRId32 ": %s\n",
@@ -61,7 +59,7 @@ int main(int argc, char *argv[])
     }
     printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
-    printf("lookups = %" PRIu64 " inserts = %" PRIu64 "\n", lookups, inserts);
+    // printf("lookups = %" PRIu64 " inserts = %" PRIu64 "\n", lookups, inserts);
     free_solution_file(sf);
     return 0;
 }

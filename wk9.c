@@ -1,11 +1,16 @@
 #include "parse.h"
 #include <assert.h>
 #include <inttypes.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 typedef uint64_t atom;
 
@@ -622,7 +627,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (!(m->type & GRABBING) || (m->type & VAN_BERLO))
                 continue;
         } else if ((inst == 'w' || inst == 's') && !(m->type & PISTON)) {
-            fprintf(stderr, "trying to extend/retract a non-piston arm");
+            // fprintf(stderr, "trying to extend/retract a non-piston arm");
             continue;
         } else if (inst == 'w') {
             // don't extend pistons past 3 hexes of length.
@@ -637,7 +642,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         } else if (inst == 't' || inst == 'g') {
             uint32_t index;
             if (!lookup_track(solution, m->position, &index)) {
-                fprintf(stderr, "trying to move an arm along a track that isn't on a track at %" PRId32 " %" PRId32 "\n", m->position.u, m->position.v);
+                // fprintf(stderr, "trying to move an arm along a track that isn't on a track at %" PRId32 " %" PRId32 "\n", m->position.u, m->position.v);
                 continue;
             }
             if (inst == 't')
@@ -1006,10 +1011,12 @@ static void print_board(struct board *board)
 static bool decode_solution(struct solution *solution, struct puzzle_file *pf,
  struct solution_file *sf);
 
+static enum mechanism_type decode_mechanism_type(struct byte_string part_name);
+
 // wk9 specific
 static struct puzzle_file *pf;
 static struct solution_file *sf;
-int test(int a, int b)
+static int test_one(int a, int b, bool fun)
 {
     struct solution solution = { 0 };
     struct board board = { 0 };
@@ -1065,9 +1072,11 @@ int test(int a, int b)
     while (board.cycle < 10000 * (1 + solution.output_molecule_number_of_outputs[0]) && !board.complete) {
         cycle(&solution, &board);
         if (board.collision) {
-            fprintf(stderr, "collision on cycle %llu at %" PRId32 ", %" PRId32 ": %s\n", board.cycle,
-             board.collision_location.u, board.collision_location.v,
-             board.collision_reason);
+            if (!fun) {
+                fprintf(stderr, "collision on cycle %llu at %" PRId32 ", %" PRId32 ": %s\n", board.cycle,
+                 board.collision_location.u, board.collision_location.v,
+                 board.collision_reason);
+            }
             break;
         }
     }
@@ -1112,6 +1121,41 @@ int test(int a, int b)
     return board.cycle;
     // printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
     // printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
+}
+
+int test(int a, int b, int fun)
+{
+    if (fun) {
+        double x = 0;
+        double y = 0;
+        uint32_t n = 0;
+        for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
+            struct byte_string saved = sf->parts[i].name;
+            enum mechanism_type type = decode_mechanism_type(saved);
+            if (type == 0 || type == EQUILIBRIUM)
+                continue;
+            n++;
+        }
+        uint32_t j = 0;
+        for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
+            struct byte_string saved = sf->parts[i].name;
+            enum mechanism_type type = decode_mechanism_type(saved);
+            if (type == 0 || type == EQUILIBRIUM)
+                continue;
+            sf->parts[i].name = (struct byte_string){ (unsigned char *)"disabled", strlen("disabled") };
+            int result = test_one(a, b, true);
+            if (result > 0) {
+                x += cos(M_PI * 2 * (double)j / (double)n);
+                y += sin(M_PI * 2 * (double)j / (double)n);
+            }
+            j++;
+            sf->parts[i].name = saved;
+        }
+        if (x == 0 && y == 0)
+            return -998;
+        return -1000 - (int)(65536 * (atan2(y, x) / M_PI + 1) / 2);
+    } else
+        return test_one(a, b, false);
 }
 
 static unsigned char OM2021_W9_00_puzzle_bytes[] = {
@@ -1180,7 +1224,7 @@ int main(int argc, char *argv[])
         for (int b = -128; b < 127; ++b) {
             if (a - b < -128 || a - b > 127)
                 continue;
-            printf("%d %d %d\n", a, b, test(a, b));
+            printf("%d %d %d\n", a, b, test(a, b, 1));
         }
     }
 }

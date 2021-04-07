@@ -50,7 +50,7 @@ canvas {
                 <b>for ELU testing purposes only</b><br>
                 this is not a licensed transmutation engine and has not been approved for general use<br>standard safety features such as collision checks and simultaneous motion interlocks are not present<br>
             </p>
-            <p>choose solution file to test <i>(testing happens in the browser; the file won't be sent anywhere)</i><br><input type='file' id='solution'></p>
+            <p>choose solution file to test <i>(testing happens in the browser; the file won't be sent anywhere)</i><br><input type='file' id='solution'><br><input id='fun' type='checkbox'> <label for='fun'>art mode</label> <i>(VERY SLOW)</i></p>
             <div id='canvas-container'><canvas id='canvas' width=768 height=512></canvas><canvas style='display: none' id='data' width=512 height=256><canvas style='display: none' id='databg' width=512 height=256></canvas></div>
             <div id='dim' style='display: none'></div>
             <pre id='output' style='height: 120px; overflow: auto; position: relative'></pre>
@@ -73,7 +73,7 @@ ctx.imageSmoothingEnabled = false;
 ctx.mozImageSmoothingEnabled = false;
 ctx.webkitImageSmoothingEnabled = false;
 ctx.msImageSmoothingEnabled = false;
-var results = new Int16Array(256 * 256);
+var results = new Int32Array(256 * 256);
 var messages = [];
 var mousepos = {x: 0, y: 0};
 var overlayhover = false;
@@ -280,6 +280,10 @@ function output(str) {
     elem.textContent = str + '\n' + elem.textContent;
 }
 function style_for_result(r) {
+    if (r <= -1000) {
+        var hue = Math.floor(360 * (-r - 1000) / 65536);
+        return 'hsl(' + hue + ',100%,50%)';
+    }
     return r > 0 ? '#eee' : '#e33';
 }
 document.getElementById('solution').onclick = function () {
@@ -317,7 +321,7 @@ document.getElementById('solution').onchange = function () {
             };
             var begin = workers_begin_at[i];
             var end = workers_begin_at[i + 1];
-            worker.postMessage({type: 'solution', solution: reader.result, start: begin, end: end});
+            worker.postMessage({type: 'solution', solution: reader.result, start: begin, end: end, fun: document.getElementById('fun').checked});
             workers.push(worker);
         }
     };

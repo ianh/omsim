@@ -30,7 +30,7 @@ function handle_message(m) {
                 out = "";
                 var r = -999;
                 try {
-                    var r = omsim._test(a, b);
+                    var r = omsim._test(a, b, m.fun);
                 } catch (e) {
                     output("exception on cycle " + omsim._last_cycle() + ": " + e);
                     output("capacity=" + omsim._last_capacity() + ", used=" + omsim._last_used() + ", removed=" + omsim._last_removed() + ", query=(" + omsim._last_query_u() + ", " + omsim._last_query_v() + ") on most recent atom hash table call");

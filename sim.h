@@ -36,10 +36,14 @@ static const atom BEING_PRODUCED = 1ULL << 18;
 // is this atom part of a van berlo's wheel?
 static const atom VAN_BERLO_ATOM = 1ULL << 19;
 
+// an output which accepts any molecule of the proper shape.  used for
+// computation puzzles.
+static const atom VARIABLE_OUTPUT = 1ULL << 20;
+
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
-static const atom GRABBED_ONCE = 1ULL << 20;
+static const atom GRABBED_ONCE = 1ULL << 25;
 static const atom GRABBED = 0x1FULL * GRABBED_ONCE;
 
 static const atom VALID = 1ULL << 30;
@@ -117,6 +121,11 @@ struct vector {
     int32_t v;
 };
 
+struct atom_at_position {
+    struct vector position;
+    atom atom;
+};
+
 struct mechanism {
     enum mechanism_type type;
 
@@ -125,6 +134,32 @@ struct mechanism {
     // direction (two basis vectors).  includes length for arms.
     struct vector direction_u;
     struct vector direction_v;
+};
+
+enum input_output_type {
+    INPUT = 1 << 0,
+    OUTPUT = 1 << 1,
+
+    // flag for inputs.
+    BLOCKED = 1 << 2,
+
+    // stop running and return INPUT_OUTPUT before the input spawns or the
+    // output consumes.  you can use this flag to implement dynamic inputs and
+    // outputs.
+    INTERRUPT = 1 << 3,
+};
+
+struct input_output {
+    enum input_output_type type;
+
+    struct atom_at_position *atoms;
+    uint32_t number_of_atoms;
+
+    // the original index of this input or output in the puzzle file.
+    uint32_t puzzle_index;
+
+    // output-specific fields.
+    uint64_t number_of_outputs;
 };
 
 struct solution {
@@ -149,21 +184,9 @@ struct solution {
     // indicates an empty slot in the hash table.
     uint32_t track_table_size;
 
-    // input_atoms contains the atoms from the first input molecule, then the
-    // atoms from the second input molecule, and so on.
-    atom *input_atoms;
-    struct vector *input_atom_positions;
-    uint32_t *input_molecule_lengths;
-    bool *input_molecule_is_blocked;
-    // the original index of this molecule in the puzzle file.
-    uint32_t *input_molecule_puzzle_index;
-    uint32_t number_of_input_molecules;
-
-    atom *output_atoms;
-    struct vector *output_atom_positions;
-    uint32_t *output_molecule_lengths;
-    uint64_t *output_molecule_number_of_outputs;
-    uint32_t number_of_output_molecules;
+    // whether it's an input or an output is determined by the type.
+    struct input_output *inputs_and_outputs;
+    size_t number_of_inputs_and_outputs;
 
     uint64_t target_number_of_outputs;
 };
@@ -188,17 +211,17 @@ struct movement_list {
     size_t cursor;
 };
 struct board {
-    struct {
-        struct vector position;
-        atom atom;
-    } *atoms_at_positions;
+    struct atom_at_position *atoms_at_positions;
 
     uint32_t capacity;
     uint32_t used;
     uint32_t removed;
 
     uint64_t cycle;
-    uint32_t half_cycle;
+    int half_cycle;
+
+    // set whenever run() returns INPUT_OUTPUT.
+    size_t active_input_or_output;
 
     struct movement_list movements;
 
@@ -209,15 +232,25 @@ struct board {
     bool complete;
 };
 
-uint64_t lookups;
-uint64_t inserts;
-
 struct puzzle_file;
 struct solution_file;
 
 bool decode_solution(struct solution *solution, struct puzzle_file *pf,
  struct solution_file *sf);
 void initial_setup(struct solution *solution, struct board *board);
-void cycle(struct solution *solution, struct board *board);
+
+enum run_result {
+    FINISHED_CYCLE,
+
+    // the active input/output is available in board->active_input_or_output.
+    INPUT_OUTPUT,
+};
+enum run_result run(struct solution *solution, struct board *board);
+
+// shortcut function if you aren't using dynamic inputs or outputs.
+static inline void cycle(struct solution *solution, struct board *board)
+{
+    while (run(solution, board) != FINISHED_CYCLE);
+}
 
 #endif

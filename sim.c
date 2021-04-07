@@ -608,73 +608,82 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
 
 static void flag_blocked_inputs(struct solution *solution, struct board *board)
 {
-    uint32_t m = solution->number_of_input_molecules;
-    for (uint32_t i = 0; i < m; ++i)
-        solution->input_molecule_is_blocked[i] = false;
-    for (uint32_t i = 0, molecule = 0; i < m; ++i) {
-        uint32_t n = solution->input_molecule_lengths[i];
-        for (uint32_t j = 0; j < n; ++j) {
-            struct vector p = solution->input_atom_positions[molecule + j];
-            atom a = *lookup_atom(board, p);
+    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
+        solution->inputs_and_outputs[i].type &= ~BLOCKED;
+    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        if (!(io->type & INPUT))
+            continue;
+        for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+            atom a = *lookup_atom(board, io->atoms[j].position);
             if ((a & VALID) && !(a & REMOVED) && !(a & BEING_PRODUCED)) {
-                solution->input_molecule_is_blocked[i] = true;
+                io->type |= BLOCKED;
                 break;
             }
         }
-        molecule += n;
     }
 }
 
 static void spawn_inputs(struct solution *solution, struct board *board)
 {
-    uint32_t m = solution->number_of_input_molecules;
-    for (uint32_t i = 0, molecule = 0; i < m; ++i) {
-        uint32_t n = solution->input_molecule_lengths[i];
-        if (!solution->input_molecule_is_blocked[i]) {
-            ensure_capacity(board, n);
-            for (uint32_t j = 0; j < n; ++j) {
-                atom input = solution->input_atoms[molecule + j];
-                struct vector p = solution->input_atom_positions[molecule + j];
-                atom *a = insert_atom(board, p, "overlapped inputs");
-                *a = VALID | input;
-            }
+    size_t active = board->active_input_or_output;
+    size_t i = active == UINT32_MAX ? 0 : active;
+    for (; i < solution->number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        if (!(io->type & INPUT) || (io->type & BLOCKED))
+            continue;
+        if (i != active && (io->type & INTERRUPT)) {
+            board->active_input_or_output = i;
+            return;
         }
-        molecule += n;
+        uint32_t n = io->number_of_atoms;
+        ensure_capacity(board, n);
+        for (uint32_t j = 0; j < n; ++j) {
+            atom input = io->atoms[j].atom;
+            struct vector p = io->atoms[j].position;
+            *insert_atom(board, p, "overlapped inputs") = VALID | input;
+        }
     }
+    board->active_input_or_output = UINT32_MAX;
 }
 
 static void consume_outputs(struct solution *solution, struct board *board)
 {
-    uint32_t m = solution->number_of_output_molecules;
-    for (uint32_t i = 0, molecule = 0; i < m; ++i) {
-        uint32_t n = solution->output_molecule_lengths[i];
+    size_t active = board->active_input_or_output;
+    size_t i = active == UINT32_MAX ? 0 : active;
+    for (; i < solution->number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        if (!(io->type & OUTPUT))
+            continue;
+        if (i != active && (io->type & INTERRUPT)) {
+            board->active_input_or_output = i;
+            return;
+        }
         // first, check the entire output to see if it matches.
         bool match = true;
-        for (uint32_t j = 0; j < n; ++j) {
-            struct vector p = solution->output_atom_positions[molecule + j];
-            atom output = solution->output_atoms[molecule + j];
-            atom *a = lookup_atom(board, p);
+        for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+            atom output = io->atoms[j].atom;
+            atom *a = lookup_atom(board, io->atoms[j].position);
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
                 match = false;
                 break;
             }
+            // variable outputs match any atom.
+            if (output & VARIABLE_OUTPUT)
+                output |= *a & ANY_ATOM;
             if ((*a & (ANY_ATOM | ALL_BONDS)) != output || (*a & GRABBED)) {
-                // printf("no match: %llx vs %llx - %llx\n", output, (*a & (ANY_ATOM | ALL_BONDS)), (*a & GRABBED));
                 match = false;
                 break;
             }
         }
         // if the output is a match, remove it and increment the output counter.
         if (match) {
-            for (uint32_t j = 0; j < n; ++j) {
-                struct vector p = solution->output_atom_positions[molecule + j];
-                atom *a = lookup_atom(board, p);
-                remove_atom(board, a);
-            }
-            solution->output_molecule_number_of_outputs[i]++;
+            for (uint32_t j = 0; j < io->number_of_atoms; ++j)
+                remove_atom(board, lookup_atom(board, io->atoms[j].position));
+            io->number_of_outputs++;
         }
-        molecule += n;
     }
+    board->active_input_or_output = UINT32_MAX;
 }
 
 static void flag_unbonded_atoms(struct board *board)
@@ -693,27 +702,43 @@ static void flag_unbonded_atoms(struct board *board)
 static bool check_completion(struct solution *solution)
 {
     uint64_t min = UINT64_MAX;
-    uint32_t m = solution->number_of_output_molecules;
-    for (uint32_t i = 0; i < m; ++i) {
-        uint64_t count = solution->output_molecule_number_of_outputs[i];
+    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+        if (!(solution->inputs_and_outputs[i].type & OUTPUT))
+            continue;
+        uint64_t count = solution->inputs_and_outputs[i].number_of_outputs;
         if (count < min)
             min = count;
     }
     return min >= solution->target_number_of_outputs;
 }
 
-void cycle(struct solution *solution, struct board *board)
+enum run_result run(struct solution *solution, struct board *board)
 {
-    for (board->half_cycle = 1; board->half_cycle <= 2; board->half_cycle++) {
+    for (; board->half_cycle <= 2; board->half_cycle++) {
+        uint32_t io = board->active_input_or_output;
+        if (io != UINT32_MAX) {
+            if (solution->inputs_and_outputs[io].type & INPUT)
+                goto continue_with_inputs;
+            else
+                goto continue_with_outputs;
+        }
         perform_arm_instructions(solution, board);
         flag_blocked_inputs(solution, board);
+continue_with_inputs:
         spawn_inputs(solution, board);
+        if (board->active_input_or_output != UINT32_MAX)
+            return INPUT_OUTPUT;
         flag_unbonded_atoms(board);
         apply_glyphs(solution, board);
+continue_with_outputs:
         consume_outputs(solution, board);
+        if (board->active_input_or_output != UINT32_MAX)
+            return INPUT_OUTPUT;
     }
     board->complete = check_completion(solution);
     board->cycle++;
+    board->half_cycle = 1;
+    return FINISHED_CYCLE;
 }
 
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
@@ -726,6 +751,8 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
 
 void initial_setup(struct solution *solution, struct board *board)
 {
+    board->half_cycle = 1;
+    board->active_input_or_output = UINT32_MAX;
     ensure_capacity(board, 1);
     spawn_inputs(solution, board);
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
@@ -779,7 +806,6 @@ static bool lookup_track(struct solution *solution, struct vector query, uint32_
 
 static atom *lookup_atom(struct board *board, struct vector query)
 {
-    lookups++;
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
@@ -800,7 +826,6 @@ static atom *lookup_atom(struct board *board, struct vector query)
 
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
 {
-    inserts++;
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
@@ -950,11 +975,13 @@ static enum mechanism_type decode_mechanism_type(struct byte_string part_name)
         return 0;
 }
 
-static void decode_molecule(struct puzzle_molecule c, struct mechanism m, atom *atoms, struct vector *positions)
+static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct input_output *io)
 {
+    io->atoms = calloc(c.number_of_atoms, sizeof(io->atoms[0]));
+    io->number_of_atoms = c.number_of_atoms;
     for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
-        atoms[i] = decode_atom(c.atoms[i].type);
-        positions[i] = mechanism_relative_position(m, c.atoms[i].offset[1], c.atoms[i].offset[0], 1);
+        io->atoms[i].atom = decode_atom(c.atoms[i].type);
+        io->atoms[i].position = mechanism_relative_position(m, c.atoms[i].offset[1], c.atoms[i].offset[0], 1);
     }
     for (uint32_t i = 0; i < c.number_of_bonds; ++i) {
         struct puzzle_bond b = c.bonds[i];
@@ -965,11 +992,11 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, atom *
         atom b2 = bonds & bond_direction(m, b.from[1] - b.to[1], b.from[0] - b.to[0]);
         // yes, this is O(n^2).
         for (uint32_t j = 0; j < c.number_of_atoms; ++j) {
-            struct vector p = positions[j];
+            struct vector p = io->atoms[j].position;
             if (p.u == p1.u && p.v == p1.v)
-                atoms[j] |= b1;
+                io->atoms[j].atom |= b1;
             if (p.u == p2.u && p.v == p2.v)
-                atoms[j] |= b2;
+                io->atoms[j].atom |= b2;
         }
     }
 }
@@ -977,8 +1004,6 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, atom *
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf)
 {
     size_t number_of_track_hexes = 0;
-    uint32_t number_of_input_atoms = 0;
-    uint32_t number_of_output_atoms = 0;
     // first pass through the solution file: count how many things of each type
     // there are.  these counts are used to allocate arrays of the correct size.
     for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
@@ -994,15 +1019,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 fprintf(stderr, "solution file error: input out of range\n");
                 return false;
             }
-            solution->number_of_input_molecules++;
-            number_of_input_atoms += pf->inputs[sf->parts[i].which_input_or_output].number_of_atoms;
+            solution->number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-std")) {
             if (sf->parts[i].which_input_or_output >= pf->number_of_outputs) {
                 fprintf(stderr, "solution file error: output out of range\n");
                 return false;
             }
-            solution->number_of_output_molecules++;
-            number_of_output_atoms += pf->outputs[sf->parts[i].which_input_or_output].number_of_atoms;
+            solution->number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
             // todo
             fprintf(stderr, "solution file error: repeating outputs are currently unsupported\n");
@@ -1022,16 +1045,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->arm_tape_length = calloc(solution->number_of_arms, sizeof(size_t));
     solution->arm_tape_start_cycle = calloc(solution->number_of_arms, sizeof(uint64_t));
 
-    solution->input_atoms = calloc(number_of_input_atoms, sizeof(atom));
-    solution->input_atom_positions = calloc(number_of_input_atoms, sizeof(struct vector));
-    solution->input_molecule_lengths = calloc(solution->number_of_input_molecules, sizeof(uint32_t));
-    solution->input_molecule_is_blocked = calloc(solution->number_of_input_molecules, sizeof(bool));
-    solution->input_molecule_puzzle_index = calloc(solution->number_of_input_molecules, sizeof(uint32_t));
-
-    solution->output_atoms = calloc(number_of_output_atoms, sizeof(atom));
-    solution->output_atom_positions = calloc(number_of_output_atoms, sizeof(struct vector));
-    solution->output_molecule_lengths = calloc(solution->number_of_output_molecules, sizeof(uint32_t));
-    solution->output_molecule_number_of_outputs = calloc(solution->number_of_output_molecules, sizeof(uint64_t));
+    solution->inputs_and_outputs = calloc(solution->number_of_inputs_and_outputs, sizeof(struct input_output));
 
     solution->track_table_size = 1;
     while (2 * solution->track_table_size < 3 * number_of_track_hexes)
@@ -1045,10 +1059,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     // second pass: fill in the arrays with the data from the file.
     uint32_t arm_index = 0;
     uint32_t glyph_index = 0;
-    size_t input_molecule_index = 0;
-    size_t input_atom_index = 0;
-    size_t output_molecule_index = 0;
-    size_t output_atom_index = 0;
+    size_t io_index = 0;
     for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
         struct solution_part part = sf->parts[i];
         struct mechanism m = {
@@ -1097,19 +1108,18 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
         } else if (byte_string_is(part.name, "input")) {
             struct puzzle_molecule c = pf->inputs[part.which_input_or_output];
-            solution->input_molecule_lengths[input_molecule_index] = c.number_of_atoms;
-            decode_molecule(c, m, solution->input_atoms + input_atom_index,
-             solution->input_atom_positions + input_atom_index);
-            solution->input_molecule_puzzle_index[input_molecule_index] = part.which_input_or_output;
-            input_atom_index += c.number_of_atoms;
-            input_molecule_index++;
+            struct input_output *io = &solution->inputs_and_outputs[io_index];
+            io->type = INPUT;
+            io->puzzle_index = part.which_input_or_output;
+            decode_molecule(c, m, io);
+            io_index++;
         } else if (byte_string_is(part.name, "out-std")) {
             struct puzzle_molecule c = pf->outputs[part.which_input_or_output];
-            solution->output_molecule_lengths[output_molecule_index] = c.number_of_atoms;
-            decode_molecule(c, m, solution->output_atoms + output_atom_index,
-             solution->output_atom_positions + output_atom_index);
-            output_atom_index += c.number_of_atoms;
-            output_molecule_index++;
+            struct input_output *io = &solution->inputs_and_outputs[io_index];
+            io->type = OUTPUT;
+            io->puzzle_index = part.which_input_or_output;
+            decode_molecule(c, m, io);
+            io_index++;
         }
     }
     // decode arm tapes in one final pass.  this has to be another pass because
@@ -1264,7 +1274,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 last_end = n + 1;
             }
         }
-#if 1
+#if 0
         printf("%4u (%4u): %*s", part.arm_number, tape_length, min_tape, "");
         for (uint32_t j = 0; j < tape_length; ++j) {
             if (!tape[j])
