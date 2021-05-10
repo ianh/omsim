@@ -232,14 +232,7 @@ struct board {
     bool complete;
 };
 
-struct puzzle_file;
-struct solution_file;
-
-bool decode_solution(struct solution *solution, struct puzzle_file *pf,
- struct solution_file *sf);
 void initial_setup(struct solution *solution, struct board *board);
-
-atom *lookup_atom(struct board *board, struct vector query);
 
 enum run_result {
     FINISHED_CYCLE,
@@ -257,5 +250,15 @@ static inline void cycle(struct solution *solution, struct board *board)
 
 // free memory associated with the solution and board.
 void destroy(struct solution *solution, struct board *board);
+
+atom *lookup_atom(struct board *board, struct vector query);
+bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
+
+// geometric helper functions.
+struct vector u_offset_for_direction(int direction);
+struct vector v_offset_for_direction(int direction);
+int direction_for_offset(struct vector d);
+struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w);
+atom bond_direction(struct mechanism m, int32_t du, int32_t dv);
 
 #endif
