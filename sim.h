@@ -26,19 +26,19 @@ static const atom MORS = 1ULL << 14;
 // static const atom REPEATING_OUTPUT = 1ULL << 15;
 static const atom QUINTESSENCE = 1ULL << 16;
 
+// an output which accepts any molecule of the proper shape.  used for
+// computation puzzles.
+static const atom VARIABLE_OUTPUT = 1ULL << 17;
+
 // this flag is necessary to simulate overlapping glyphs correctly.
-static const atom UNBONDED = 1ULL << 17;
+static const atom UNBONDED = 1ULL << 18;
 
 // conversion glyphs like animismus put this flag on their outputs until the
 // second half-cycle.  it stops their outputs from being seen by other glyphs.
-static const atom BEING_PRODUCED = 1ULL << 18;
+static const atom BEING_PRODUCED = 1ULL << 19;
 
 // is this atom part of a van berlo's wheel?
-static const atom VAN_BERLO_ATOM = 1ULL << 19;
-
-// an output which accepts any molecule of the proper shape.  used for
-// computation puzzles.
-static const atom VARIABLE_OUTPUT = 1ULL << 20;
+static const atom VAN_BERLO_ATOM = 1ULL << 20;
 
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
@@ -239,6 +239,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf,
  struct solution_file *sf);
 void initial_setup(struct solution *solution, struct board *board);
 
+atom *lookup_atom(struct board *board, struct vector query);
+
 enum run_result {
     FINISHED_CYCLE,
 
@@ -252,5 +254,8 @@ static inline void cycle(struct solution *solution, struct board *board)
 {
     while (run(solution, board) != FINISHED_CYCLE);
 }
+
+// free memory associated with the solution and board.
+void destroy(struct solution *solution, struct board *board);
 
 #endif

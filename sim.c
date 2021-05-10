@@ -11,7 +11,6 @@
 
 // hash table functions -- see appendix.
 static bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
-static atom *lookup_atom(struct board *board, struct vector query);
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 static void ensure_capacity(struct board *board, uint32_t potential_insertions);
 
@@ -33,7 +32,7 @@ static void report_collision(struct board *board, struct vector p, const char *r
     board->collision_reason = reason;
 }
 
-static bool conversion_output(struct board *board, struct mechanism m, int32_t du, int32_t dv)
+static bool conversion_output(struct board *board, bool active, struct mechanism m, int32_t du, int32_t dv)
 {
     assert(m.type & CONVERSION_GLYPH);
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
@@ -42,10 +41,10 @@ static bool conversion_output(struct board *board, struct mechanism m, int32_t d
         if (board->half_cycle == 2) {
             // conversion glyph outputs appear in the second half-cycle.
             *output &= ~BEING_PRODUCED;
-        } else if (*output & BEING_PRODUCED) {
+        } else if (active && (*output & BEING_PRODUCED)) {
             report_collision(board, pos, "two conversion glyphs outputting to the same point");
             return true;
-        } else if (*output & VAN_BERLO_ATOM) {
+        } else if (active && (*output & VAN_BERLO_ATOM)) {
             report_collision(board, pos, "conversion glyph output overlaps with van berlo's wheel");
             return true;
         }
@@ -177,9 +176,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case ANIMISMUS: {
             atom *a = get_atom(board, m, 0, 0);
             atom *b = get_atom(board, m, 0, 1);
-            bool c = conversion_output(board, m, 1, 0);
-            bool d = conversion_output(board, m, -1, 1);
-            if (c && d && (*a & *b & SALT)) {
+            bool active = *a & *b & SALT;
+            bool c = conversion_output(board, active, m, 1, 0);
+            bool d = conversion_output(board, active, m, -1, 1);
+            if (c && d && active) {
                 remove_atom(board, a);
                 remove_atom(board, b);
                 produce_atom(board, m, 1, 0, VITAE);
@@ -199,11 +199,12 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case DISPERSION: {
             atom *a = get_atom(board, m, 0, 0);
-            bool b = conversion_output(board, m, 0, 1);
-            bool c = conversion_output(board, m, -1, 1);
-            bool d = conversion_output(board, m, -1, 0);
-            bool e = conversion_output(board, m, 0, -1);
-            if (b && c && d && e && (*a & QUINTESSENCE)) {
+            bool active = *a & QUINTESSENCE;
+            bool b = conversion_output(board, active, m, 0, 1);
+            bool c = conversion_output(board, active, m, -1, 1);
+            bool d = conversion_output(board, active, m, -1, 0);
+            bool e = conversion_output(board, active, m, 0, -1);
+            if (b && c && d && e && active) {
                 remove_atom(board, a);
                 produce_atom(board, m, 0, 1, EARTH);
                 produce_atom(board, m, -1, 1, WATER);
@@ -215,8 +216,8 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case PURIFICATION: {
             atom *a = get_atom(board, m, 0, 0);
             atom *b = get_atom(board, m, 0, 1);
-            bool c = conversion_output(board, m, 1, 0);
             atom metal = *a & *b & ANY_METAL & ~GOLD;
+            bool c = conversion_output(board, metal, m, 1, 0);
             if (c && metal) {
                 remove_atom(board, a);
                 remove_atom(board, b);
@@ -237,8 +238,9 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             atom *b = get_atom(board, m, 1, -1);
             atom *c = get_atom(board, m, -1, 0);
             atom *d = get_atom(board, m, -1, 1);
-            bool e = conversion_output(board, m, 0, 0);
-            if (e && ((*a | *b | *c | *d) & ANY_ELEMENTAL) == ANY_ELEMENTAL) {
+            bool active = ((*a | *b | *c | *d) & ANY_ELEMENTAL) == ANY_ELEMENTAL;
+            bool e = conversion_output(board, active, m, 0, 0);
+            if (e && active) {
                 remove_atom(board, a);
                 remove_atom(board, b);
                 remove_atom(board, c);
@@ -655,10 +657,6 @@ static void consume_outputs(struct solution *solution, struct board *board)
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (!(io->type & OUTPUT))
             continue;
-        if (i != active && (io->type & INTERRUPT)) {
-            board->active_input_or_output = i;
-            return;
-        }
         // first, check the entire output to see if it matches.
         bool match = true;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
@@ -669,15 +667,22 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 break;
             }
             // variable outputs match any atom.
-            if (output & VARIABLE_OUTPUT)
+            if (output & VARIABLE_OUTPUT) {
+                output &= ~VARIABLE_OUTPUT;
                 output |= *a & ANY_ATOM;
+            }
             if ((*a & (ANY_ATOM | ALL_BONDS)) != output || (*a & GRABBED)) {
                 match = false;
                 break;
             }
         }
-        // if the output is a match, remove it and increment the output counter.
+        // if the output is a match, first trigger an interrupt if necessary.
+        // then remove the output and increment the output counter.
         if (match) {
+            if (i != active && (io->type & INTERRUPT)) {
+                board->active_input_or_output = i;
+                return;
+            }
             for (uint32_t j = 0; j < io->number_of_atoms; ++j)
                 remove_atom(board, lookup_atom(board, io->atoms[j].position));
             io->number_of_outputs++;
@@ -753,8 +758,9 @@ void initial_setup(struct solution *solution, struct board *board)
 {
     board->half_cycle = 1;
     board->active_input_or_output = UINT32_MAX;
+    // in order for lookups to work, the hash table has to be allocated using
+    // ensure_capacity().
     ensure_capacity(board, 1);
-    spawn_inputs(solution, board);
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         if (!(solution->arms[i].type & VAN_BERLO))
             continue;
@@ -767,6 +773,29 @@ void initial_setup(struct solution *solution, struct board *board)
         create_van_berlo_atom(board, solution->arms[i], -1, 0, FIRE);
         create_van_berlo_atom(board, solution->arms[i], -1, 1, EARTH);
     }
+    // van berlo's wheel can block inputs.
+    flag_blocked_inputs(solution, board);
+    spawn_inputs(solution, board);
+}
+
+void destroy(struct solution *solution, struct board *board)
+{
+    free(solution->glyphs);
+    free(solution->arms);
+    for (uint32_t i = 0; i < solution->number_of_arms; ++i)
+        free(solution->arm_tape[i]);
+    free(solution->arm_tape);
+    free(solution->arm_tape_length);
+    free(solution->arm_tape_start_cycle);
+    free(solution->track_positions);
+    free(solution->track_plus_motions);
+    free(solution->track_minus_motions);
+    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
+        free(solution->inputs_and_outputs[i].atoms);
+    free(solution->inputs_and_outputs);
+
+    free(board->atoms_at_positions);
+    free(board->movements.elements);
 }
 
 // appendix A -- hash table functions.
@@ -804,7 +833,7 @@ static bool lookup_track(struct solution *solution, struct vector query, uint32_
     }
 }
 
-static atom *lookup_atom(struct board *board, struct vector query)
+atom *lookup_atom(struct board *board, struct vector query)
 {
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;

@@ -8,6 +8,8 @@ static struct byte_string read_file(const char *filename)
 {
     struct byte_string contents;
     FILE *f = fopen(filename, "r");
+    if (!f)
+        return (struct byte_string){ 0, 0 };
     fseek(f, 0, SEEK_END);
     contents.length = ftell(f);
     contents.bytes = malloc(contents.length);
@@ -129,8 +131,10 @@ struct puzzle_file *parse_puzzle_file(const char *path)
 {
     struct byte_string b = read_file(path);
     struct puzzle_file *puzzle = parse_puzzle_byte_string(b);
-    if (!puzzle)
+    if (!puzzle) {
         free(b.bytes);
+        return 0;
+    }
     puzzle->owns_bytes = true;
     return puzzle;
 }
@@ -223,8 +227,10 @@ struct solution_file *parse_solution_file(const char *path)
 {
     struct byte_string b = read_file(path);
     struct solution_file *solution = parse_solution_byte_string(b);
-    if (!solution)
+    if (!solution) {
         free(b.bytes);
+        return 0;
+    }
     solution->owns_bytes = true;
     return solution;
 }
