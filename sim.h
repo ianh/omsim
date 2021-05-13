@@ -37,8 +37,11 @@ static const atom UNBONDED = 1ULL << 18;
 // second half-cycle.  it stops their outputs from being seen by other glyphs.
 static const atom BEING_PRODUCED = 1ULL << 19;
 
+// conduits only transport atoms that have just been dropped.
+static const atom BEING_DROPPED = 1ULL << 20;
+
 // is this atom part of a van berlo's wheel?
-static const atom VAN_BERLO_ATOM = 1ULL << 20;
+static const atom VAN_BERLO_ATOM = 1ULL << 21;
 
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
@@ -50,12 +53,19 @@ static const atom VALID = 1ULL << 30;
 static const atom REMOVED = 1ULL << 31;
 
 // offsets for the bits that indicate bonds.
-static const int NORMAL_BOND = 32;
-static const int TRIPLEX_BOND_R = 38;
-static const int TRIPLEX_BOND_Y = 44;
-static const int TRIPLEX_BOND_K = 50;
-// ensure that the 5 bits after aren't used for anything else, since rotating
-// atoms can touch these bits temporarily.
+static const int NORMAL_BOND = 35;
+static const int TRIPLEX_BOND_R = 41;
+static const int TRIPLEX_BOND_Y = 47;
+static const int TRIPLEX_BOND_K = 53;
+
+// rotating can touch the 5 bits after the bonds (59-63), so make sure the
+// following flags are clear before rotating a molecule.
+
+// marks atoms inside a region of interest.  used for conduits.
+static const atom CONDUIT_SHAPE = 1ULL << 59;
+
+// used for molecule flood fills.
+static const atom VISITED = 1ULL << 60;
 
 static const atom BOND_LOW_BITS = (1ULL << NORMAL_BOND) |
  (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) |
@@ -89,11 +99,13 @@ enum mechanism_type {
     DISPOSAL = 1 << 11,
     EQUILIBRIUM = 1 << 12,
 
-    ARM = 1 << 13,
-    TWO_ARM = 1 << 14,
-    THREE_ARM = 1 << 15,
-    SIX_ARM = 1 << 16,
-    PISTON = 1 << 17,
+    CONDUIT = 1 << 13,
+
+    ARM = 1 << 14,
+    TWO_ARM = 1 << 15,
+    THREE_ARM = 1 << 16,
+    SIX_ARM = 1 << 17,
+    PISTON = 1 << 18,
 
     VAN_BERLO = 1 << 20,
 
@@ -109,7 +121,7 @@ static const enum mechanism_type GRABBING_EVERYTHING = 0x3FULL * GRABBING_LOW_BI
 
 static const enum mechanism_type ANY_GLYPH = CALCIFICATION | ANIMISMUS |
  PROJECTION | DISPERSION | PURIFICATION | DUPLICATION | UNIFICATION | BONDING |
- UNBONDING | TRIPLEX_BONDING | MULTI_BONDING | DISPOSAL | EQUILIBRIUM;
+ UNBONDING | TRIPLEX_BONDING | MULTI_BONDING | DISPOSAL | EQUILIBRIUM | CONDUIT;
 static const enum mechanism_type CONVERSION_GLYPH = ANIMISMUS | DISPERSION |
  PURIFICATION | UNIFICATION;
 
@@ -120,6 +132,11 @@ struct vector {
     int32_t u;
     int32_t v;
 };
+
+static inline bool vectors_equal(struct vector a, struct vector b)
+{
+    return !memcmp(&a, &b, sizeof(a));
+}
 
 struct atom_at_position {
     struct vector position;
@@ -134,6 +151,38 @@ struct mechanism {
     // direction (two basis vectors).  includes length for arms.
     struct vector direction_u;
     struct vector direction_v;
+
+    // the index of the conduit this glyph is associated with.  only meaningful
+    // for mechanisms of type CONDUIT.
+    uint32_t conduit_index;
+};
+
+struct conduit {
+    // the index of the glyph associated with this conduit.
+    uint32_t glyph_index;
+
+    // the index of the glyph associated with the other side of the conduit.
+    uint32_t other_side_glyph_index;
+
+    // the conduit id from the solution file.
+    uint32_t id;
+
+    // where the conduit's holes are relative to its glyph location.
+    struct vector *positions;
+    uint32_t number_of_positions;
+
+    // the atoms in the conduit.  updated once at the beginning of each cycle
+    // and again when the conduit glyph consumes.  when the conduit glyph
+    // produces, these atoms appear at the other side of the conduit.  each
+    // molecule in the conduit appears in order.
+    // note that atom bonds are left unmodifed in the board's coordinate space,
+    // while positions are transformed into the conduit glyph's coordinate
+    // space.
+    struct atom_at_position *atoms;
+
+    // the number of atoms in each molecule in the conduit.
+    uint32_t *molecule_lengths;
+    uint32_t number_of_molecules;
 };
 
 enum input_output_type {
@@ -158,7 +207,7 @@ struct input_output {
     // the original index of this input or output in the puzzle file.
     uint32_t puzzle_index;
 
-    // output-specific fields.
+    // the number of times this output has consumed something.
     uint64_t number_of_outputs;
 };
 
@@ -167,9 +216,11 @@ struct solution {
     size_t number_of_glyphs;
 
     struct mechanism *arms;
-    // array of arrays.
+    // array of instruction tape arrays, one per arm.
     char **arm_tape;
+    // the lengths of these tape arrays.
     size_t *arm_tape_length;
+    // the cycles on which to begin reading instructions from each tape.
     uint64_t *arm_tape_start_cycle;
     size_t number_of_arms;
 
@@ -183,6 +234,9 @@ struct solution {
     // table keyed on track_positions.  a position of (INT32_MIN, INT32_MIN)
     // indicates an empty slot in the hash table.
     uint32_t track_table_size;
+
+    struct conduit *conduits;
+    size_t number_of_conduits;
 
     // whether it's an input or an output is determined by the type.
     struct input_output *inputs_and_outputs;

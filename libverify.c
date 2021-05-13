@@ -69,7 +69,7 @@ static void measure_throughput(struct verifier *v)
     initial_setup(&solution, &board);
     solution.target_number_of_outputs = UINT64_MAX;
     struct mechanism *arm_snapshot = 0;
-    struct board board_snapshot = { .cycle = solution.tape_period };
+    struct board board_snapshot = { .cycle = 0 };
     uint32_t board_snapshot_in_range = 0;
     uint64_t output_count_snapshot = 0;
     // rough bounding box (fixme -- make this centered on the actual glyphs/arms?)
@@ -78,7 +78,7 @@ static void measure_throughput(struct verifier *v)
     int32_t max_v = 200;
     int32_t min_v = -200;
     while (board.cycle < 100000 && !board.collision) {
-        if (board.cycle == board_snapshot.cycle * 2) {
+        if (board.cycle == board_snapshot.cycle + solution.tape_period) {
             arm_snapshot = realloc(arm_snapshot, sizeof(struct mechanism) * solution.number_of_arms);
             memcpy(arm_snapshot, solution.arms, sizeof(struct mechanism) * solution.number_of_arms);
             struct atom_at_position *a = board_snapshot.atoms_at_positions;

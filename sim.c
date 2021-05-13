@@ -139,6 +139,23 @@ static int normalize_direction(int direction)
     return direction < 0 ? direction + 6 : direction;
 }
 
+// rotate an atom's bonds by rotating the bits which represent those bonds.
+static void rotate_bonds(atom *a, int rotation)
+{
+    rotation = normalize_direction(rotation);
+    // first, shift the bond bits by the rotation amount.
+    atom bonds = *a & ALL_BONDS;
+    bonds <<= rotation;
+    // take the overflow bits that were shifted off the end...
+    atom mask = 0x3FULL >> (6 - rotation);
+    atom overflow = bonds & ((mask * BOND_LOW_BITS) << 6);
+    bonds &= ~overflow;
+    // ...and shift them back around to the other side.
+    bonds |= overflow >> 6;
+    *a &= ~ALL_BONDS;
+    *a |= bonds;
+}
+
 struct vector v_offset_for_direction(int direction)
 {
     switch (normalize_direction(direction)) {
@@ -293,6 +310,41 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             atom *a = get_atom(board, m, 0, 0);
             if (*a && (*a & UNBONDED) && !(*a & ALL_BONDS) && !(*a & GRABBED))
                 remove_atom(board, a);
+            break;
+        }
+        case CONDUIT: {
+            struct conduit *conduit = &solution->conduits[m.conduit_index];
+            ensure_capacity(board, conduit->number_of_positions);
+            struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
+            int rotation = direction_for_offset(other_side.direction_v) - direction_for_offset(m.direction_v);
+            uint32_t base = 0;
+            for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
+                uint32_t length = conduit->molecule_lengths[j];
+                ensure_capacity(board, length);
+                for (uint32_t k = 0; k < length; ++k) {
+                    atom a = conduit->atoms[base + k].atom;
+                    if (!(a & VALID) || (a & REMOVED))
+                        continue;
+                    struct vector delta = conduit->atoms[base + k].position;
+                    // xx check existence of atoms / recent bonds outside the molecule in half cycle 1
+                    if (board->half_cycle == 1)
+                        remove_atom(board, lookup_atom(board, mechanism_relative_position(m, delta.u, delta.v, 1)));
+                    else {
+                        struct vector p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
+                        rotate_bonds(&a, rotation);
+                        *insert_atom(board, p, "conduit output") = a;
+                    }
+                }
+                base += length;
+            }
+            // xx check atoms on conduit
+            // first half-cycle:
+            // if there are no atoms there, remove conduit atoms
+            // if there are atoms there and they haven't been bonded outside
+            // the molecule, remove them and update the conduit atoms to match
+            // consume bonds even if the atoms have been bonded outside (probably needs more testing...)
+            // second half-cycle:
+            // produce the atoms in the conduit
             break;
         }
         case EQUILIBRIUM:
@@ -485,6 +537,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 atom grabs = (*a & GRABBED) / GRABBED_ONCE;
                 *a &= ~GRABBED;
                 *a |= (grabs - 1) * GRABBED_ONCE;
+                // allow conduits to transport this atom (and any atoms bonded to it).
+                *a |= BEING_DROPPED;
                 continue;
             } 
             struct vector atom_pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
@@ -586,24 +640,95 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             u.u * delta.u + v.u * delta.v + m.base.u + m.translation * m.base.u,
             u.v * delta.u + v.v * delta.v + m.base.v + m.translation * m.base.v,
         };
-        // rotate the atom's bonds by rotating the bits which represent those
-        // bonds.
-        atom bonds = m.atom & ALL_BONDS;
-        // first, do a standard bit shift by the rotation amount.
-        m.rotation = normalize_direction(m.rotation);
-        bonds <<= m.rotation;
-        // take the overflow bits that were shifted off the end...
-        atom mask = 0x3FULL >> (6 - m.rotation);
-        atom overflow = bonds & ((mask * BOND_LOW_BITS) << 6);
-        bonds &= ~overflow;
-        // ...and shift them back around to the other side.
-        bonds |= overflow >> 6;
-        m.atom &= ~ALL_BONDS;
-        m.atom |= bonds;
+        if (m.rotation)
+            rotate_bonds(&m.atom, m.rotation);
         atom *a = insert_atom(board, to, "atom moved on top of another atom");
         *a = VALID | m.atom;
 
         // xx collision detection / error handling
+    }
+}
+
+static bool fill_conduit_molecule(struct solution *solution, struct board *board, struct conduit *conduit, uint32_t *atom_next, uint32_t *atom_cursor)
+{
+    struct mechanism m = solution->glyphs[conduit->glyph_index];
+    int rotation = direction_for_offset(m.direction_v);
+    while (*atom_cursor < *atom_next) {
+        struct atom_at_position ap = conduit->atoms[*atom_cursor];
+        for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
+            if (!(ap.atom & (BOND_LOW_BITS << normalize_direction(bond_direction + rotation))))
+                continue;
+            struct vector p = ap.position;
+            struct vector d = v_offset_for_direction(bond_direction);
+            p.u += d.u;
+            p.v += d.v;
+            atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+            if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED) || (*a & VISITED))
+                continue;
+            if (!(*a & CONDUIT_SHAPE) || (*a & GRABBED))
+                return false;
+            conduit->atoms[*atom_next].atom = *a & ~BEING_DROPPED & ~CONDUIT_SHAPE;
+            conduit->atoms[*atom_next].position = p;
+            (*atom_next)++;
+            *a |= VISITED;
+        }
+        (*atom_cursor)++;
+    }
+    return true;
+}
+
+static void fill_conduits(struct solution *solution, struct board *board)
+{
+    if (board->half_cycle != 1)
+        return;
+    for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
+        struct conduit *conduit = &solution->conduits[i];
+        struct mechanism m = solution->glyphs[conduit->glyph_index];
+        // mark every atom on the conduit with the CONDUIT_SHAPE flag.
+        for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
+            struct vector p = conduit->positions[j];
+            atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+            if ((*a & VALID) && !(*a & REMOVED))
+                *a |= CONDUIT_SHAPE;
+        }
+        // discover the molecules attached to any atoms dropped on the conduit.
+        // if the molecule is completely inside the conduit, add its atoms to
+        // conduit->atoms and record its length in conduit->molecule_lengths.
+        conduit->number_of_molecules = 0;
+        uint32_t atom_next = 0;
+        uint32_t atom_cursor = 0;
+        for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
+            struct vector p = conduit->positions[j];
+            atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+            if ((*a & VALID) && !(*a & REMOVED) && !(*a & BEING_PRODUCED) && !(*a & VISITED) && (*a & BEING_DROPPED) && !(*a & GRABBED)) {
+                conduit->atoms[atom_next].atom = *a & ~BEING_DROPPED & ~CONDUIT_SHAPE;
+                conduit->atoms[atom_next].position = p;
+                *a |= VISITED;
+                atom_next++;
+                uint32_t saved_cursor = atom_cursor;
+                if (fill_conduit_molecule(solution, board, conduit, &atom_next, &atom_cursor)) {
+                    // the molecule matches the conduit shape; clear the
+                    // BEING_DROPPED flag so no other conduit can see it.
+                    for (uint32_t k = saved_cursor; k < atom_cursor; ++k) {
+                        struct vector p = conduit->atoms[k].position;
+                        p = mechanism_relative_position(m, p.u, p.v, 1);
+                        *lookup_atom(board, p) &= ~BEING_DROPPED;
+                    }
+                    conduit->molecule_lengths[conduit->number_of_molecules++] = atom_cursor - saved_cursor;
+                } else {
+                    // the molecule doesn't match the conduit shape.
+                    atom_next = saved_cursor;
+                    atom_cursor = saved_cursor;
+                }
+            }
+        }
+        // clear the CONDUIT_SHAPE and VISITED flags so the next conduit can use
+        // them.
+        for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
+            struct vector p = conduit->positions[j];
+            atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+            *a &= ~CONDUIT_SHAPE & ~VISITED;
+        }
     }
 }
 
@@ -690,12 +815,13 @@ static void consume_outputs(struct solution *solution, struct board *board)
     board->active_input_or_output = UINT32_MAX;
 }
 
-static void flag_unbonded_atoms(struct board *board)
+static void reset_atom_flags(struct board *board)
 {
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom *a = &board->atoms_at_positions[i].atom;
         if (!(*a & VALID) || (*a & REMOVED))
             continue;
+        *a &= ~BEING_DROPPED;
         if (!(*a & ALL_BONDS))
             *a |= UNBONDED;
         else
@@ -727,12 +853,13 @@ enum run_result run(struct solution *solution, struct board *board)
                 goto continue_with_outputs;
         }
         perform_arm_instructions(solution, board);
+        fill_conduits(solution, board);
         flag_blocked_inputs(solution, board);
 continue_with_inputs:
         spawn_inputs(solution, board);
         if (board->active_input_or_output != UINT32_MAX)
             return INPUT_OUTPUT;
-        flag_unbonded_atoms(board);
+        reset_atom_flags(board);
         apply_glyphs(solution, board);
 continue_with_outputs:
         consume_outputs(solution, board);
@@ -750,7 +877,7 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
     ensure_capacity(board, 1);
     struct vector p = mechanism_relative_position(m, du, dv, 1);
     atom *a = insert_atom(board, p, "van berlo overlap");
-    *a = VALID | GRABBED_ONCE | VAN_BERLO | element;
+    *a = VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element;
 }
 
 void initial_setup(struct solution *solution, struct board *board)
@@ -789,6 +916,12 @@ void destroy(struct solution *solution, struct board *board)
     free(solution->track_positions);
     free(solution->track_plus_motions);
     free(solution->track_minus_motions);
+    for (size_t i = 0; i < solution->number_of_conduits; ++i) {
+        free(solution->conduits[i].positions);
+        free(solution->conduits[i].atoms);
+        free(solution->conduits[i].molecule_lengths);
+    }
+    free(solution->conduits);
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
         free(solution->inputs_and_outputs[i].atoms);
     free(solution->inputs_and_outputs);
@@ -824,7 +957,7 @@ bool lookup_track(struct solution *solution, struct vector query, uint32_t *inde
         struct vector p = solution->track_positions[*index];
         if (p.u == INT32_MIN && p.v == INT32_MIN)
             return false;
-        if (p.u == query.u && p.v == query.v)
+        if (vectors_equal(p, query))
             return true;
         *index = (*index + 1) & mask;
         if (*index == (hash & mask))
@@ -843,7 +976,7 @@ atom *lookup_atom(struct board *board, struct vector query)
         if (!(*a & VALID))
             return a;
         struct vector position = board->atoms_at_positions[index].position;
-        if (!memcmp(&position, &query, sizeof(position)))
+        if (vectors_equal(position, query))
             return a;
         index = (index + 1) & mask;
         steps++;
@@ -873,7 +1006,7 @@ static atom *insert_atom(struct board *board, struct vector query, const char *c
             break;
         }
         struct vector position = board->atoms_at_positions[index].position;
-        if (!memcmp(&position, &query, sizeof(position)) && !(*a & REMOVED))
+        if (vectors_equal(position, query) && !(*a & REMOVED))
             break;
         index = (index + 1) & mask;
         if (index == (hash & mask)) {

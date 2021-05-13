@@ -89,6 +89,17 @@ static enum mechanism_type decode_mechanism_type(struct byte_string part_name)
         return 0;
 }
 
+static int compare_conduits_by_id(const void *aa, const void *bb)
+{
+    const struct conduit *a = aa;
+    const struct conduit *b = bb;
+    if (a->id < b->id)
+        return -1;
+    if (a->id > b->id)
+        return 1;
+    return 0;
+}
+
 static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct input_output *io)
 {
     io->atoms = calloc(c.number_of_atoms, sizeof(io->atoms[0]));
@@ -145,9 +156,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             fprintf(stderr, "solution file error: repeating outputs are currently unsupported\n");
             return false;
         } else if (byte_string_is(sf->parts[i].name, "pipe")) {
-            // todo
-            fprintf(stderr, "solution file error: conduits are currently unsupported\n");
-            return false;
+            solution->number_of_glyphs++;
+            solution->number_of_conduits++;
         }
     }
     // now that we know how many elements each array should have, allocate them
@@ -158,6 +168,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->arm_tape = calloc(solution->number_of_arms, sizeof(char *));
     solution->arm_tape_length = calloc(solution->number_of_arms, sizeof(size_t));
     solution->arm_tape_start_cycle = calloc(solution->number_of_arms, sizeof(uint64_t));
+
+    solution->conduits = calloc(solution->number_of_conduits, sizeof(struct conduit));
 
     solution->inputs_and_outputs = calloc(solution->number_of_inputs_and_outputs, sizeof(struct input_output));
 
@@ -173,6 +185,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     // second pass: fill in the arrays with the data from the file.
     uint32_t arm_index = 0;
     uint32_t glyph_index = 0;
+    uint32_t conduit_index = 0;
     size_t io_index = 0;
     for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
         struct solution_part part = sf->parts[i];
@@ -220,6 +233,22 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 }
                 last_position = p;
             }
+        } else if (byte_string_is(part.name, "pipe")) {
+            m.type = CONDUIT;
+            struct conduit conduit = {
+                .glyph_index = glyph_index,
+                .id = part.conduit_id,
+                .number_of_positions = part.number_of_conduit_hexes,
+                .positions = calloc(sizeof(struct vector), part.number_of_conduit_hexes),
+                .atoms = calloc(sizeof(struct atom_at_position), part.number_of_conduit_hexes),
+                .molecule_lengths = calloc(sizeof(uint32_t), part.number_of_conduit_hexes),
+            };
+            for (uint32_t i = 0; i < part.number_of_conduit_hexes; ++i) {
+                conduit.positions[i].u = part.conduit_hexes[i].offset[1];
+                conduit.positions[i].v = part.conduit_hexes[i].offset[0];
+            }
+            solution->glyphs[glyph_index++] = m;
+            solution->conduits[conduit_index++] = conduit;
         } else if (byte_string_is(part.name, "input")) {
             struct puzzle_molecule c = pf->inputs[part.which_input_or_output];
             struct input_output *io = &solution->inputs_and_outputs[io_index];
@@ -236,6 +265,20 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io_index++;
         }
     }
+    // sort conduits by id in order to find pairs of linked conduits.
+    qsort(solution->conduits, solution->number_of_conduits,
+     sizeof(struct conduit), compare_conduits_by_id);
+    for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
+        struct conduit *conduit = &solution->conduits[i];
+        if (i + 1 < solution->number_of_conduits && solution->conduits[i + 1].id == conduit->id)
+            conduit->other_side_glyph_index = solution->conduits[i + 1].glyph_index;
+        else if (i > 0 && solution->conduits[i - 1].id == conduit->id)
+            conduit->other_side_glyph_index = solution->conduits[i - 1].glyph_index;
+        else
+            conduit->other_side_glyph_index = conduit->glyph_index;
+        solution->glyphs[conduit->glyph_index].conduit_index = i;
+    }
+
     // decode arm tapes in one final pass.  this has to be another pass because
     // reset instructions depend on where track has been placed.
     arm_index = 0;

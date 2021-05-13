@@ -1,3 +1,4 @@
+#include "decode.h"
 #include "parse.h"
 #include "sim.h"
 #include <inttypes.h>
@@ -46,7 +47,7 @@ int main(int argc, char *argv[])
 
     // run the solution.
     printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);
-    while (board.cycle < 200 && !board.complete) {
+    while (board.cycle < 10000 && !board.complete) {
         printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
         print_board(&board);
         cycle(&solution, &board);

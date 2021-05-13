@@ -39,9 +39,9 @@ int main()
         }
         if (last_dot > last_slash) {
             struct puzzle *puzzle = calloc(sizeof(struct puzzle), 1);
-            puzzle->filename = malloc(last_dot - last_slash);
+            puzzle->filename = malloc(last_dot - last_slash + 1);
             buf[last_dot] = '\0';
-            memcpy(puzzle->filename, buf + last_slash, last_dot - last_slash);
+            memcpy(puzzle->filename, buf + last_slash, last_dot - last_slash + 1);
             puzzle->pf = pf;
             fprintf(stderr, "puzzle '%s' parsed\n", puzzle->filename);
             puzzle->next = puzzles;
