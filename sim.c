@@ -320,16 +320,35 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             uint32_t base = 0;
             for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
                 uint32_t length = conduit->molecule_lengths[j];
+                bool valid = true;
+                if (board->half_cycle == 1) {
+                    // if any of the atoms in this molecule have been consumed,
+                    // then remove the molecule from the conduit.
+                    for (uint32_t k = 0; k < length; ++k) {
+                        struct vector p = conduit->atoms[base + k].position;
+                        atom a = *lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+                        if (!(a & VALID) || (a & REMOVED)) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    if (!valid) {
+                        memmove(conduit->atoms + base, conduit->atoms + base + length, (conduit->number_of_positions - base - length) * sizeof(struct atom_at_position));
+                        memmove(conduit->molecule_lengths + j, conduit->molecule_lengths + j + 1, (conduit->number_of_positions - j - 1) * sizeof(uint32_t));
+                        j--;
+                        continue;
+                    }
+                    // xx check existence of recent bonds outside the molecule
+                }
                 ensure_capacity(board, length);
                 for (uint32_t k = 0; k < length; ++k) {
                     atom a = conduit->atoms[base + k].atom;
-                    if (!(a & VALID) || (a & REMOVED))
-                        continue;
                     struct vector delta = conduit->atoms[base + k].position;
-                    // xx check existence of atoms / recent bonds outside the molecule in half cycle 1
-                    if (board->half_cycle == 1)
-                        remove_atom(board, lookup_atom(board, mechanism_relative_position(m, delta.u, delta.v, 1)));
-                    else {
+                    if (board->half_cycle == 1) {
+                        atom *b = lookup_atom(board, mechanism_relative_position(m, delta.u, delta.v, 1));
+                        conduit->atoms[base + k].atom = *b;
+                        remove_atom(board, b);
+                    } else {
                         struct vector p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
                         rotate_bonds(&a, rotation);
                         *insert_atom(board, p, "conduit output") = a;
