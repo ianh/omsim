@@ -79,6 +79,22 @@ int main()
         }
         total_solutions++;
 
+        uint64_t cost = solution_file_cost(sf);
+        if (sf->cost != cost) {
+            fprintf(stderr, "instructions mismatch for '%s'\n", buf);
+            fprintf(stderr, "solution file says cost is: %" PRIu32 "\n", sf->cost);
+            fprintf(stderr, "adding up its parts, the cost is: %" PRIu64 "\n", cost);
+            goto fail;
+        }
+
+        uint64_t instructions = solution_instructions(&solution);
+        if (sf->instructions != instructions) {
+            fprintf(stderr, "instructions mismatch for '%s'\n", buf);
+            fprintf(stderr, "solution file says instruction count is: %" PRIu32 "\n", sf->instructions);
+            fprintf(stderr, "counting instructions says instruction count is: %" PRIu64 "\n", instructions);
+            goto fail;
+        }
+
         // set up the board.
         initial_setup(&solution, &board);
 
@@ -92,12 +108,15 @@ int main()
                 break;
             }
         }
+
         if (sf->cycles != board.cycle) {
             fprintf(stderr, "cycle mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
             fprintf(stderr, "simulation says cycle count is: %" PRIu64 "\n", board.cycle);
         } else
             validated_solutions++;
+    fail:
+        destroy(&solution, &board);
         free_solution_file(sf);
     }
     pclose(puzzle_list);

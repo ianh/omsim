@@ -1,3 +1,4 @@
+#include "decode.h"
 #include "parse.h"
 #include "sim.h"
 #include <stdio.h>
@@ -69,7 +70,7 @@ static void measure_throughput(struct verifier *v)
     initial_setup(&solution, &board);
     solution.target_number_of_outputs = UINT64_MAX;
     struct mechanism *arm_snapshot = 0;
-    struct board board_snapshot = { .cycle = 0 };
+    struct board board_snapshot = { .cycle = solution.tape_period };
     uint32_t board_snapshot_in_range = 0;
     uint64_t output_count_snapshot = 0;
     // rough bounding box (fixme -- make this centered on the actual glyphs/arms?)
@@ -78,7 +79,7 @@ static void measure_throughput(struct verifier *v)
     int32_t max_v = 200;
     int32_t min_v = -200;
     while (board.cycle < 100000 && !board.collision) {
-        if (board.cycle == board_snapshot.cycle + solution.tape_period) {
+        if (board.cycle == board_snapshot.cycle * 2) {
             arm_snapshot = realloc(arm_snapshot, sizeof(struct mechanism) * solution.number_of_arms);
             memcpy(arm_snapshot, solution.arms, sizeof(struct mechanism) * solution.number_of_arms);
             struct atom_at_position *a = board_snapshot.atoms_at_positions;
@@ -147,6 +148,8 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return v->sf->area;
     else if (!strcmp(metric, "parsed instructions"))
         return v->sf->instructions;
+    else if (!strcmp(metric, "cost"))
+        return solution_file_cost(v->sf);
     else if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_cycles)
             measure_throughput(v);
@@ -161,6 +164,11 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     if (!decode_solution(&solution, v->pf, v->sf)) {
         v->error = "unable to decode solution";
         return -1;
+    }
+    if (!strcmp(metric, "instructions")) {
+        int instructions = solution_instructions(&solution);
+        destroy(&solution, &board);
+        return instructions;
     }
     initial_setup(&solution, &board);
     while (board.cycle < 100000 && !board.complete && !board.collision)

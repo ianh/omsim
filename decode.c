@@ -458,3 +458,60 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->target_number_of_outputs = 6 * pf->output_scale;
     return true;
 }
+
+uint64_t solution_file_cost(struct solution_file *sf)
+{
+    uint64_t cost = 0;
+    for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
+        struct byte_string part_name = sf->parts[i].name;
+        if (byte_string_is(part_name, "glyph-calcification"))
+            cost += 10;
+        else if (byte_string_is(part_name, "glyph-life-and-death"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-projection"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-dispersion"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-purification"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-duplication"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-unification"))
+            cost += 20;
+        else if (byte_string_is(part_name, "bonder"))
+            cost += 10;
+        else if (byte_string_is(part_name, "unbonder"))
+            cost += 10;
+        else if (byte_string_is(part_name, "bonder-prisma"))
+            cost += 20;
+        else if (byte_string_is(part_name, "bonder-speed"))
+            cost += 30;
+        else if (byte_string_is(part_name, "arm1"))
+            cost += 20;
+        else if (byte_string_is(part_name, "arm2"))
+            cost += 30;
+        else if (byte_string_is(part_name, "arm3"))
+            cost += 30;
+        else if (byte_string_is(part_name, "arm6"))
+            cost += 30;
+        else if (byte_string_is(part_name, "piston"))
+            cost += 40;
+        else if (byte_string_is(part_name, "baron"))
+            cost += 30;
+        else if (byte_string_is(part_name, "track"))
+            cost += sf->parts[i].number_of_track_hexes * 5;
+    }
+    return cost;
+}
+
+uint64_t solution_instructions(struct solution *solution)
+{
+    uint64_t instructions = 0;
+    for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+        for (uint32_t j = 0; j < solution->arm_tape_length[i]; ++j) {
+            if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0')
+                instructions++;
+        }
+    }
+    return instructions;
+}

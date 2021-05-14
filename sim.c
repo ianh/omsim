@@ -174,6 +174,85 @@ struct vector u_offset_for_direction(int direction)
     return v_offset_for_direction(direction + 1);
 }
 
+static void apply_conduit(struct solution *solution, struct board *board, struct mechanism m)
+{
+    struct conduit *conduit = &solution->conduits[m.conduit_index];
+    ensure_capacity(board, conduit->number_of_positions);
+    struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
+    int rotation = direction_for_offset(other_side.direction_v) - direction_for_offset(m.direction_v);
+    uint32_t base = 0;
+    for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
+        uint32_t length = conduit->molecule_lengths[j];
+        bool valid = true;
+        bool consume = true;
+        if (board->half_cycle == 1) {
+            // if any of the atoms in this molecule have been consumed, then
+            // remove the molecule from the conduit.
+            for (uint32_t k = 0; k < length; ++k) {
+                struct vector p = conduit->atoms[base + k].position;
+                atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+                if (!(*a & VALID) || (*a & REMOVED)) {
+                    valid = false;
+                    break;
+                }
+                // mark the shape of the molecule on the board.
+                *a |= CONDUIT_SHAPE;
+            }
+            if (valid) {
+                // if a bond has been made between any atom of the molecule and
+                // an atom outside the molecule, then don't consume the atoms
+                // (but still produce the stored atoms in the second
+                // half-cycle).
+                for (uint32_t k = 0; k < length && consume; ++k) {
+                    struct vector p = conduit->atoms[base + k].position;
+                    atom a = *lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+                    for (int bond_direction = 0; bond_direction < 6 && consume; ++bond_direction) {
+                        if (!(a & (BOND_LOW_BITS << normalize_direction(bond_direction + direction_for_offset(m.direction_v)))))
+                            continue;
+                        struct vector d = v_offset_for_direction(bond_direction);
+                        atom *b = lookup_atom(board, mechanism_relative_position(m, p.u + d.u, p.v + d.v, 1));
+                        if (!(*b & VALID) || (*b & REMOVED) || !(*b & CONDUIT_SHAPE))
+                            consume = false;
+                    }
+                }
+            }
+            // clear the marked molecule shape.
+            for (uint32_t k = 0; k < length; ++k) {
+                struct vector p = conduit->atoms[base + k].position;
+                atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+                *a &= ~CONDUIT_SHAPE;
+            }
+            if (!valid) {
+                // remove the molecule from the conduit.
+                memmove(conduit->atoms + base, conduit->atoms + base + length, (conduit->number_of_positions - base - length) * sizeof(struct atom_at_position));
+                memmove(conduit->molecule_lengths + j, conduit->molecule_lengths + j + 1, (conduit->number_of_positions - j - 1) * sizeof(uint32_t));
+                j--;
+                continue;
+            }
+        }
+        ensure_capacity(board, length);
+        for (uint32_t k = 0; k < length; ++k) {
+            atom a = conduit->atoms[base + k].atom;
+            struct vector delta = conduit->atoms[base + k].position;
+            if (board->half_cycle == 1) {
+                atom *b = lookup_atom(board, mechanism_relative_position(m, delta.u, delta.v, 1));
+                if (consume) {
+                    conduit->atoms[base + k].atom = *b;
+                    remove_atom(board, b);
+                } else {
+                    // bonds are consumed even if the atoms aren't.
+                    *b &= ~(ALL_BONDS & ~RECENT_BONDS & a);
+                }
+            } else {
+                struct vector p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
+                rotate_bonds(&a, rotation);
+                *insert_atom(board, p, "conduit output") = a;
+            }
+        }
+        base += length;
+    }
+}
+
 static void apply_glyphs(struct solution *solution, struct board *board)
 {
     size_t n = solution->number_of_glyphs;
@@ -322,92 +401,9 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 remove_atom(board, a);
             break;
         }
-        case CONDUIT: {
-            struct conduit *conduit = &solution->conduits[m.conduit_index];
-            ensure_capacity(board, conduit->number_of_positions);
-            struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
-            int rotation = direction_for_offset(other_side.direction_v) - direction_for_offset(m.direction_v);
-            uint32_t base = 0;
-            for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
-                uint32_t length = conduit->molecule_lengths[j];
-                bool valid = true;
-                bool consume = true;
-                if (board->half_cycle == 1) {
-                    // if any of the atoms in this molecule have been consumed,
-                    // then remove the molecule from the conduit.
-                    for (uint32_t k = 0; k < length; ++k) {
-                        struct vector p = conduit->atoms[base + k].position;
-                        atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
-                        if (!(*a & VALID) || (*a & REMOVED)) {
-                            valid = false;
-                            break;
-                        }
-                        // mark the shape of the molecule on the board.
-                        *a |= CONDUIT_SHAPE;
-                    }
-                    if (valid) {
-                        // if a bond has been made between any atom of the
-                        // molecule and an atom outside the molecule, then don't
-                        // consume the atoms (but still produce the stored atoms
-                        // in the second half-cycle).
-                        for (uint32_t k = 0; k < length && consume; ++k) {
-                            struct vector p = conduit->atoms[base + k].position;
-                            atom a = *lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
-                            for (int bond_direction = 0; bond_direction < 6 && consume; ++bond_direction) {
-                                if (!(a & (BOND_LOW_BITS << normalize_direction(bond_direction + direction_for_offset(m.direction_v)))))
-                                    continue;
-                                struct vector d = v_offset_for_direction(bond_direction);
-                                atom *b = lookup_atom(board, mechanism_relative_position(m, p.u + d.u, p.v + d.v, 1));
-                                if (!(*b & VALID) || (*b & REMOVED) || !(*b & CONDUIT_SHAPE))
-                                    consume = false;
-                            }
-                        }
-                    }
-                    // clear the marked molecule shape.
-                    for (uint32_t k = 0; k < length; ++k) {
-                        struct vector p = conduit->atoms[base + k].position;
-                        atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
-                        *a &= ~CONDUIT_SHAPE;
-                    }
-                    if (!valid) {
-                        // remove the molecule from the conduit.
-                        memmove(conduit->atoms + base, conduit->atoms + base + length, (conduit->number_of_positions - base - length) * sizeof(struct atom_at_position));
-                        memmove(conduit->molecule_lengths + j, conduit->molecule_lengths + j + 1, (conduit->number_of_positions - j - 1) * sizeof(uint32_t));
-                        j--;
-                        continue;
-                    }
-                }
-                ensure_capacity(board, length);
-                for (uint32_t k = 0; k < length; ++k) {
-                    atom a = conduit->atoms[base + k].atom;
-                    struct vector delta = conduit->atoms[base + k].position;
-                    if (board->half_cycle == 1) {
-                        atom *b = lookup_atom(board, mechanism_relative_position(m, delta.u, delta.v, 1));
-                        if (consume) {
-                            conduit->atoms[base + k].atom = *b;
-                            remove_atom(board, b);
-                        } else {
-                            // bonds are consumed even if the atoms aren't.
-                            *b &= ~(ALL_BONDS & ~RECENT_BONDS & a);
-                        }
-                    } else {
-                        struct vector p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
-                        rotate_bonds(&a, rotation);
-                        *insert_atom(board, p, "conduit output") = a;
-                    }
-                }
-                base += length;
-            }
-            // xx check atoms on conduit
-            // first half-cycle:
-            // if there are no atoms there, remove conduit atoms
-            // if there are atoms there and they haven't been bonded outside
-            // the molecule, remove them and update the conduit atoms to match
-            // consume bonds even if the atoms have been bonded outside (probably needs more testing...)
-            // second half-cycle:
-            // produce the atoms in the conduit
+        case CONDUIT:
+            apply_conduit(solution, board, m);
             break;
-        }
         case EQUILIBRIUM:
         default:
             break;
