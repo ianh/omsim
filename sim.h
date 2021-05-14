@@ -30,29 +30,27 @@ static const atom QUINTESSENCE = 1ULL << 16;
 // computation puzzles.
 static const atom VARIABLE_OUTPUT = 1ULL << 17;
 
-// this flag is necessary to simulate overlapping glyphs correctly.
-static const atom UNBONDED = 1ULL << 18;
-
 // conversion glyphs like animismus put this flag on their outputs until the
 // second half-cycle.  it stops their outputs from being seen by other glyphs.
-static const atom BEING_PRODUCED = 1ULL << 19;
+static const atom BEING_PRODUCED = 1ULL << 18;
 
 // conduits only transport atoms that have just been dropped.
-static const atom BEING_DROPPED = 1ULL << 20;
+static const atom BEING_DROPPED = 1ULL << 19;
 
 // is this atom part of a van berlo's wheel?
-static const atom VAN_BERLO_ATOM = 1ULL << 21;
+static const atom VAN_BERLO_ATOM = 1ULL << 20;
 
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
-static const atom GRABBED_ONCE = 1ULL << 25;
+static const atom GRABBED_ONCE = 1ULL << 22;
 static const atom GRABBED = 0x1FULL * GRABBED_ONCE;
 
-static const atom VALID = 1ULL << 30;
-static const atom REMOVED = 1ULL << 31;
+static const atom VALID = 1ULL << 27;
+static const atom REMOVED = 1ULL << 28;
 
 // offsets for the bits that indicate bonds.
+static const int RECENT_BOND = 29;
 static const int NORMAL_BOND = 35;
 static const int TRIPLEX_BOND_R = 41;
 static const int TRIPLEX_BOND_Y = 47;
@@ -67,20 +65,21 @@ static const atom CONDUIT_SHAPE = 1ULL << 59;
 // used for molecule flood fills.
 static const atom VISITED = 1ULL << 60;
 
-static const atom BOND_LOW_BITS = (1ULL << NORMAL_BOND) |
- (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) |
+static const atom BOND_LOW_BITS = (1ULL << RECENT_BOND) |
+ (1ULL << NORMAL_BOND) | (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) |
  (1ULL << TRIPLEX_BOND_K);
 
 static const atom ANY_ELEMENTAL = WATER | FIRE | EARTH | AIR;
 static const atom ANY_METAL = LEAD | TIN | IRON | COPPER | SILVER | GOLD;
 static const atom ANY_ATOM = SALT | ANY_ELEMENTAL | QUICKSILVER | ANY_METAL |
  VITAE | MORS | QUINTESSENCE;
+static const atom RECENT_BONDS = 0x3FULL << RECENT_BOND;
 static const atom NORMAL_BONDS = 0x3FULL << NORMAL_BOND;
 static const atom TRIPLEX_R_BONDS = 0x3FULL << TRIPLEX_BOND_R;
 static const atom TRIPLEX_Y_BONDS = 0x3FULL << TRIPLEX_BOND_Y;
 static const atom TRIPLEX_K_BONDS = 0x3FULL << TRIPLEX_BOND_K;
 static const atom TRIPLEX_BONDS = TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS;
-static const atom ALL_BONDS = NORMAL_BONDS | TRIPLEX_BONDS;
+static const atom ALL_BONDS = 0x3FULL * BOND_LOW_BITS;
 
 enum mechanism_type {
     NO_MECHANISM,

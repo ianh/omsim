@@ -74,7 +74,7 @@ static atom *get_atom(struct board *board, struct mechanism m, int32_t du, int32
     if (!(m.type & (DUPLICATION | VAN_BERLO)) && (*a & VAN_BERLO_ATOM))
         return (atom *)&empty;
     // conversion glyphs can't see bonded or grabbed inputs.
-    if ((m.type & CONVERSION_GLYPH) && ((*a & ALL_BONDS) || !(*a & UNBONDED) || (*a & GRABBED)))
+    if ((m.type & CONVERSION_GLYPH) && ((*a & ALL_BONDS) || (*a & GRABBED)))
         return (atom *)&empty;
     return a;
 }
@@ -207,7 +207,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             atom *q = get_atom(board, m, 0, 0);
             atom *a = get_atom(board, m, 0, 1);
             atom metal = *a & ANY_METAL & ~GOLD;
-            if (metal && (*q & UNBONDED) && !(*q & ALL_BONDS) && !(*q & GRABBED) && (*q & QUICKSILVER)) {
+            if (metal && !(*q & ALL_BONDS) && !(*q & GRABBED) && (*q & QUICKSILVER)) {
                 remove_atom(board, q);
                 transform_atom(a, metal >> 1);
             }
@@ -276,8 +276,18 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             atom *a = get_atom(board, m, 0, 0);
             atom *b = get_atom(board, m, 0, 1);
             if (*a && *b) {
-                *a &= ~bond_direction(m, 0, 1);
-                *b &= ~bond_direction(m, 0, -1);
+                atom ab = bond_direction(m, 0, 1);
+                atom ba = bond_direction(m, 0, -1);
+                // record the bond in the RECENT_BONDS bitfield to prevent the
+                // atoms from being consumed during this half-cycle.
+                if (*a & ab) {
+                    *a &= ~ab;
+                    *a |= ab & RECENT_BONDS;
+                }
+                if (*b & ba) {
+                    *b &= ~ba;
+                    *b |= ba & RECENT_BONDS;
+                }
             }
             break;
         }
@@ -308,7 +318,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case DISPOSAL: {
             atom *a = get_atom(board, m, 0, 0);
-            if (*a && (*a & UNBONDED) && !(*a & ALL_BONDS) && !(*a & GRABBED))
+            if (*a && !(*a & ALL_BONDS) && !(*a & GRABBED))
                 remove_atom(board, a);
             break;
         }
@@ -814,7 +824,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 output &= ~VARIABLE_OUTPUT;
                 output |= *a & ANY_ATOM;
             }
-            if ((*a & (ANY_ATOM | ALL_BONDS)) != output || (*a & GRABBED)) {
+            if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
                 match = false;
                 break;
             }
@@ -840,11 +850,7 @@ static void reset_atom_flags(struct board *board)
         atom *a = &board->atoms_at_positions[i].atom;
         if (!(*a & VALID) || (*a & REMOVED))
             continue;
-        *a &= ~BEING_DROPPED;
-        if (!(*a & ALL_BONDS))
-            *a |= UNBONDED;
-        else
-            *a &= ~UNBONDED;
+        *a &= ~BEING_DROPPED & ~RECENT_BONDS;
     }
 }
 
