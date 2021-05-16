@@ -80,6 +80,11 @@ static const atom TRIPLEX_K_BONDS = 0x3FULL << TRIPLEX_BOND_K;
 static const atom TRIPLEX_BONDS = TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS;
 static const atom ALL_BONDS = 0x3FULL * BOND_LOW_BITS;
 
+// TEMPORARY_FLAGS are reset in reset_temporary_flags().  the
+// schedule_flag_reset_if_needed() function must be called whenever one of these
+// flags is set.
+static const atom TEMPORARY_FLAGS = BEING_DROPPED | RECENT_BONDS;
+
 enum mechanism_type {
     NO_MECHANISM,
 
@@ -271,7 +276,11 @@ struct board {
 
     uint32_t capacity;
     uint32_t used;
-    uint32_t removed;
+
+    // atoms that need their flags reset.
+    atom **flag_reset;
+    uint32_t flag_reset_capacity;
+    uint32_t flag_reset_length;
 
     uint64_t cycle;
     int half_cycle;
@@ -288,7 +297,9 @@ struct board {
     bool complete;
 };
 
-void initial_setup(struct solution *solution, struct board *board);
+// initial_board_size is a sizing hint to the hash table; zero means 'no hint'.
+void initial_setup(struct solution *solution, struct board *board,
+ uint32_t intial_board_size);
 
 enum run_result {
     FINISHED_CYCLE,

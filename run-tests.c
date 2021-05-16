@@ -96,7 +96,7 @@ int main()
         }
 
         // set up the board.
-        initial_setup(&solution, &board);
+        initial_setup(&solution, &board, sf->area);
 
         // run the solution.
         while (board.cycle < 200000 && !board.complete) {
@@ -108,6 +108,8 @@ int main()
                 break;
             }
         }
+        if (board.used > sf->area)
+            fprintf(stderr, "%s... %u vs %u\n", buf, board.used, sf->area);
 
         if (sf->cycles != board.cycle) {
             fprintf(stderr, "cycle mismatch for '%s'\n", buf);

@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
     free_puzzle_file(pf);
 
     // set up the board.
-    initial_setup(&solution, &board);
+    initial_setup(&solution, &board, sf->area);
 
     // run the solution.
     printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);

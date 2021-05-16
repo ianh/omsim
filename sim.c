@@ -12,6 +12,7 @@
 // hash table functions -- see appendix.
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 static void ensure_capacity(struct board *board, uint32_t potential_insertions);
+static void schedule_flag_reset_if_needed(struct board *board, atom *a);
 
 struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w)
 {
@@ -81,9 +82,6 @@ static atom *get_atom(struct board *board, struct mechanism m, int32_t du, int32
 
 static inline void remove_atom(struct board *board, atom *a)
 {
-    assert(!(*a & REMOVED));
-    board->used--;
-    board->removed++;
     *a |= REMOVED;
 }
 
@@ -362,10 +360,12 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 if (*a & ab) {
                     *a &= ~ab;
                     *a |= ab & RECENT_BONDS;
+                    schedule_flag_reset_if_needed(board, a);
                 }
                 if (*b & ba) {
                     *b &= ~ba;
                     *b |= ba & RECENT_BONDS;
+                    schedule_flag_reset_if_needed(board, b);
                 }
             }
             break;
@@ -596,6 +596,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 *a |= (grabs - 1) * GRABBED_ONCE;
                 // allow conduits to transport this atom (and any atoms bonded to it).
                 *a |= BEING_DROPPED;
+                schedule_flag_reset_if_needed(board, a);
                 continue;
             } 
             struct vector atom_pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
@@ -872,14 +873,11 @@ static void consume_outputs(struct solution *solution, struct board *board)
     board->active_input_or_output = UINT32_MAX;
 }
 
-static void reset_atom_flags(struct board *board)
+static void reset_temporary_flags(struct board *board)
 {
-    for (uint32_t i = 0; i < board->capacity; ++i) {
-        atom *a = &board->atoms_at_positions[i].atom;
-        if (!(*a & VALID) || (*a & REMOVED))
-            continue;
-        *a &= ~BEING_DROPPED & ~RECENT_BONDS;
-    }
+    for (uint32_t i = 0; i < board->flag_reset_length; ++i)
+        *board->flag_reset[i] &= ~TEMPORARY_FLAGS;
+    board->flag_reset_length = 0;
 }
 
 static bool check_completion(struct solution *solution)
@@ -912,7 +910,7 @@ continue_with_inputs:
         spawn_inputs(solution, board);
         if (board->active_input_or_output != UINT32_MAX)
             return INPUT_OUTPUT;
-        reset_atom_flags(board);
+        reset_temporary_flags(board);
         apply_glyphs(solution, board);
 continue_with_outputs:
         consume_outputs(solution, board);
@@ -933,13 +931,15 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
     *a = VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element;
 }
 
-void initial_setup(struct solution *solution, struct board *board)
+void initial_setup(struct solution *solution, struct board *board, uint32_t intial_board_size)
 {
     board->half_cycle = 1;
     board->active_input_or_output = UINT32_MAX;
     // in order for lookups to work, the hash table has to be allocated using
     // ensure_capacity().
-    ensure_capacity(board, 1);
+    if (intial_board_size < 1)
+        intial_board_size = 1;
+    ensure_capacity(board, intial_board_size);
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         if (!(solution->arms[i].type & VAN_BERLO))
             continue;
@@ -981,6 +981,7 @@ void destroy(struct solution *solution, struct board *board)
 
     free(board->atoms_at_positions);
     free(board->movements.elements);
+    free(board->flag_reset);
 }
 
 // appendix A -- hash table functions.
@@ -1046,25 +1047,22 @@ static atom *insert_atom(struct board *board, struct vector query, const char *c
     uint32_t removed = UINT32_MAX;
     while (true) {
         atom *a = &board->atoms_at_positions[index].atom;
-        // in order to detect overlapping atoms, continue searching even if
-        // there's a removed atom in the table.
-        if (removed == UINT32_MAX && (*a & REMOVED))
-            removed = index;
         if (!(*a & VALID)) {
-            if (removed != UINT32_MAX) {
-                board->removed--;
+            if (removed != UINT32_MAX)
                 index = removed;
-            }
             board->atoms_at_positions[index].position = query;
             break;
         }
         struct vector position = board->atoms_at_positions[index].position;
-        if (vectors_equal(position, query) && !(*a & REMOVED))
-            break;
+        if (vectors_equal(position, query)) {
+            if (*a & REMOVED)
+                removed = index;
+            else
+                break;
+        }
         index = (index + 1) & mask;
         if (index == (hash & mask)) {
             if (removed != UINT32_MAX) {
-                board->removed--;
                 index = removed;
                 board->atoms_at_positions[index].position = query;
                 break;
@@ -1075,7 +1073,8 @@ static atom *insert_atom(struct board *board, struct vector query, const char *c
     atom *a = &board->atoms_at_positions[index].atom;
     if ((*a & VALID) && !(*a & REMOVED))
         report_collision(board, query, collision_reason);
-    board->used++;
+    if (!(*a & REMOVED))
+        board->used++;
     return a;
 }
 
@@ -1086,19 +1085,36 @@ static void ensure_capacity(struct board *board, uint32_t potential_insertions)
         n = 16;
     while (2 * n <= 7 * (board->used + potential_insertions))
         n *= 2;
-    if (n == board->capacity && 3 * (board->removed + board->used) < 2 * board->capacity)
+    if (n == board->capacity)
         return;
     struct board old = *board;
     board->atoms_at_positions = calloc(n, sizeof(*board->atoms_at_positions));
     board->capacity = n;
     board->used = 0;
-    board->removed = 0;
+    board->flag_reset_length = 0;
     for (uint32_t i = 0; i < old.capacity; ++i) {
         atom a = old.atoms_at_positions[i].atom;
-        if (!(a & VALID) || (a & REMOVED))
+        if (!(a & VALID))
             continue;
         struct vector position = old.atoms_at_positions[i].position;
-        *insert_atom(board, position, "reinserting colliding atoms") = a;
+        atom *b = insert_atom(board, position, "reinserting colliding atoms");
+        *b = a;
+        schedule_flag_reset_if_needed(board, b);
     }
     free(old.atoms_at_positions);
+}
+
+static void schedule_flag_reset_if_needed(struct board *board, atom *a)
+{
+    if (!(*a & TEMPORARY_FLAGS))
+        return;
+    if (board->flag_reset_length >= board->flag_reset_capacity) {
+        uint32_t n = (board->flag_reset_length + 1) * 2;
+        atom **flag_reset = realloc(board->flag_reset, n * sizeof(atom *));
+        if (!flag_reset)
+            abort();
+        board->flag_reset = flag_reset;
+        board->flag_reset_capacity = n;
+    }
+    board->flag_reset[board->flag_reset_length++] = a;
 }
