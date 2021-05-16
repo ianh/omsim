@@ -186,8 +186,8 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
         bool valid = true;
         bool consume = true;
         if (board->half_cycle == 1) {
-            // if any of the atoms in this molecule have been consumed, then
-            // remove the molecule from the conduit.
+            // if any of the atoms in this molecule have already been consumed
+            // by some other glyph, then remove the molecule from the conduit.
             for (uint32_t k = 0; k < length; ++k) {
                 struct vector p = conduit->atoms[base + k].position;
                 atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));

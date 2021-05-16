@@ -152,9 +152,12 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
             solution->number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
-            // todo
-            fprintf(stderr, "solution file error: repeating outputs are currently unsupported\n");
             return false;
+            if (sf->parts[i].which_input_or_output >= pf->number_of_outputs) {
+                fprintf(stderr, "solution file error: output out of range\n");
+                return false;
+            }
+            solution->number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "pipe")) {
             solution->number_of_glyphs++;
             solution->number_of_conduits++;
@@ -259,7 +262,14 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         } else if (byte_string_is(part.name, "out-std")) {
             struct puzzle_molecule c = pf->outputs[part.which_input_or_output];
             struct input_output *io = &solution->inputs_and_outputs[io_index];
-            io->type = OUTPUT;
+            io->type = SINGLE_OUTPUT;
+            io->puzzle_index = part.which_input_or_output;
+            decode_molecule(c, m, io);
+            io_index++;
+        } if (byte_string_is(part.name, "out-rep")) {
+            struct puzzle_molecule c = pf->outputs[part.which_input_or_output];
+            struct input_output *io = &solution->inputs_and_outputs[io_index];
+            io->type = REPEATING_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
             io_index++;

@@ -22,8 +22,7 @@ static const atom TIN = 1ULL << 11;
 static const atom LEAD = 1ULL << 12;
 static const atom VITAE = 1ULL << 13;
 static const atom MORS = 1ULL << 14;
-// this is commented out because it's unsupported (for now).
-// static const atom REPEATING_OUTPUT = 1ULL << 15;
+static const atom REPEATING_OUTPUT_PLACEHOLDER = 1ULL << 15;
 static const atom QUINTESSENCE = 1ULL << 16;
 
 // an output which accepts any molecule of the proper shape.  used for
@@ -186,15 +185,19 @@ struct conduit {
 
 enum input_output_type {
     INPUT = 1 << 0,
-    OUTPUT = 1 << 1,
+    SINGLE_OUTPUT = 1 << 1,
+    REPEATING_OUTPUT = 1 << 2,
+
+    // either single or repeating.
+    OUTPUT = 3 << 1,
 
     // flag for inputs.
-    BLOCKED = 1 << 2,
+    BLOCKED = 1 << 3,
 
     // stop running and return INPUT_OUTPUT before the input spawns or the
     // output consumes.  you can use this flag to implement dynamic inputs and
     // outputs.
-    INTERRUPT = 1 << 3,
+    INTERRUPT = 1 << 4,
 };
 
 struct input_output {
