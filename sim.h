@@ -135,7 +135,7 @@ struct vector {
     int32_t u;
     int32_t v;
 };
-
+static const struct vector zero_vector;
 static inline bool vectors_equal(struct vector a, struct vector b)
 {
     return !memcmp(&a, &b, sizeof(a));
@@ -271,6 +271,24 @@ struct movement_list {
     size_t length;
     size_t cursor;
 };
+struct swing_area {
+    // normalized to swing counterclockwise.
+    struct vector base;
+    struct vector direction;
+};
+struct swing_area_subtable {
+    // normalized to the +u/+v sextant.
+    struct vector offset;
+
+    struct swing_area *swings;
+    uint32_t capacity;
+    uint32_t used;
+};
+struct swing_area_table {
+    struct swing_area_subtable *subtables;
+    uint32_t capacity;
+    uint32_t used;
+};
 struct board {
     struct atom_at_position *atoms_at_positions;
 
@@ -289,6 +307,8 @@ struct board {
     size_t active_input_or_output;
 
     struct movement_list movements;
+
+    struct swing_area_table swing_area_table;
 
     bool collision;
     struct vector collision_location;
@@ -319,7 +339,10 @@ static inline void cycle(struct solution *solution, struct board *board)
 void destroy(struct solution *solution, struct board *board);
 
 atom *lookup_atom(struct board *board, struct vector query);
+void mark_used_area(struct board *board, struct vector point);
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
+
+uint32_t used_area(struct board *board);
 
 // geometric helper functions.
 struct vector u_offset_for_direction(int direction);

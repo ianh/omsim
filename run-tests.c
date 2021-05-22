@@ -81,7 +81,7 @@ int main()
 
         uint64_t cost = solution_file_cost(sf);
         if (sf->cost != cost) {
-            fprintf(stderr, "instructions mismatch for '%s'\n", buf);
+            fprintf(stderr, "cost mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says cost is: %" PRIu32 "\n", sf->cost);
             fprintf(stderr, "adding up its parts, the cost is: %" PRIu64 "\n", cost);
             goto fail;
@@ -108,15 +108,26 @@ int main()
                 break;
             }
         }
-        if (board.used > sf->area)
-            fprintf(stderr, "%s... %u vs %u\n", buf, board.used, sf->area);
-
         if (sf->cycles != board.cycle) {
             fprintf(stderr, "cycle mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
             fprintf(stderr, "simulation says cycle count is: %" PRIu64 "\n", board.cycle);
-        } else
-            validated_solutions++;
+            goto fail;
+        }
+        uint32_t area = used_area(&board);
+        if (!puzzle->pf->is_production && abs((int)sf->area - (int)area) > (int)sf->area/100) {
+            fprintf(stderr, "area mismatch for '%s'\n", buf);
+            fprintf(stderr, "solution file says area is: %" PRIu32 "\n", sf->area);
+            fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);
+            // for (uint32_t i = 0; i < board.capacity; ++i) {
+            //     if (!(board.atoms_at_positions[i].atom & VALID))
+            //         continue;
+            //     fprintf(stderr, "%" PRId32 ", %" PRId32 "\n",
+            //      board.atoms_at_positions[i].position.u, board.atoms_at_positions[i].position.v);
+            // }
+            goto fail;
+        }
+        validated_solutions++;
     fail:
         destroy(&solution, &board);
         free_solution_file(sf);

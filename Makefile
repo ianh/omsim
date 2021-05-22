@@ -19,11 +19,11 @@ web/draw.js: draw.c parse.c sim.c Makefile
 web/visualize.js: visualize.c parse.c sim.c parse.h sim.h Makefile
 	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS='["_load_puzzle","_load_solution","_render","_command_buffer","_command_buffer_length","_reset","_step"]' -o $@ -Wno-gnu-folding-constant visualize.c parse.c sim.c
 
-omsim: main.c parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c decode.c
+omsim: main.c parse.c sim.c decode.c area.c parse.h sim.h decode.h area.h Makefile
+	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c decode.c area.c
 
-run-tests: run-tests.c parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(CC) $(CFLAGS) -o $@ run-tests.c parse.c sim.c decode.c
+run-tests: run-tests.c parse.c sim.c decode.c area.c parse.h sim.h decode.h area.h Makefile
+	$(CC) $(CFLAGS) -o $@ run-tests.c parse.c sim.c decode.c area.c
 
 clean:
 	rm omsim

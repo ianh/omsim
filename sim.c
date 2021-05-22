@@ -1,5 +1,6 @@
 #include "sim.h"
 
+#include "area.h"
 #include "parse.h"
 #include <assert.h>
 #include <inttypes.h>
@@ -8,6 +9,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+// xx move these
+void record_swing_area(struct board *board, struct vector position, struct vector base, int rotation);
+void replay_swing_area(struct board *board);
 
 // hash table functions -- see appendix.
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
@@ -36,6 +41,8 @@ static bool conversion_output(struct board *board, bool active, struct mechanism
 {
     assert(m.type & CONVERSION_GLYPH);
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
+    if (board->cycle == 0)
+        mark_used_area(board, pos);
     atom *output = lookup_atom(board, pos);
     if ((*output & VALID) && !(*output & REMOVED)) {
         if (board->half_cycle == 2) {
@@ -68,6 +75,8 @@ static atom *get_atom(struct board *board, struct mechanism m, int32_t du, int32
     if ((m.type & CONVERSION_GLYPH) && board->half_cycle == 2)
         return (atom *)&empty;
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
+    if (board->cycle == 0)
+        mark_used_area(board, pos);
     atom *a = lookup_atom(board, pos);
     if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
         return (atom *)&empty;
@@ -397,6 +406,14 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case DISPOSAL: {
             atom *a = get_atom(board, m, 0, 0);
+            if (board->cycle == 0) {
+                mark_used_area(board, mechanism_relative_position(m, 0, 1, 1));
+                mark_used_area(board, mechanism_relative_position(m, 1, 0, 1));
+                mark_used_area(board, mechanism_relative_position(m, 1, -1, 1));
+                mark_used_area(board, mechanism_relative_position(m, 0, -1, 1));
+                mark_used_area(board, mechanism_relative_position(m, -1, 0, 1));
+                mark_used_area(board, mechanism_relative_position(m, -1, 1, 1));
+            }
             if (*a && !(*a & ALL_BONDS) && !(*a & GRABBED))
                 remove_atom(board, a);
             break;
@@ -405,6 +422,8 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             apply_conduit(solution, board, m);
             break;
         case EQUILIBRIUM:
+            if (board->cycle == 0)
+                mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
         default:
             break;
         }
@@ -578,6 +597,23 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         }
         for (int direction = 0; direction < 6; direction += step) {
             struct vector offset = v_offset_for_direction(direction);
+            struct vector saved_u = m->direction_u;
+            struct vector saved_v = m->direction_v;
+            while (true) {
+                // xx do area somewhere else?
+                struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
+                mark_used_area(board, p);
+                if (inst == 'a')
+                    record_swing_area(board, p, m->position, 1);
+                if (inst == 'd')
+                    record_swing_area(board, p, m->position, -1);
+                if (vectors_equal(m->direction_u, zero_vector))
+                    break;
+                adjust_axis_magnitude(&m->direction_u, -1);
+                adjust_axis_magnitude(&m->direction_v, -1);
+            }
+            m->direction_u = saved_u;
+            m->direction_v = saved_v;
             atom *a = get_atom(board, *m, offset.u, offset.v);
             if (!*a)
                 continue;
@@ -698,12 +734,51 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             u.u * delta.u + v.u * delta.v + m.base.u + m.translation * m.base.u,
             u.v * delta.u + v.v * delta.v + m.base.v + m.translation * m.base.v,
         };
-        if (m.rotation)
+        if (m.rotation) {
             rotate_bonds(&m.atom, m.rotation);
+            record_swing_area(board, m.position, m.base, m.rotation);
+        }
         atom *a = insert_atom(board, to, "atom moved on top of another atom");
         *a = VALID | m.atom;
 
         // xx collision detection / error handling
+    }
+    for (size_t i = 0; i < solution->number_of_arms; ++i) {
+        // xx definitely do this in a cleaner way...
+        struct mechanism *m = &solution->arms[i];
+        int step;
+        switch (m->type & ANY_ARM) {
+        case ARM:
+        case PISTON:
+            step = 6;
+            break;
+        case TWO_ARM:
+            step = 3;
+            break;
+        case THREE_ARM:
+            step = 2;
+            break;
+        case SIX_ARM:
+        case VAN_BERLO:
+        default:
+            step = 1;
+            break;
+        }
+        for (int direction = 0; direction < 6; direction += step) {
+            struct vector offset = v_offset_for_direction(direction);
+            struct vector saved_u = m->direction_u;
+            struct vector saved_v = m->direction_v;
+            while (true) {
+                struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
+                mark_used_area(board, p);
+                if (vectors_equal(m->direction_u, zero_vector))
+                    break;
+                adjust_axis_magnitude(&m->direction_u, -1);
+                adjust_axis_magnitude(&m->direction_v, -1);
+            }
+            m->direction_u = saved_u;
+            m->direction_v = saved_v;
+        }
     }
 }
 
@@ -940,6 +1015,13 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t inti
     if (intial_board_size < 1)
         intial_board_size = 1;
     ensure_capacity(board, intial_board_size);
+    for (uint32_t i = 0; i < solution->track_table_size; ++i) {
+        // xx do this in a cleaner way?
+        struct vector p = solution->track_positions[i];
+        if (p.u == INT32_MIN && p.v == INT32_MIN)
+            continue;
+        mark_used_area(board, p);
+    }
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         if (!(solution->arms[i].type & VAN_BERLO))
             continue;
@@ -980,8 +1062,14 @@ void destroy(struct solution *solution, struct board *board)
     free(solution->inputs_and_outputs);
 
     free(board->atoms_at_positions);
-    free(board->movements.elements);
     free(board->flag_reset);
+    free(board->movements.elements);
+}
+
+uint32_t used_area(struct board *board)
+{
+    replay_swing_area(board);
+    return board->used;
 }
 
 // appendix A -- hash table functions.
@@ -1019,18 +1107,17 @@ bool lookup_track(struct solution *solution, struct vector query, uint32_t *inde
     }
 }
 
-atom *lookup_atom(struct board *board, struct vector query)
+static struct atom_at_position *lookup_atom_at_position(struct board *board, struct vector query)
 {
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
     uint32_t steps = 0;
     while (true) {
-        atom *a = &board->atoms_at_positions[index].atom;
-        if (!(*a & VALID))
+        struct atom_at_position *a = &board->atoms_at_positions[index];
+        if (!(a->atom & VALID))
             return a;
-        struct vector position = board->atoms_at_positions[index].position;
-        if (vectors_equal(position, query))
+        if (vectors_equal(a->position, query))
             return a;
         index = (index + 1) & mask;
         steps++;
@@ -1039,43 +1126,31 @@ atom *lookup_atom(struct board *board, struct vector query)
     }
 }
 
+atom *lookup_atom(struct board *board, struct vector query)
+{
+    return &lookup_atom_at_position(board, query)->atom;
+}
+
+void mark_used_area(struct board *board, struct vector point)
+{
+    ensure_capacity(board, 1);
+    struct atom_at_position *a = lookup_atom_at_position(board, point);
+    if (a->atom & VALID)
+        return;
+    a->position = point;
+    a->atom = VALID | REMOVED;
+    board->used++;
+}
+
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
 {
-    uint32_t hash = fnv(&query, sizeof(query));
-    uint32_t mask = board->capacity - 1;
-    uint32_t index = hash & mask;
-    uint32_t removed = UINT32_MAX;
-    while (true) {
-        atom *a = &board->atoms_at_positions[index].atom;
-        if (!(*a & VALID)) {
-            if (removed != UINT32_MAX)
-                index = removed;
-            board->atoms_at_positions[index].position = query;
-            break;
-        }
-        struct vector position = board->atoms_at_positions[index].position;
-        if (vectors_equal(position, query)) {
-            if (*a & REMOVED)
-                removed = index;
-            else
-                break;
-        }
-        index = (index + 1) & mask;
-        if (index == (hash & mask)) {
-            if (removed != UINT32_MAX) {
-                index = removed;
-                board->atoms_at_positions[index].position = query;
-                break;
-            }
-            abort();
-        }
-    }
-    atom *a = &board->atoms_at_positions[index].atom;
-    if ((*a & VALID) && !(*a & REMOVED))
+    struct atom_at_position *a = lookup_atom_at_position(board, query);
+    if ((a->atom & VALID) && !(a->atom & REMOVED))
         report_collision(board, query, collision_reason);
-    if (!(*a & REMOVED))
+    a->position = query;
+    if (!(a->atom & REMOVED))
         board->used++;
-    return a;
+    return &a->atom;
 }
 
 static void ensure_capacity(struct board *board, uint32_t potential_insertions)

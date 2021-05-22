@@ -346,12 +346,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     struct vector motion = { 0, 0 };
                     if (tape[k] == 'a') {
                         rotation++;
-                        if (rotation > 3)
-                            rotation -= 6;
                     } else if (tape[k] == 'd') {
                         rotation--;
-                        if (rotation < -3)
-                            rotation += 6;
                     } else if (tape[k] == 'w') {
                         if (piston < 3)
                             piston++;
@@ -388,10 +384,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     tape[n++] = 's';
                     piston--;
                 }
-                while (piston < part.size) {
-                    tape[n++] = 'w';
-                    piston++;
-                }
+                while (rotation > 3)
+                    rotation -= 6;
+                while (rotation < -3)
+                    rotation += 6;
                 while (rotation > 0) {
                     tape[n++] = 'd';
                     rotation--;
@@ -431,6 +427,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 while (track_steps < 0) {
                     tape[n++] = 'g';
                     track_steps++;
+                }
+                while (piston < part.size) {
+                    tape[n++] = 'w';
+                    piston++;
                 }
                 reset_from = n;
                 if (n > tape_length)

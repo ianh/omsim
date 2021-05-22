@@ -46,7 +46,8 @@ struct puzzle_file {
     // xx name of this field?
     uint32_t output_scale;
 
-    // xx cabinets
+    // xx cabinets etc
+    bool is_production;
 
     void *bytes;
     bool owns_bytes;

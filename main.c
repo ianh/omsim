@@ -9,6 +9,47 @@
 
 static void print_board(struct board *board)
 {
+    int32_t maxu = -10000, minu = 10000;
+    int32_t maxv = -10000, minv = 10000;
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        if (!(board->atoms_at_positions[i].atom & VALID))
+            continue;
+        struct vector p = board->atoms_at_positions[i].position;
+        if (p.u < minu)
+            minu = p.u;
+        if (p.v < minv)
+            minv = p.v;
+        if (p.u > maxu)
+            maxu = p.u;
+        if (p.v > maxv)
+            maxv = p.v;
+    }
+    if (maxu < minu || maxv < minv)
+        return;
+    int stride = (maxv - minv + 1);
+    atom *points = calloc(sizeof(atom), stride * (maxu - minu + 1));
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        if (!(board->atoms_at_positions[i].atom & VALID))
+            continue;
+        points[(board->atoms_at_positions[i].position.v - minv) + stride * (board->atoms_at_positions[i].position.u - minu)] = board->atoms_at_positions[i].atom;
+    }
+    for (int u = maxu; u >= minu; --u) {
+        for (int n = minu; n < u; ++n)
+            printf(" ");
+        for (int v = minv; v <= maxv; ++v) {
+            atom a = points[stride * (u - minu) + (v - minv)];
+            if (!a)
+                printf("  ");
+            else if (a & REMOVED)
+                printf(" .");
+            else
+                printf(" x");
+        }
+        printf("\n");
+    }
+    free(points);
+
+#if 0
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID) || (a & REMOVED))
@@ -16,6 +57,7 @@ static void print_board(struct board *board)
         struct vector position = board->atoms_at_positions[i].position;
         printf("%" PRId32 " %" PRId32 " %" PRIx64 "\n", position.u, position.v, a);
     }
+#endif
 }
 
 int main(int argc, char *argv[])
@@ -60,6 +102,20 @@ int main(int argc, char *argv[])
     }
     printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
+    printf("solution file says area is: %" PRIu32 "\n", sf->area);
+    printf("simulation says area is: %" PRIu32 "\n", used_area(&board));
+
+    for (int i = 0; i < solution.number_of_glyphs; ++i) {
+        if (solution.glyphs[i].type == EQUILIBRIUM)
+            printf("%d %d\n", solution.glyphs[i].position.u, solution.glyphs[i].position.v);
+    }
+    for (int i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+        if (!(solution.inputs_and_outputs[i].type & INPUT))
+            continue;
+        printf("%d %d\n", solution.inputs_and_outputs[i].atoms[0].position.u,
+         solution.inputs_and_outputs[i].atoms[0].position.v);
+    }
+
     free_solution_file(sf);
     return 0;
 }

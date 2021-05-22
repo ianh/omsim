@@ -123,7 +123,10 @@ struct puzzle_file *parse_puzzle_byte_string(struct byte_string b)
     for (uint32_t i = 0; i < puzzle->number_of_outputs; ++i)
         parse_puzzle_molecule(&b, &puzzle->outputs[i]);
     puzzle->output_scale = read_uint32(&b);
-    // xx support production puzzles
+    if (read_byte(&b)) {
+        puzzle->is_production = true;
+        // xx cabinets etc
+    }
     return puzzle;
 }
 
