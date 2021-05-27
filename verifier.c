@@ -3,6 +3,7 @@
 #include "decode.h"
 #include "parse.h"
 #include "sim.h"
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -138,6 +139,27 @@ static void measure_throughput(struct verifier *v)
     destroy(&solution, &board);
 }
 
+static void measure_height(struct board *board, int32_t u, int32_t v, int *height)
+{
+    int32_t max = INT32_MIN;
+    int32_t min = INT32_MAX;
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        atom a = board->atoms_at_positions[i].atom;
+        if (!(a & VALID))
+            continue;
+        struct vector p = board->atoms_at_positions[i].position;
+        int32_t value = u * p.u + v * p.v;
+        if (value > max)
+            max = value;
+        if (value < min)
+            min = value;
+    }
+    if (max < min)
+        *height = 0;
+    else if (max - min + 1 < *height)
+        *height = max - min + 1;
+}
+
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
     struct verifier *v = verifier;
@@ -185,7 +207,12 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         value = board.cycle;
     else if (!strcmp(metric, "area (approximate)"))
         value = used_area(&board);
-    else
+    else if (!strcmp(metric, "height")) {
+        value = INT_MAX;
+        measure_height(&board, 0, 1, &value);
+        measure_height(&board, 1, 0, &value);
+        measure_height(&board, 1, 1, &value);
+    } else
         v->error = "unknown metric";
     destroy(&solution, &board);
     return value;

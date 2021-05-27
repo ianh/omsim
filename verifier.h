@@ -28,9 +28,12 @@ const char *verifier_error(void *verifier);
 //  returns -1 -- run verifier_error() for the string describing the error.
 // the "area (approximate)" metric runs the solution to completion in the same
 //  way as "cycles", but returns the approximate area (to within about 1%).
-// the "throughput cycles" and "throughput outputs" run the solution until it
-//  loops, then return the number of cycles in the loop and the number of
-//  outputs produced.
+// the "throughput cycles" and "throughput outputs" metrics run the solution
+//  until it loops, then return the number of cycles in the loop and the number
+//  of outputs produced.
+// the "height" metric runs the solution to completion, then measures the length
+//  of the area footprint along each axis.  the smallest measured length is
+//  returned.
 int verifier_evaluate_metric(void *verifier, const char *metric);
 
 #endif
