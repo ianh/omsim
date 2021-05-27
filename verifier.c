@@ -139,7 +139,7 @@ static void measure_throughput(struct verifier *v)
     destroy(&solution, &board);
 }
 
-static void measure_height(struct board *board, int32_t u, int32_t v, int *height)
+static void measure_dimension(struct board *board, int32_t u, int32_t v, int *dimension, int hex_width)
 {
     int32_t max = INT32_MIN;
     int32_t min = INT32_MAX;
@@ -155,9 +155,9 @@ static void measure_height(struct board *board, int32_t u, int32_t v, int *heigh
             min = value;
     }
     if (max < min)
-        *height = 0;
-    else if (max - min + 1 < *height)
-        *height = max - min + 1;
+        *dimension = 0;
+    else if (max - min + hex_width < *dimension)
+        *dimension = max - min + hex_width;
 }
 
 int verifier_evaluate_metric(void *verifier, const char *metric)
@@ -209,9 +209,14 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         value = used_area(&board);
     else if (!strcmp(metric, "height")) {
         value = INT_MAX;
-        measure_height(&board, 0, 1, &value);
-        measure_height(&board, 1, 0, &value);
-        measure_height(&board, 1, 1, &value);
+        measure_dimension(&board, 0, 1, &value, 1);
+        measure_dimension(&board, 1, 0, &value, 1);
+        measure_dimension(&board, 1, 1, &value, 1);
+    } else if (!strcmp(metric, "width*2")) {
+        value = INT_MAX;
+        measure_dimension(&board, 2, 1, &value, 2);
+        measure_dimension(&board, 1, 2, &value, 2);
+        measure_dimension(&board, 1, -1, &value, 2);
     } else
         v->error = "unknown metric";
     destroy(&solution, &board);

@@ -14,7 +14,8 @@ void verifier_destroy(void *verifier);
 
 // returns a string describing any error that occurred during solution parsing,
 // decoding, or verification.  if there haven't been any errors, returns a null
-// pointer.
+// pointer.  returned strings are valid for the lifetime of the program and
+// don't need to be freed.
 const char *verifier_error(void *verifier);
 
 // verifier_evaluate_metric() evaluates a metric for the given solution.
@@ -32,8 +33,11 @@ const char *verifier_error(void *verifier);
 //  until it loops, then return the number of cycles in the loop and the number
 //  of outputs produced.
 // the "height" metric runs the solution to completion, then measures the length
-//  of the area footprint along each axis.  the smallest measured length is
-//  returned.
+//  of the area footprint perpendicular to each axis.  the smallest measured
+//  length is returned.
+// the "width*2" metric runs the solution to completion, then measures the
+//  length of the area footprint parallel to each axis.  the smallest measured
+//  length is multiplied by two (to avoid fractional results) and returned.
 int verifier_evaluate_metric(void *verifier, const char *metric);
 
 #endif
