@@ -42,8 +42,14 @@ static void print_board(struct board *board)
                 printf("  ");
             else if (a & REMOVED)
                 printf(" .");
-            else
-                printf(" x");
+            else {
+                for (int i = 1; i < 16; ++i) {
+                    if (a & (1 << i)) {
+                        printf(" %x", i - 1);
+                        break;
+                    }
+                }
+            }
         }
         printf("\n");
     }
@@ -105,16 +111,16 @@ int main(int argc, char *argv[])
     printf("solution file says area is: %" PRIu32 "\n", sf->area);
     printf("simulation says area is: %" PRIu32 "\n", used_area(&board));
 
-    for (int i = 0; i < solution.number_of_glyphs; ++i) {
-        if (solution.glyphs[i].type == EQUILIBRIUM)
-            printf("%d %d\n", solution.glyphs[i].position.u, solution.glyphs[i].position.v);
-    }
-    for (int i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
-        if (!(solution.inputs_and_outputs[i].type & INPUT))
-            continue;
-        printf("%d %d\n", solution.inputs_and_outputs[i].atoms[0].position.u,
-         solution.inputs_and_outputs[i].atoms[0].position.v);
-    }
+    // for (int i = 0; i < solution.number_of_glyphs; ++i) {
+    //     if (solution.glyphs[i].type == EQUILIBRIUM)
+    //         printf("%d %d\n", solution.glyphs[i].position.u, solution.glyphs[i].position.v);
+    // }
+    // for (int i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+    //     if (!(solution.inputs_and_outputs[i].type & INPUT))
+    //         continue;
+    //     printf("%d %d\n", solution.inputs_and_outputs[i].atoms[0].position.u,
+    //      solution.inputs_and_outputs[i].atoms[0].position.v);
+    // }
 
     free_solution_file(sf);
     return 0;
