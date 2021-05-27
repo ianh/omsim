@@ -1109,6 +1109,12 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t inti
             continue;
         mark_used_area(board, p);
     }
+    for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        for (uint32_t j = 0; j < io->number_of_atoms; ++j)
+            mark_used_area(board, io->atoms[j].position);
+    }
+
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         if (!(solution->arms[i].type & VAN_BERLO))
             continue;
