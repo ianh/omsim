@@ -133,4 +133,13 @@ int main()
     printf("%d / %d solutions validated!\n", validated_solutions, total_solutions);
 
     free(buf);
+
+    struct puzzle *puzzle = puzzles;
+    while (puzzle) {
+        struct puzzle *next = puzzle->next;
+        free_puzzle_file(puzzle->pf);
+        free(puzzle->filename);
+        free(puzzle);
+        puzzle = next;
+    }
 }
