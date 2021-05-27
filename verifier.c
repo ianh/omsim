@@ -1,3 +1,5 @@
+#include "verifier.h"
+
 #include "decode.h"
 #include "parse.h"
 #include "sim.h"
@@ -130,6 +132,7 @@ static void measure_throughput(struct verifier *v)
         }
         cycle(&solution, &board);
     }
+    free(board_snapshot.atoms_at_positions);
     if (board.collision)
         v->error = board.collision_reason;
     destroy(&solution, &board);

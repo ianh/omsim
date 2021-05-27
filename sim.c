@@ -1,6 +1,5 @@
 #include "sim.h"
 
-#include "area.h"
 #include "parse.h"
 #include <assert.h>
 #include <inttypes.h>
