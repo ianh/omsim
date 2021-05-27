@@ -10,6 +10,25 @@
 #include <stdlib.h>
 #include <string.h>
 
+static const double ATOM_RADIUS = 29./82;
+static const double SQRT3_2 = 0.8660254037844386;
+
+struct xy_vector {
+    double x;
+    double y;
+};
+static struct xy_vector to_xy(struct vector p)
+{
+    return (struct xy_vector){
+        p.v + p.u * 0.5,
+        p.u * SQRT3_2,
+    };
+}
+static double xy_len2(struct xy_vector xy)
+{
+    return xy.x * xy.x + xy.y * xy.y;
+}
+
 // hash table functions -- see appendix.
 static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 static void ensure_capacity(struct board *board, uint32_t potential_insertions);
@@ -451,30 +470,7 @@ static struct vector normalize_axis(struct vector p)
     return p;
 }
 
-#include <assert.h>
-#include <stdio.h>
-
-static const double ATOM_RADIUS = 29./82;
-static const double SQRT3_2 = 0.8660254037844386;
-
-// xx share this with collision code when that exists
-struct xy_vector {
-    double x;
-    double y;
-};
-static struct xy_vector to_xy(struct vector p)
-{
-    return (struct xy_vector){
-        p.v + p.u * 0.5,
-        p.u * SQRT3_2,
-    };
-}
-static double xy_len2(struct xy_vector xy)
-{
-    return xy.x * xy.x + xy.y * xy.y;
-}
-
-static bool intersection(double swing_radius_squared, struct xy_vector center, struct xy_vector *hit)
+static bool swing_intersection(double swing_radius_squared, struct xy_vector center, struct xy_vector *hit)
 {
     double r2 = swing_radius_squared;
     double d2 = xy_len2(center);
@@ -523,7 +519,7 @@ static void record_swing_area(struct board *board, struct vector position, struc
             for (int32_t v = cell_v - 1; v <= cell_v + 2; ++v) {
                 struct xy_vector center = to_xy((struct vector){ u, v });
                 struct xy_vector hit;
-                if (!intersection(r2, center, &hit))
+                if (!swing_intersection(r2, center, &hit))
                     continue;
                 if (ccw(current, hit) <= 0)
                     continue;
