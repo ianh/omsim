@@ -185,12 +185,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->track_plus_motions = calloc(solution->track_table_size, sizeof(solution->track_plus_motions[0]));
     solution->track_minus_motions = calloc(solution->track_table_size, sizeof(solution->track_minus_motions[0]));
 
-    // second pass: fill in the arrays with the data from the file.
-    uint32_t arm_index = 0;
-    uint32_t glyph_index = 0;
-    uint32_t conduit_index = 0;
-    size_t io_index = 0;
-    for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
+    // second pass: fill in the arrays with the data from the file.  this pass
+    // goes in reverse to properly handle overlapping tracks.
+    uint32_t arm_index = solution->number_of_arms - 1;
+    uint32_t glyph_index = solution->number_of_glyphs - 1;
+    uint32_t conduit_index = solution->number_of_conduits - 1;
+    size_t io_index = solution->number_of_inputs_and_outputs - 1;
+    for (uint32_t i = sf->number_of_parts - 1; i < sf->number_of_parts; --i) {
         struct solution_part part = sf->parts[i];
         struct mechanism m = {
             .type = decode_mechanism_type(part.name),
@@ -203,9 +204,9 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         m.direction_v.u *= part.size;
         m.direction_v.v *= part.size;
         if (m.type & ANY_ARM)
-            solution->arms[arm_index++] = m;
+            solution->arms[arm_index--] = m;
         else if (m.type & ANY_GLYPH)
-            solution->glyphs[glyph_index++] = m;
+            solution->glyphs[glyph_index--] = m;
         else if (byte_string_is(part.name, "track")) {
             struct vector last_position = m.position;
             for (uint32_t j = 0; j < part.number_of_track_hexes + 1; ++j) {
@@ -250,29 +251,29 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 conduit.positions[i].u = part.conduit_hexes[i].offset[1];
                 conduit.positions[i].v = part.conduit_hexes[i].offset[0];
             }
-            solution->glyphs[glyph_index++] = m;
-            solution->conduits[conduit_index++] = conduit;
+            solution->glyphs[glyph_index--] = m;
+            solution->conduits[conduit_index--] = conduit;
         } else if (byte_string_is(part.name, "input")) {
             struct puzzle_molecule c = pf->inputs[part.which_input_or_output];
             struct input_output *io = &solution->inputs_and_outputs[io_index];
             io->type = INPUT;
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
-            io_index++;
+            io_index--;
         } else if (byte_string_is(part.name, "out-std")) {
             struct puzzle_molecule c = pf->outputs[part.which_input_or_output];
             struct input_output *io = &solution->inputs_and_outputs[io_index];
             io->type = SINGLE_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
-            io_index++;
-        } if (byte_string_is(part.name, "out-rep")) {
+            io_index--;
+        } else if (byte_string_is(part.name, "out-rep")) {
             struct puzzle_molecule c = pf->outputs[part.which_input_or_output];
             struct input_output *io = &solution->inputs_and_outputs[io_index];
             io->type = REPEATING_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
-            io_index++;
+            io_index--;
         }
     }
     // sort conduits by id in order to find pairs of linked conduits.
