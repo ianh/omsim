@@ -1,7 +1,7 @@
 #ifndef OM_VERIFIER_H
 #define OM_VERIFIER_H
 
-// this API is designed to called from FFIs like Python ctypes or Java's JNI.
+// this "verifier" API is designed to be called from an FFI.
 
 // takes the path of a .puzzle and a .solution file.  returns a pointer to a
 // newly-allocated verifier object.  if the files couldn't be parsed, the
