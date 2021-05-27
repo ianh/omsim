@@ -1,0 +1,30 @@
+to use, try
+
+  make run-tests && ./run-tests
+
+to run some tests, or
+
+  make omsim && ./omsim <path to .puzzle> <path to .solution>
+
+to simulate a particular solution. also,
+
+  make libverify.so
+
+builds a shared library with an API designed for bots to use (see verifier.h for
+documentation).
+
+the following aren't implemented yet:
+- infinite output puzzles
+- collision checks
+- the "grabbed molecule can't be moved in multiple directions" error
+- two atoms occupying the same space (e.g. the surrender flare overlap solution)
+- "spooky action at a distance" via conduit cloning
+
+the following issues are known:
+- track reset is different from the game in certain situations (see
+  test/not-working-yet/overlapping-track-reset)
+- computed area is slightly different from the game (usually less than 1%)
+- puzzles with negative instruction offsets simulate differently
+
+these lists should get shorter over time. feel free to file github issues for
+any other bugs you find!
