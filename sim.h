@@ -270,24 +270,6 @@ struct movement_list {
     size_t length;
     size_t cursor;
 };
-struct swing_area {
-    // normalized to swing counterclockwise.
-    struct vector base;
-    struct vector direction;
-};
-struct swing_area_subtable {
-    // normalized to the +u/+v sextant.
-    struct vector offset;
-
-    struct swing_area *swings;
-    uint32_t capacity;
-    uint32_t used;
-};
-struct swing_area_table {
-    struct swing_area_subtable *subtables;
-    uint32_t capacity;
-    uint32_t used;
-};
 struct board {
     struct atom_at_position *atoms_at_positions;
 
@@ -306,8 +288,6 @@ struct board {
     size_t active_input_or_output;
 
     struct movement_list movements;
-
-    struct swing_area_table swing_area_table;
 
     bool collision;
     struct vector collision_location;
