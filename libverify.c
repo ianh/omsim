@@ -67,7 +67,7 @@ static void measure_throughput(struct verifier *v)
         v->error = "unable to decode solution";
         return;
     }
-    initial_setup(&solution, &board);
+    initial_setup(&solution, &board, v->sf->area);
     solution.target_number_of_outputs = UINT64_MAX;
     struct mechanism *arm_snapshot = 0;
     struct board board_snapshot = { .cycle = solution.tape_period };
@@ -170,7 +170,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         destroy(&solution, &board);
         return instructions;
     }
-    initial_setup(&solution, &board);
+    initial_setup(&solution, &board, v->sf->area);
     while (board.cycle < 100000 && !board.complete && !board.collision)
         cycle(&solution, &board);
     int value = -1;
@@ -180,6 +180,8 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error = "solution did not complete within cycle limit";
     else if (!strcmp(metric, "cycles"))
         value = board.cycle;
+    else if (!strcmp(metric, "area (approximate)"))
+        value = used_area(&board);
     else
         v->error = "unknown metric";
     destroy(&solution, &board);

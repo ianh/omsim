@@ -8,82 +8,81 @@
 typedef uint64_t atom;
 
 // these shift amounts must match the atom bytes in the puzzle file format.
-static const atom SALT = 1ULL << 1;
-static const atom AIR = 1ULL << 2;
-static const atom EARTH = 1ULL << 3;
-static const atom FIRE = 1ULL << 4;
-static const atom WATER = 1ULL << 5;
-static const atom QUICKSILVER = 1ULL << 6;
-static const atom GOLD = 1ULL << 7;
-static const atom SILVER = 1ULL << 8;
-static const atom COPPER = 1ULL << 9;
-static const atom IRON = 1ULL << 10;
-static const atom TIN = 1ULL << 11;
-static const atom LEAD = 1ULL << 12;
-static const atom VITAE = 1ULL << 13;
-static const atom MORS = 1ULL << 14;
-static const atom REPEATING_OUTPUT_PLACEHOLDER = 1ULL << 15;
-static const atom QUINTESSENCE = 1ULL << 16;
+#define SALT (1ULL << 1)
+#define AIR (1ULL << 2)
+#define EARTH (1ULL << 3)
+#define FIRE (1ULL << 4)
+#define WATER (1ULL << 5)
+#define QUICKSILVER (1ULL << 6)
+#define GOLD (1ULL << 7)
+#define SILVER (1ULL << 8)
+#define COPPER (1ULL << 9)
+#define IRON (1ULL << 10)
+#define TIN (1ULL << 11)
+#define LEAD (1ULL << 12)
+#define VITAE (1ULL << 13)
+#define MORS (1ULL << 14)
+#define REPEATING_OUTPUT_PLACEHOLDER (1ULL << 15)
+#define QUINTESSENCE (1ULL << 16)
 
 // an output which accepts any molecule of the proper shape.  used for
 // computation puzzles.
-static const atom VARIABLE_OUTPUT = 1ULL << 17;
+#define VARIABLE_OUTPUT (1ULL << 17)
 
 // conversion glyphs like animismus put this flag on their outputs until the
 // second half-cycle.  it stops their outputs from being seen by other glyphs.
-static const atom BEING_PRODUCED = 1ULL << 18;
+#define BEING_PRODUCED (1ULL << 18)
 
 // conduits only transport atoms that have just been dropped.
-static const atom BEING_DROPPED = 1ULL << 19;
+#define BEING_DROPPED (1ULL << 19)
 
 // is this atom part of a van berlo's wheel?
-static const atom VAN_BERLO_ATOM = 1ULL << 20;
+#define VAN_BERLO_ATOM (1ULL << 20)
 
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
-static const atom GRABBED_ONCE = 1ULL << 22;
-static const atom GRABBED = 0x1FULL * GRABBED_ONCE;
+#define GRABBED_ONCE (1ULL << 22)
+#define GRABBED (0x1FULL * GRABBED_ONCE)
 
-static const atom VALID = 1ULL << 27;
-static const atom REMOVED = 1ULL << 28;
+#define VALID (1ULL << 27)
+#define REMOVED (1ULL << 28)
 
 // offsets for the bits that indicate bonds.
-static const int RECENT_BOND = 29;
-static const int NORMAL_BOND = 35;
-static const int TRIPLEX_BOND_R = 41;
-static const int TRIPLEX_BOND_Y = 47;
-static const int TRIPLEX_BOND_K = 53;
+#define RECENT_BOND 29
+#define NORMAL_BOND 35
+#define TRIPLEX_BOND_R 41
+#define TRIPLEX_BOND_Y 47
+#define TRIPLEX_BOND_K 53
 
 // rotating can touch the 5 bits after the bonds (59-63), so make sure the
 // following flags are clear before rotating a molecule.
 
 // marks atoms inside a region of interest.  used for conduits.
-static const atom CONDUIT_SHAPE = 1ULL << 59;
+#define CONDUIT_SHAPE (1ULL << 59)
 
 // used for molecule flood fills.
-static const atom VISITED = 1ULL << 60;
+#define VISITED (1ULL << 60)
 
-static const atom BOND_LOW_BITS = (1ULL << RECENT_BOND) |
- (1ULL << NORMAL_BOND) | (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) |
- (1ULL << TRIPLEX_BOND_K);
+#define BOND_LOW_BITS ((1ULL << RECENT_BOND) | (1ULL << NORMAL_BOND) | \
+ (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) | (1ULL << TRIPLEX_BOND_K))
 
-static const atom ANY_ELEMENTAL = WATER | FIRE | EARTH | AIR;
-static const atom ANY_METAL = LEAD | TIN | IRON | COPPER | SILVER | GOLD;
-static const atom ANY_ATOM = SALT | ANY_ELEMENTAL | QUICKSILVER | ANY_METAL |
- VITAE | MORS | QUINTESSENCE;
-static const atom RECENT_BONDS = 0x3FULL << RECENT_BOND;
-static const atom NORMAL_BONDS = 0x3FULL << NORMAL_BOND;
-static const atom TRIPLEX_R_BONDS = 0x3FULL << TRIPLEX_BOND_R;
-static const atom TRIPLEX_Y_BONDS = 0x3FULL << TRIPLEX_BOND_Y;
-static const atom TRIPLEX_K_BONDS = 0x3FULL << TRIPLEX_BOND_K;
-static const atom TRIPLEX_BONDS = TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS;
-static const atom ALL_BONDS = 0x3FULL * BOND_LOW_BITS;
+#define ANY_ELEMENTAL (WATER | FIRE | EARTH | AIR)
+#define ANY_METAL (LEAD | TIN | IRON | COPPER | SILVER | GOLD)
+#define ANY_ATOM (SALT | ANY_ELEMENTAL | QUICKSILVER | ANY_METAL | \
+ VITAE | MORS | QUINTESSENCE)
+#define RECENT_BONDS (0x3FULL << RECENT_BOND)
+#define NORMAL_BONDS (0x3FULL << NORMAL_BOND)
+#define TRIPLEX_R_BONDS (0x3FULL << TRIPLEX_BOND_R)
+#define TRIPLEX_Y_BONDS (0x3FULL << TRIPLEX_BOND_Y)
+#define TRIPLEX_K_BONDS (0x3FULL << TRIPLEX_BOND_K)
+#define TRIPLEX_BONDS (TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS)
+#define ALL_BONDS (0x3FULL * BOND_LOW_BITS)
 
 // TEMPORARY_FLAGS are reset in reset_temporary_flags().  the
 // schedule_flag_reset_if_needed() function must be called whenever one of these
 // flags is set.
-static const atom TEMPORARY_FLAGS = BEING_DROPPED | RECENT_BONDS;
+#define TEMPORARY_FLAGS (BEING_DROPPED | RECENT_BONDS)
 
 enum mechanism_type {
     NO_MECHANISM,

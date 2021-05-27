@@ -7,7 +7,7 @@
 static struct byte_string read_file(const char *filename)
 {
     struct byte_string contents;
-    FILE *f = fopen(filename, "r");
+    FILE *f = fopen(filename, "rb");
     if (!f)
         return (struct byte_string){ 0, 0 };
     fseek(f, 0, SEEK_END);

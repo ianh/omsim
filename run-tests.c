@@ -115,7 +115,7 @@ int main()
             goto fail;
         }
         uint32_t area = used_area(&board);
-        if (!puzzle->pf->is_production && abs((int)sf->area - (int)area) > (int)sf->area/100) {
+        if (!puzzle->pf->is_production && area != sf->area) {//abs((int)sf->area - (int)area) > (int)sf->area/100) {
             fprintf(stderr, "area mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says area is: %" PRIu32 "\n", sf->area);
             fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);

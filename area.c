@@ -8,7 +8,6 @@
 #include <stdio.h>
 
 static const double ATOM_RADIUS = 29./82;
-// static const double ATOM_RADIUS = .71/2;
 static const double SQRT3_2 = 0.8660254037844386;
 
 // xx share this with collision code when that exists

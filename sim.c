@@ -634,7 +634,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 *a |= BEING_DROPPED;
                 schedule_flag_reset_if_needed(board, a);
                 continue;
-            } 
+            }
             struct vector atom_pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
             switch (inst) {
             case 'q': // pivot ccw

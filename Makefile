@@ -7,8 +7,8 @@ EMFLAGS=--closure 1 -s MODULARIZE=1 -s EXPORT_NAME=OMSIM -s EXTRA_EXPORTED_RUNTI
 wk9: wk9.c parse.c Makefile
 	$(CC) $(CFLAGS) -o $@ wk9.c parse.c
 
-libverify.so: libverify.c parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(CC) $(CFLAGS) -shared -fpic -o $@ libverify.c sim.c parse.c decode.c
+libverify.so: libverify.c parse.c sim.c decode.c parse.h sim.h decode.h area.c area.h Makefile
+	$(CC) $(CFLAGS) -shared -fpic -o $@ libverify.c sim.c parse.c decode.c area.c
 
 web/elu-test-harness.js: wk9.c parse.c Makefile
 	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS='["_init","_load_solution","_test","_last_cycle","_last_capacity","_last_used","_last_removed","_last_query_u","_last_query_v"]' -o $@ wk9.c parse.c
