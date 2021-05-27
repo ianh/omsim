@@ -11,6 +11,8 @@ struct puzzle {
     struct puzzle_file *pf;
 };
 
+#define AREA_TOLERANCE 0.008
+
 int main()
 {
     size_t n = 64;
@@ -115,16 +117,10 @@ int main()
             goto fail;
         }
         uint32_t area = used_area(&board);
-        if (!puzzle->pf->is_production && area != sf->area) {//abs((int)sf->area - (int)area) > (int)sf->area/100) {
+        if (!puzzle->pf->is_production && abs((int)sf->area - (int)area) > (int)(sf->area * AREA_TOLERANCE)) {
             fprintf(stderr, "area mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says area is: %" PRIu32 "\n", sf->area);
             fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);
-            // for (uint32_t i = 0; i < board.capacity; ++i) {
-            //     if (!(board.atoms_at_positions[i].atom & VALID))
-            //         continue;
-            //     fprintf(stderr, "%" PRId32 ", %" PRId32 "\n",
-            //      board.atoms_at_positions[i].position.u, board.atoms_at_positions[i].position.v);
-            // }
             goto fail;
         }
         validated_solutions++;
