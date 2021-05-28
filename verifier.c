@@ -148,7 +148,7 @@ static void measure_dimension(struct board *board, int32_t u, int32_t v, int *di
         if (!(a & VALID))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
-        int32_t value = u * p.u + v * p.v;
+        int32_t value = u * p.u - v * p.v;
         if (value > max)
             max = value;
         if (value < min)
@@ -209,14 +209,14 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         value = used_area(&board);
     else if (!strcmp(metric, "height")) {
         value = INT_MAX;
-        measure_dimension(&board, 0, 1, &value, 1);
+        measure_dimension(&board, 0, -1, &value, 1);
         measure_dimension(&board, 1, 0, &value, 1);
-        measure_dimension(&board, 1, 1, &value, 1);
+        measure_dimension(&board, 1, -1, &value, 1);
     } else if (!strcmp(metric, "width*2")) {
         value = INT_MAX;
-        measure_dimension(&board, 2, 1, &value, 2);
-        measure_dimension(&board, 1, 2, &value, 2);
-        measure_dimension(&board, 1, -1, &value, 2);
+        measure_dimension(&board, 2, -1, &value, 2);
+        measure_dimension(&board, 1, -2, &value, 2);
+        measure_dimension(&board, 1, 1, &value, 2);
     } else
         v->error = "unknown metric";
     destroy(&solution, &board);
