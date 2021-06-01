@@ -28,3 +28,17 @@ the following issues are known:
 
 these lists should get shorter over time. feel free to file github issues for
 any other bugs you find!
+
+thanks to:
+- grimy for documentation on sub-cycle ordering
+  (at https://github.com/Grimy/om_overlap/blob/master/README.md)
+- luna for documentation on collision detection
+  (at https://gist.github.com/l-Luna/22a2595755f11d2acf0409f755cea9bb)
+- jinyou for the solution archive
+  (at http://jinyou.byethost5.com/)
+- rebix and brothermojo for transcribing the in-game puzzles into .puzzle files
+  (see test/solutions folder)
+- kotritrona for the puzzle editor
+  (at https://kotritrona.github.io/opusmagnum-puzzle-editor/ompuzzle.html)
+- f43nd1r for omsp, which was helpful for understanding solution/puzzle files
+  (at https://github.com/F43nd1r/omsp)
