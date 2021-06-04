@@ -215,6 +215,16 @@ struct input_output {
 
     // the number of times this output has consumed something.
     uint64_t number_of_outputs;
+
+    // bounding box information for repeating outputs.  only set when
+    // type & REPEATING_OUTPUT is true.
+    int32_t min_u;
+    int32_t max_u;
+    // these arrays each have length (max_u - min_u + 1).  row_min_v[i] is the
+    // minimum output v coordinate for the row where u = min_u + i, and
+    // row_max_v[i] is the corresponding maximum coordinate for that row.
+    int32_t *row_min_v;
+    int32_t *row_max_v;
 };
 
 struct solution {

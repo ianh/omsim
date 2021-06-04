@@ -45,7 +45,7 @@ static void print_board(struct board *board)
             else {
                 for (int i = 1; i < 16; ++i) {
                     if (a & (1 << i)) {
-                        printf(" %x", i - 1);
+                        printf(" %x", i & 0xf);
                         break;
                     }
                 }

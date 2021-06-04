@@ -597,6 +597,8 @@ static void move_atoms(struct board *board, atom *a, struct vector position, str
 
 static void perform_arm_instructions(struct solution *solution, struct board *board)
 {
+    if (solution->tape_period == 0)
+        return;
     board->movements.length = 0;
     board->movements.cursor = 0;
     uint32_t n = solution->number_of_arms;
@@ -1005,6 +1007,8 @@ static void consume_outputs(struct solution *solution, struct board *board)
         bool match = true;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
             atom output = io->atoms[j].atom;
+            if (output & REPEATING_OUTPUT_PLACEHOLDER)
+                continue;
             atom *a = lookup_atom(board, io->atoms[j].position);
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
                 match = false;
@@ -1015,9 +1019,16 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 output &= ~VARIABLE_OUTPUT;
                 output |= *a & ANY_ATOM;
             }
-            if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
-                match = false;
-                break;
+            if (io->type & REPEATING_OUTPUT) {
+                if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS & output))) != output) {
+                    match = false;
+                    break;
+                }
+            } else {
+                if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
+                    match = false;
+                    break;
+                }
             }
         }
         // if the output is a match, first trigger an interrupt if necessary.
@@ -1027,9 +1038,13 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 board->active_input_or_output = i;
                 return;
             }
-            for (uint32_t j = 0; j < io->number_of_atoms; ++j)
-                remove_atom(board, lookup_atom(board, io->atoms[j].position));
-            io->number_of_outputs++;
+            if (io->type & REPEATING_OUTPUT)
+                io->number_of_outputs = 6;
+            else {
+                for (uint32_t j = 0; j < io->number_of_atoms; ++j)
+                    remove_atom(board, lookup_atom(board, io->atoms[j].position));
+                io->number_of_outputs++;
+            }
         }
     }
     board->active_input_or_output = UINT32_MAX;
@@ -1205,7 +1220,6 @@ static struct atom_at_position *lookup_atom_at_position(struct board *board, str
     uint32_t hash = fnv(&query, sizeof(query));
     uint32_t mask = board->capacity - 1;
     uint32_t index = hash & mask;
-    uint32_t steps = 0;
     while (true) {
         struct atom_at_position *a = &board->atoms_at_positions[index];
         if (!(a->atom & VALID))
@@ -1213,7 +1227,6 @@ static struct atom_at_position *lookup_atom_at_position(struct board *board, str
         if (vectors_equal(a->position, query))
             return a;
         index = (index + 1) & mask;
-        steps++;
         if (index == (hash & mask))
             abort();
     }

@@ -126,6 +126,54 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
     }
 }
 
+static void repeat_molecule(struct vector origin, struct input_output *io)
+{
+    if (!io->number_of_atoms) {
+        fprintf(stderr, "warning: infinite product without atoms\n");
+        return;
+    }
+    struct atom_at_position *placeholder = &io->atoms[io->number_of_atoms - 1];
+    for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
+        if (!(io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER))
+            continue;
+        struct atom_at_position a = io->atoms[i];
+        io->atoms[i] = io->atoms[io->number_of_atoms - 1];
+        *placeholder = a;
+        break;
+    }
+    if (!(placeholder->atom & REPEATING_OUTPUT_PLACEHOLDER)) {
+        fprintf(stderr, "warning: infinite product without repetition placeholder\n");
+        return;
+    }
+    struct vector offset = placeholder->position;
+    offset.u -= origin.u;
+    offset.v -= origin.v;
+    placeholder->position.u += offset.u * 5;
+    placeholder->position.v += offset.v * 5;
+    struct atom_at_position *atoms = calloc((io->number_of_atoms - 1) * 6 + 1, sizeof(io->atoms[0]));
+    for (int i = 0; i < 6; ++i) {
+        for (uint32_t j = 0; j < io->number_of_atoms - 1; ++j) {
+            struct atom_at_position *a = &atoms[(io->number_of_atoms - 1) * i + j];
+            *a = io->atoms[j];
+            a->position.u += i * offset.u;
+            a->position.v += i * offset.v;
+            a->atom = io->atoms[j].atom;
+            // remove bonds with the repetition placeholder -- they aren't
+            // required to validate.
+            for (int k = 0; k < 6; ++k) {
+                struct vector dir = v_offset_for_direction(k);
+                if (a->position.u + dir.u == placeholder->position.u &&
+                 a->position.v + dir.v == placeholder->position.v)
+                    a->atom &= ~(BOND_LOW_BITS << k);
+            }
+        }
+    }
+    atoms[(io->number_of_atoms - 1) * 6] = *placeholder;
+    free(io->atoms);
+    io->atoms = atoms;
+    io->number_of_atoms = (io->number_of_atoms - 1) * 6 + 1;
+}
+
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf)
 {
     size_t number_of_track_hexes = 0;
@@ -152,8 +200,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
             solution->number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
-            return false;
-            if (sf->parts[i].which_input_or_output >= pf->number_of_outputs) {
+            uint32_t which_output = sf->parts[i].which_input_or_output;
+            if (which_output >= pf->number_of_outputs) {
                 fprintf(stderr, "solution file error: output out of range\n");
                 return false;
             }
@@ -273,6 +321,16 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->type = REPEATING_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
+            repeat_molecule(m.position, io);
+            io->min_u = INT32_MAX;
+            io->max_u = INT32_MIN;
+            for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
+                struct vector p = io->atoms[i].position;
+                if (p.u < io->min_u)
+                    io->min_u = p.u;
+                if (p.u > io->max_u)
+                    io->max_u = p.u;
+            }
             io_index--;
         }
     }
