@@ -84,7 +84,10 @@ static void measure_throughput(struct verifier *v)
     initial_setup(&solution, &board, v->sf->area);
     solution.target_number_of_outputs = UINT64_MAX;
     struct mechanism *arm_snapshot = 0;
-    struct board board_snapshot = { .cycle = solution.tape_period };
+    uint64_t check_period = solution.tape_period;
+    if (check_period == 0)
+        check_period = 1;
+    struct board board_snapshot = { .cycle = check_period };
     uint32_t board_snapshot_in_range = 0;
     uint64_t output_count_snapshot = 0;
     // rough bounding box (fixme -- make this centered on the actual glyphs/arms?)
@@ -112,7 +115,7 @@ static void measure_throughput(struct verifier *v)
                 board_snapshot_in_range++;
             }
             output_count_snapshot = min_output_count(&solution);
-        } else if (!(board.cycle % solution.tape_period) && arm_snapshot) {
+        } else if (!(board.cycle % check_period) && arm_snapshot) {
             bool match = true;
             for (uint32_t i = 0; i < solution.number_of_arms && match; ++i) {
                 struct mechanism a = arm_snapshot[i];
