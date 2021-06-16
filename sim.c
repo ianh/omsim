@@ -1010,7 +1010,9 @@ static void consume_outputs(struct solution *solution, struct board *board)
             if (output & REPEATING_OUTPUT_PLACEHOLDER)
                 continue;
             atom *a = lookup_atom(board, io->atoms[j].position);
+            // printf("checking %d %d... ", io->atoms[j].position.u, io->atoms[j].position.v);
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
+                // printf("no atom\n");
                 match = false;
                 break;
             }
@@ -1021,15 +1023,18 @@ static void consume_outputs(struct solution *solution, struct board *board)
             }
             if (io->type & REPEATING_OUTPUT) {
                 if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS & output))) != output) {
+                    // printf("did not match: %llx vs %llx\n", (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS & output))), output);
                     match = false;
                     break;
                 }
             } else {
                 if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
+                    // printf("did not match: %llx vs %llx\n", (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))), output);
                     match = false;
                     break;
                 }
             }
+            // printf("match!\n");
         }
         // if the output is a match, first trigger an interrupt if necessary.
         // then remove the output and increment the output counter.
