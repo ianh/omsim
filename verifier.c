@@ -173,7 +173,20 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return v->sf->area;
     else if (!strcmp(metric, "parsed instructions"))
         return v->sf->instructions;
-    else if (!strcmp(metric, "cost"))
+    else if (!strcmp(metric, "number of track segments")) {
+        int value = 0;
+        for (uint32_t i = 0; i < v->sf->number_of_parts; ++i)
+            value += v->sf->parts[i].number_of_track_hexes;
+        return value;
+    } else if (!strncmp("parts of type ", metric, strlen("parts of type "))) {
+        int value = 0;
+        const char *part_name = metric + strlen("parts of type ");
+        for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
+            if (byte_string_is(v->sf->parts[i].name, part_name))
+                value++;
+        }
+        return value;
+    } else if (!strcmp(metric, "cost"))
         return solution_file_cost(v->sf);
     else if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_cycles)
