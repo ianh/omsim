@@ -12,6 +12,9 @@ void *verifier_create(const char *puzzle_filename, const char *solution_filename
 // destroys a verifier object created by verifier_create(), freeing its memory.
 void verifier_destroy(void *verifier);
 
+// set how many cycles to wait for a solution to complete.
+void verifier_set_cycle_limit(void *verifier, int cycle_limit);
+
 // returns a string describing any error that occurred during solution parsing,
 // decoding, or verification.  if there haven't been any errors, returns a null
 // pointer.  returned strings are valid for the lifetime of the program and

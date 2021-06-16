@@ -14,12 +14,15 @@ struct verifier {
     int throughput_cycles;
     int throughput_outputs;
 
+    uint64_t cycle_limit;
+
     const char *error;
 };
 
 void *verifier_create(const char *puzzle_filename, const char *solution_filename)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
+    v->cycle_limit = 100000;
     v->pf = parse_puzzle_file(puzzle_filename);
     if (!v->pf) {
         v->error = "invalid puzzle file";
@@ -45,6 +48,14 @@ void verifier_destroy(void *verifier)
     free_puzzle_file(v->pf);
     free_solution_file(v->sf);
     free(v);
+}
+
+void verifier_set_cycle_limit(void *verifier, int cycle_limit)
+{
+    struct verifier *v = verifier;
+    if (cycle_limit < 0)
+        cycle_limit = 0;
+    v->cycle_limit = cycle_limit;
 }
 
 static uint64_t min_output_count(struct solution *solution)
@@ -81,7 +92,7 @@ static void measure_throughput(struct verifier *v)
     int32_t min_u = -200;
     int32_t max_v = 200;
     int32_t min_v = -200;
-    while (board.cycle < 100000 && !board.collision) {
+    while (board.cycle < v->cycle_limit && !board.collision) {
         if (board.cycle == board_snapshot.cycle * 2) {
             arm_snapshot = realloc(arm_snapshot, sizeof(struct mechanism) * solution.number_of_arms);
             memcpy(arm_snapshot, solution.arms, sizeof(struct mechanism) * solution.number_of_arms);
@@ -209,7 +220,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return instructions;
     }
     initial_setup(&solution, &board, v->sf->area);
-    while (board.cycle < 100000 && !board.complete && !board.collision)
+    while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
         cycle(&solution, &board);
     int value = -1;
     if (board.collision)
