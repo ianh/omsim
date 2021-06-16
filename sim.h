@@ -204,6 +204,9 @@ enum input_output_type {
     INTERRUPT = 1 << 4,
 };
 
+// the number of times repeating outputs repeat.
+#define REPEATING_OUTPUT_REPETITIONS 6
+
 struct input_output {
     enum input_output_type type;
 

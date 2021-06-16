@@ -1039,7 +1039,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 return;
             }
             if (io->type & REPEATING_OUTPUT)
-                io->number_of_outputs = 6;
+                io->number_of_outputs = REPEATING_OUTPUT_REPETITIONS;
             else {
                 for (uint32_t j = 0; j < io->number_of_atoms; ++j)
                     remove_atom(board, lookup_atom(board, io->atoms[j].position));
@@ -1062,6 +1062,9 @@ static bool check_completion(struct solution *solution)
     uint64_t min = UINT64_MAX;
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         if (!(solution->inputs_and_outputs[i].type & OUTPUT))
+            continue;
+        if ((solution->inputs_and_outputs[i].type & REPEATING_OUTPUT) &&
+         solution->inputs_and_outputs[i].number_of_outputs == REPEATING_OUTPUT_REPETITIONS)
             continue;
         uint64_t count = solution->inputs_and_outputs[i].number_of_outputs;
         if (count < min)

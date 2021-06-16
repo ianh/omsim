@@ -150,8 +150,9 @@ static void repeat_molecule(struct vector origin, struct input_output *io)
     offset.v -= origin.v;
     placeholder->position.u += offset.u * 5;
     placeholder->position.v += offset.v * 5;
-    struct atom_at_position *atoms = calloc((io->number_of_atoms - 1) * 6 + 1, sizeof(io->atoms[0]));
-    for (int i = 0; i < 6; ++i) {
+    struct atom_at_position *atoms = calloc((io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1,
+     sizeof(io->atoms[0]));
+    for (int i = 0; i < REPEATING_OUTPUT_REPETITIONS; ++i) {
         for (uint32_t j = 0; j < io->number_of_atoms - 1; ++j) {
             struct atom_at_position *a = &atoms[(io->number_of_atoms - 1) * i + j];
             *a = io->atoms[j];
@@ -160,7 +161,7 @@ static void repeat_molecule(struct vector origin, struct input_output *io)
             a->atom = io->atoms[j].atom;
             // remove bonds with the repetition placeholder -- they aren't
             // required to validate.
-            for (int k = 0; k < 6; ++k) {
+            for (int k = 0; k < REPEATING_OUTPUT_REPETITIONS; ++k) {
                 struct vector dir = v_offset_for_direction(k);
                 if (a->position.u + dir.u == placeholder->position.u &&
                  a->position.v + dir.v == placeholder->position.v)
@@ -168,10 +169,10 @@ static void repeat_molecule(struct vector origin, struct input_output *io)
             }
         }
     }
-    atoms[(io->number_of_atoms - 1) * 6] = *placeholder;
+    atoms[(io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS] = *placeholder;
     free(io->atoms);
     io->atoms = atoms;
-    io->number_of_atoms = (io->number_of_atoms - 1) * 6 + 1;
+    io->number_of_atoms = (io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1;
 }
 
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf)
