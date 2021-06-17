@@ -53,6 +53,8 @@ const char *verifier_error(void *verifier);
 //   "parts of type pipe"                 -- conduit
 // the "number of track segments" metric iterates over each track piece, counts
 //  all the segments in that piece, and returns the combined total.
+// the "number of arms" metric returns the number of arms (the van berlo's wheel
+//  is considered an arm).
 // the "cost" metric returns the combined cost of all components.
 // the "instructions" metric counts each instruction like the game does.
 // the "cycles" metric runs the solution to completion and returns the cycle the

@@ -217,6 +217,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         int instructions = solution_instructions(&solution);
         destroy(&solution, &board);
         return instructions;
+    } else if (!strcmp(metric, "number of arms")) {
+        int arms = solution.number_of_arms;
+        destroy(&solution, &board);
+        return arms;
     }
     initial_setup(&solution, &board, v->sf->area);
     while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
