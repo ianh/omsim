@@ -421,14 +421,6 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case DISPOSAL: {
             atom *a = get_atom(board, m, 0, 0);
-            if (board->cycle == 0) {
-                mark_used_area(board, mechanism_relative_position(m, 0, 1, 1));
-                mark_used_area(board, mechanism_relative_position(m, 1, 0, 1));
-                mark_used_area(board, mechanism_relative_position(m, 1, -1, 1));
-                mark_used_area(board, mechanism_relative_position(m, 0, -1, 1));
-                mark_used_area(board, mechanism_relative_position(m, -1, 0, 1));
-                mark_used_area(board, mechanism_relative_position(m, -1, 1, 1));
-            }
             if (*a && !(*a & ALL_BONDS) && !(*a & GRABBED))
                 remove_atom(board, a);
             break;
@@ -437,8 +429,6 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             apply_conduit(solution, board, m);
             break;
         case EQUILIBRIUM:
-            if (board->cycle == 0)
-                mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
         default:
             break;
         }
@@ -1138,6 +1128,21 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         struct input_output *io = &solution->inputs_and_outputs[i];
         for (uint32_t j = 0; j < io->number_of_atoms; ++j)
             mark_used_area(board, io->atoms[j].position);
+    }
+    for (uint32_t i = 0; i < solution->number_of_glyphs; ++i) {
+        struct mechanism m = solution->glyphs[i];
+        if (m.type & DISPOSAL) {
+            mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
+            mark_used_area(board, mechanism_relative_position(m, 0, 1, 1));
+            mark_used_area(board, mechanism_relative_position(m, 1, 0, 1));
+            mark_used_area(board, mechanism_relative_position(m, 1, -1, 1));
+            mark_used_area(board, mechanism_relative_position(m, 0, -1, 1));
+            mark_used_area(board, mechanism_relative_position(m, -1, 0, 1));
+            mark_used_area(board, mechanism_relative_position(m, -1, 1, 1));
+        } else if (m.type & EQUILIBRIUM)
+            mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
+        // other glyphs have their area marked in get_atom() and
+        // conversion_output().
     }
 
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
