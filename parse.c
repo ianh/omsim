@@ -184,6 +184,11 @@ struct solution_file *parse_solution_byte_string(struct byte_string b)
         }
     }
     solution->number_of_parts = read_uint32(&b);
+    if (solution->number_of_parts > 9999) {
+        solution->number_of_parts = 0;
+        free_solution_file(solution);
+        return 0;
+    }
     solution->parts = calloc(solution->number_of_parts, sizeof(struct solution_part));
     for (uint32_t i = 0; i < solution->number_of_parts; ++i) {
         struct solution_part *part = &solution->parts[i];
@@ -194,11 +199,15 @@ struct solution_file *parse_solution_byte_string(struct byte_string b)
         }
         part->position[0] = read_int32(&b);
         part->position[1] = read_int32(&b);
-        part->size = read_int32(&b);
+        part->size = read_uint32(&b);
         part->rotation = read_int32(&b);
         part->which_input_or_output = read_uint32(&b);
 
         part->number_of_instructions = read_uint32(&b);
+        if (part->number_of_instructions > 99999) {
+            free_solution_file(solution);
+            return 0;
+        }
         part->instructions = calloc(part->number_of_instructions, sizeof(struct solution_instruction));
         for (uint32_t j = 0; j < part->number_of_instructions; ++j) {
             part->instructions[j].index = read_int32(&b);
@@ -206,6 +215,10 @@ struct solution_file *parse_solution_byte_string(struct byte_string b)
         }
         if (byte_string_is(part->name, "track")) {
             part->number_of_track_hexes = read_uint32(&b);
+            if (part->number_of_track_hexes > 9999) {
+                free_solution_file(solution);
+                return 0;
+            }
             part->track_hexes = calloc(part->number_of_track_hexes, sizeof(struct solution_hex_offset));
             for (uint32_t j = 0; j < part->number_of_track_hexes; ++j) {
                 part->track_hexes[j].offset[0] = read_int32(&b);
@@ -216,6 +229,10 @@ struct solution_file *parse_solution_byte_string(struct byte_string b)
         if (byte_string_is(part->name, "pipe")) {
             part->conduit_id = read_uint32(&b);
             part->number_of_conduit_hexes = read_uint32(&b);
+            if (part->number_of_conduit_hexes > 9999) {
+                free_solution_file(solution);
+                return 0;
+            }
             part->conduit_hexes = calloc(part->number_of_conduit_hexes, sizeof(struct solution_hex_offset));
             for (uint32_t j = 0; j < part->number_of_conduit_hexes; ++j) {
                 part->conduit_hexes[j].offset[0] = read_int32(&b);

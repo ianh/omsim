@@ -177,15 +177,23 @@ static void repeat_molecule(struct vector origin, struct input_output *io)
 
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf)
 {
+    size_t number_of_arms = 0;
+    size_t number_of_glyphs = 0;
+    size_t number_of_conduits = 0;
     size_t number_of_track_hexes = 0;
+    size_t number_of_inputs_and_outputs = 0;
     // first pass through the solution file: count how many things of each type
     // there are.  these counts are used to allocate arrays of the correct size.
     for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
         enum mechanism_type type = decode_mechanism_type(sf->parts[i].name);
-        if (type & ANY_ARM)
-            solution->number_of_arms++;
-        else if (type & ANY_GLYPH)
-            solution->number_of_glyphs++;
+        if (type & ANY_ARM) {
+            if (sf->parts[i].size > 3) {
+                fprintf(stderr, "solution file error: arm too long\n");
+                return false;
+            }
+            number_of_arms++;
+        } else if (type & ANY_GLYPH)
+            number_of_glyphs++;
         else if (byte_string_is(sf->parts[i].name, "track"))
             number_of_track_hexes += sf->parts[i].number_of_track_hexes;
         else if (byte_string_is(sf->parts[i].name, "input")) {
@@ -193,25 +201,30 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 fprintf(stderr, "solution file error: input out of range\n");
                 return false;
             }
-            solution->number_of_inputs_and_outputs++;
+            number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-std")) {
             if (sf->parts[i].which_input_or_output >= pf->number_of_outputs) {
                 fprintf(stderr, "solution file error: output out of range\n");
                 return false;
             }
-            solution->number_of_inputs_and_outputs++;
+            number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
             uint32_t which_output = sf->parts[i].which_input_or_output;
             if (which_output >= pf->number_of_outputs) {
                 fprintf(stderr, "solution file error: output out of range\n");
                 return false;
             }
-            solution->number_of_inputs_and_outputs++;
+            number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "pipe")) {
-            solution->number_of_glyphs++;
-            solution->number_of_conduits++;
+            number_of_glyphs++;
+            number_of_conduits++;
         }
     }
+    solution->number_of_arms = number_of_arms;
+    solution->number_of_glyphs = number_of_glyphs;
+    solution->number_of_conduits = number_of_conduits;
+    solution->number_of_inputs_and_outputs = number_of_inputs_and_outputs;
+
     // now that we know how many elements each array should have, allocate them
     // all here.
     solution->glyphs = calloc(solution->number_of_glyphs, sizeof(struct mechanism));
@@ -248,13 +261,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             .direction_u = u_offset_for_direction(part.rotation),
             .direction_v = v_offset_for_direction(part.rotation),
         };
-        m.direction_u.u *= part.size;
-        m.direction_u.v *= part.size;
-        m.direction_v.u *= part.size;
-        m.direction_v.v *= part.size;
-        if (m.type & ANY_ARM)
+        if (m.type & ANY_ARM) {
+            m.direction_u.u *= part.size;
+            m.direction_u.v *= part.size;
+            m.direction_v.u *= part.size;
+            m.direction_v.v *= part.size;
             solution->arms[arm_index--] = m;
-        else if (m.type & ANY_GLYPH)
+        } else if (m.type & ANY_GLYPH)
             solution->glyphs[glyph_index--] = m;
         else if (byte_string_is(part.name, "track")) {
             struct vector last_position = m.position;
@@ -369,6 +382,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             arm_index++;
             continue;
         }
+        if (max_tape - min_tape > 99999) {
+            fprintf(stderr, "solution file error: instruction tape too long\n");
+            return false;
+        }
         uint32_t tape_length = max_tape - min_tape + 1;
         // multiply by two to leave room for reset and repeat instructions
         // (which cannot exceed the length of the earlier instructions even in
@@ -384,7 +401,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             uint32_t n = inst.index - min_tape;
             if (inst.instruction == 'C') { // repeat
                 while (j < part.number_of_instructions && part.instructions[j].instruction == 'C') {
-                    memcpy(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
+                    memmove(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
                     uint32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
                     if (m > tape_length)
                         tape_length = m;

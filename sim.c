@@ -638,7 +638,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (!(m->type & GRABBING) || (m->type & VAN_BERLO))
                 continue;
         } else if ((inst == 'w' || inst == 's') && !(m->type & PISTON)) {
-            fprintf(stderr, "trying to extend/retract a non-piston arm");
+            fprintf(stderr, "trying to extend/retract a non-piston arm\n");
             continue;
         } else if (inst == 'w') {
             // don't extend pistons past 3 hexes of length.
@@ -1116,15 +1116,17 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
     *a = VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element;
 }
 
-void initial_setup(struct solution *solution, struct board *board, uint32_t intial_board_size)
+void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)
 {
     board->half_cycle = 1;
     board->active_input_or_output = UINT32_MAX;
     // in order for lookups to work, the hash table has to be allocated using
     // ensure_capacity().
-    if (intial_board_size < 1)
-        intial_board_size = 1;
-    ensure_capacity(board, intial_board_size);
+    if (initial_board_size < 1)
+        initial_board_size = 1;
+    if (initial_board_size > 999999)
+        initial_board_size = 999999;
+    ensure_capacity(board, initial_board_size);
     for (uint32_t i = 0; i < solution->track_table_size; ++i) {
         // xx do this in a cleaner way?
         struct vector p = solution->track_positions[i];

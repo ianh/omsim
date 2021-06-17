@@ -91,7 +91,7 @@ struct solution_part {
     struct byte_string name;
 
     int32_t position[2];
-    int32_t size;
+    uint32_t size;
     int32_t rotation;
 
     // used for part names "input", "out-std", and "out-rep".
