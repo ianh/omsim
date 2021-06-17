@@ -75,7 +75,9 @@ int main()
 
         struct solution solution = { 0 };
         struct board board = { 0 };
-        if (!decode_solution(&solution, puzzle->pf, sf)) {
+        const char *error;
+        if (!decode_solution(&solution, puzzle->pf, sf, &error)) {
+            fprintf(stderr, "error in '%s': %s\n", buf, error);
             free_solution_file(sf);
             continue;
         }

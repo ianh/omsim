@@ -89,6 +89,17 @@ static enum mechanism_type decode_mechanism_type(struct byte_string part_name)
         return 0;
 }
 
+static int compare_instructions_by_index(const void *aa, const void *bb)
+{
+    const struct solution_instruction *a = aa;
+    const struct solution_instruction *b = bb;
+    if (a->index < b->index)
+        return -1;
+    if (a->index > b->index)
+        return 1;
+    return 0;
+}
+
 static int compare_conduits_by_id(const void *aa, const void *bb)
 {
     const struct conduit *a = aa;
@@ -128,10 +139,8 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
 
 static void repeat_molecule(struct vector origin, struct input_output *io)
 {
-    if (!io->number_of_atoms) {
-        fprintf(stderr, "warning: infinite product without atoms\n");
+    if (io->number_of_atoms == 0)
         return;
-    }
     struct atom_at_position *placeholder = &io->atoms[io->number_of_atoms - 1];
     for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
         if (!(io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER))
@@ -141,10 +150,8 @@ static void repeat_molecule(struct vector origin, struct input_output *io)
         *placeholder = a;
         break;
     }
-    if (!(placeholder->atom & REPEATING_OUTPUT_PLACEHOLDER)) {
-        fprintf(stderr, "warning: infinite product without repetition placeholder\n");
+    if (!(placeholder->atom & REPEATING_OUTPUT_PLACEHOLDER))
         return;
-    }
     struct vector offset = placeholder->position;
     offset.u -= origin.u;
     offset.v -= origin.v;
@@ -175,8 +182,23 @@ static void repeat_molecule(struct vector origin, struct input_output *io)
     io->number_of_atoms = (io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1;
 }
 
-bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf)
+bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
 {
+    const char *ignored_error;
+    if (!error)
+        error = &ignored_error;
+    for (uint32_t i = 0; i < pf->number_of_inputs; ++i) {
+        if (pf->inputs[i].number_of_atoms == 0) {
+            *error = "reagent has no atoms";
+            return false;
+        }
+    }
+    for (uint32_t i = 0; i < pf->number_of_outputs; ++i) {
+        if (pf->outputs[i].number_of_atoms == 0) {
+            *error = "product has no atoms";
+            return false;
+        }
+    }
     size_t number_of_arms = 0;
     size_t number_of_glyphs = 0;
     size_t number_of_conduits = 0;
@@ -188,8 +210,14 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         enum mechanism_type type = decode_mechanism_type(sf->parts[i].name);
         if (type & ANY_ARM) {
             if (sf->parts[i].size > 3) {
-                fprintf(stderr, "solution file error: arm too long\n");
+                *error = "arm too long";
                 return false;
+            }
+            for (uint32_t j = 0; j < sf->parts[i].number_of_instructions; ++j) {
+                if (sf->parts[i].instructions[j].index < 0) {
+                    *error = "negative instruction index";
+                    return false;
+                }
             }
             number_of_arms++;
         } else if (type & ANY_GLYPH)
@@ -198,20 +226,20 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             number_of_track_hexes += sf->parts[i].number_of_track_hexes;
         else if (byte_string_is(sf->parts[i].name, "input")) {
             if (sf->parts[i].which_input_or_output >= pf->number_of_inputs) {
-                fprintf(stderr, "solution file error: input out of range\n");
+                *error = "input out of range";
                 return false;
             }
             number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-std")) {
             if (sf->parts[i].which_input_or_output >= pf->number_of_outputs) {
-                fprintf(stderr, "solution file error: output out of range\n");
+                *error = "output out of range";
                 return false;
             }
             number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
             uint32_t which_output = sf->parts[i].which_input_or_output;
             if (which_output >= pf->number_of_outputs) {
-                fprintf(stderr, "solution file error: output out of range\n");
+                *error = "output out of range";
                 return false;
             }
             number_of_inputs_and_outputs++;
@@ -369,21 +397,17 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         struct solution_part part = sf->parts[i];
         if (!(decode_mechanism_type(part.name) & ANY_ARM))
             continue;
-        uint32_t min_tape = UINT32_MAX;
-        uint32_t max_tape = 0;
-        for (uint32_t j = 0; j < part.number_of_instructions; ++j) {
-            uint32_t index = part.instructions[j].index;
-            if (index < min_tape)
-                min_tape = index;
-            if (index > max_tape)
-                max_tape = index;
-        }
-        if (max_tape < min_tape) {
+        if (!part.number_of_instructions) {
             arm_index++;
             continue;
         }
+        qsort(part.instructions, part.number_of_instructions,
+         sizeof(part.instructions[0]), compare_instructions_by_index);
+        uint32_t min_tape = part.instructions[0].index;
+        uint32_t max_tape = part.instructions[part.number_of_instructions - 1].index;
         if (max_tape - min_tape > 99999) {
-            fprintf(stderr, "solution file error: instruction tape too long\n");
+            *error = "instruction tape too long";
+            destroy(solution, 0);
             return false;
         }
         uint32_t tape_length = max_tape - min_tape + 1;
@@ -398,10 +422,15 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         char *tape = solution->arm_tape[arm_index];
         for (uint32_t j = 0; j < part.number_of_instructions; ++j) {
             struct solution_instruction inst = part.instructions[j];
+            if (j > 0 && inst.index == part.instructions[j - 1].index) {
+                *error = "two instructions share the same index";
+                destroy(solution, 0);
+                return false;
+            }
             uint32_t n = inst.index - min_tape;
             if (inst.instruction == 'C') { // repeat
                 while (j < part.number_of_instructions && part.instructions[j].instruction == 'C') {
-                    memmove(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
+                    memcpy(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
                     uint32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
                     if (m > tape_length)
                         tape_length = m;

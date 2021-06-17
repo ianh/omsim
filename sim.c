@@ -638,7 +638,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (!(m->type & GRABBING) || (m->type & VAN_BERLO))
                 continue;
         } else if ((inst == 'w' || inst == 's') && !(m->type & PISTON)) {
-            fprintf(stderr, "trying to extend/retract a non-piston arm\n");
+            report_collision(board, m->position, "trying to extend/retract a non-piston arm");
             continue;
         } else if (inst == 'w') {
             // don't extend pistons past 3 hexes of length.
@@ -653,7 +653,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         } else if (inst == 't' || inst == 'g') {
             uint32_t index;
             if (!lookup_track(solution, m->position, &index)) {
-                fprintf(stderr, "trying to move an arm along a track that isn't on a track at %" PRId32 " %" PRId32 "\n", m->position.u, m->position.v);
+                report_collision(board, m->position, "trying to move an arm along a track that isn't on a track");
                 continue;
             }
             if (inst == 't')
@@ -1159,29 +1159,34 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
 
 void destroy(struct solution *solution, struct board *board)
 {
-    free(solution->glyphs);
-    free(solution->arms);
-    for (uint32_t i = 0; i < solution->number_of_arms; ++i)
-        free(solution->arm_tape[i]);
-    free(solution->arm_tape);
-    free(solution->arm_tape_length);
-    free(solution->arm_tape_start_cycle);
-    free(solution->track_positions);
-    free(solution->track_plus_motions);
-    free(solution->track_minus_motions);
-    for (size_t i = 0; i < solution->number_of_conduits; ++i) {
-        free(solution->conduits[i].positions);
-        free(solution->conduits[i].atoms);
-        free(solution->conduits[i].molecule_lengths);
+    if (solution) {
+        free(solution->glyphs);
+        free(solution->arms);
+        for (uint32_t i = 0; i < solution->number_of_arms; ++i)
+            free(solution->arm_tape[i]);
+        free(solution->arm_tape);
+        free(solution->arm_tape_length);
+        free(solution->arm_tape_start_cycle);
+        free(solution->track_positions);
+        free(solution->track_plus_motions);
+        free(solution->track_minus_motions);
+        for (size_t i = 0; i < solution->number_of_conduits; ++i) {
+            free(solution->conduits[i].positions);
+            free(solution->conduits[i].atoms);
+            free(solution->conduits[i].molecule_lengths);
+        }
+        free(solution->conduits);
+        for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
+            free(solution->inputs_and_outputs[i].atoms);
+        free(solution->inputs_and_outputs);
+        memset(solution, 0, sizeof(*solution));
     }
-    free(solution->conduits);
-    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
-        free(solution->inputs_and_outputs[i].atoms);
-    free(solution->inputs_and_outputs);
-
-    free(board->atoms_at_positions);
-    free(board->flag_reset);
-    free(board->movements.elements);
+    if (board) {
+        free(board->atoms_at_positions);
+        free(board->flag_reset);
+        free(board->movements.elements);
+        memset(board, 0, sizeof(*board));
+    }
 }
 
 uint32_t used_area(struct board *board)

@@ -77,10 +77,8 @@ static void measure_throughput(struct verifier *v)
     struct board board = { 0 };
     v->throughput_cycles = -1;
     v->throughput_outputs = -1;
-    if (!decode_solution(&solution, v->pf, v->sf)) {
-        v->error = "unable to decode solution";
+    if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return;
-    }
     initial_setup(&solution, &board, v->sf->area);
     solution.target_number_of_outputs = UINT64_MAX;
     struct mechanism *arm_snapshot = 0;
@@ -213,10 +211,8 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
-    if (!decode_solution(&solution, v->pf, v->sf)) {
-        v->error = "unable to decode solution";
+    if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return -1;
-    }
     if (!strcmp(metric, "instructions")) {
         int instructions = solution_instructions(&solution);
         destroy(&solution, &board);

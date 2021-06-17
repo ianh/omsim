@@ -86,8 +86,11 @@ int main(int argc, char *argv[])
 
     struct solution solution = { 0 };
     struct board board = { 0 };
-    if (!decode_solution(&solution, pf, sf))
+    const char *error;
+    if (!decode_solution(&solution, pf, sf, &error)) {
+        fprintf(stderr, "solution file error: %s\n", error);
         return -1;
+    }
     free_puzzle_file(pf);
 
     // set up the board.
