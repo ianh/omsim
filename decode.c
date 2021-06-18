@@ -380,16 +380,24 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         }
     }
     // sort conduits by id in order to find pairs of linked conduits.
-    qsort(solution->conduits, solution->number_of_conduits,
+    mergesort(solution->conduits, solution->number_of_conduits,
      sizeof(struct conduit), compare_conduits_by_id);
+    struct conduit *destination = 0;
     for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
         struct conduit *conduit = &solution->conduits[i];
-        if (i + 1 < solution->number_of_conduits && solution->conduits[i + 1].id == conduit->id)
-            conduit->other_side_glyph_index = solution->conduits[i + 1].glyph_index;
-        else if (i > 0 && solution->conduits[i - 1].id == conduit->id)
-            conduit->other_side_glyph_index = solution->conduits[i - 1].glyph_index;
-        else
-            conduit->other_side_glyph_index = conduit->glyph_index;
+        struct conduit *next = 0;
+        if (i + 1 < solution->number_of_conduits)
+            next = &solution->conduits[i + 1];
+        if (destination && destination->id == conduit->id)
+            conduit->other_side_glyph_index = destination->glyph_index;
+        else if (!next) {
+            *error = "unpaired conduit";
+            destroy(solution, 0);
+            return false;
+        } else {
+            destination = conduit;
+            conduit->other_side_glyph_index = next->glyph_index;
+        }
         solution->glyphs[conduit->glyph_index].conduit_index = i;
     }
 
