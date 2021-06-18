@@ -430,11 +430,12 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             uint32_t n = inst.index - min_tape;
             if (inst.instruction == 'C') { // repeat
                 while (j < part.number_of_instructions && part.instructions[j].instruction == 'C') {
-                    // this is a memmove rather than a memcpy due to the
-                    // possibility of a repeat instruction placed in the middle
-                    // of a reset instruction sequence (this will overwrite some
-                    // of the instructions in the sequence).
-                    memmove(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
+                    if (last_end > part.instructions[j].index - min_tape) {
+                        *error = "repeat instruction overlaps with a reset instruction";
+                        destroy(solution, 0);
+                        return false;
+                    }
+                    memcpy(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
                     uint32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
                     if (m > tape_length)
                         tape_length = m;

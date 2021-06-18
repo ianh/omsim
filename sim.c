@@ -247,7 +247,8 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
             if (!valid) {
                 // remove the molecule from the conduit.
                 memmove(conduit->atoms + base, conduit->atoms + base + length, (conduit->number_of_positions - base - length) * sizeof(struct atom_at_position));
-                memmove(conduit->molecule_lengths + j, conduit->molecule_lengths + j + 1, (conduit->number_of_positions - j - 1) * sizeof(uint32_t));
+                memmove(conduit->molecule_lengths + j, conduit->molecule_lengths + j + 1, (conduit->number_of_molecules - j - 1) * sizeof(uint32_t));
+                conduit->number_of_molecules--;
                 j--;
                 continue;
             }
