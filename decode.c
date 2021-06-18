@@ -210,7 +210,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         enum mechanism_type type = decode_mechanism_type(sf->parts[i].name);
         if (type & ANY_ARM) {
             if (sf->parts[i].size > 3) {
-                *error = "arm too long";
+                *error = "solution contains a too-long arm";
+                return false;
+            } else if (sf->parts[i].size < 1) {
+                *error = "solution contains a zero-length arm";
                 return false;
             }
             for (uint32_t j = 0; j < sf->parts[i].number_of_instructions; ++j) {
