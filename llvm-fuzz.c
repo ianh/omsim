@@ -48,7 +48,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t length)
     struct board board = { 0 };
     if (decode_solution(&solution, pf, sf, 0)) {
         initial_setup(&solution, &board, sf->area);
-        while (board.cycle < 100 && !board.complete) {
+        while (board.cycle < 200 && !board.complete) {
             // printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
             cycle(&solution, &board);
             if (board.collision)
@@ -143,14 +143,16 @@ static struct solution_file *parse_alt_solution_byte_string(struct byte_string b
             part->size = read_byte(&b);
             if (part->size > 3)
                 part->size = 3;
+            uint32_t instruction_offset = read_byte(&b);
             part->instructions = calloc(999, sizeof(struct solution_instruction));
             while (part->number_of_instructions < 999) {
-                uint32_t m = part->number_of_instructions++;
+                uint32_t m = part->number_of_instructions;
                 struct solution_instruction *inst = &part->instructions[m];
-                inst->index = m;
+                inst->index = instruction_offset + m;
                 inst->instruction = read_byte(&b);
                 if (inst->instruction == 0)
                     break;
+                part->number_of_instructions++;
             }
         } else if (part_name_byte == 6) {
             part->track_hexes = calloc(99, sizeof(struct solution_hex_offset));
