@@ -390,7 +390,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             next = &solution->conduits[i + 1];
         if (destination && destination->id == conduit->id)
             conduit->other_side_glyph_index = destination->glyph_index;
-        else if (!next) {
+        else if (!next || next->id != conduit->id) {
             *error = "unpaired conduit";
             destroy(solution, 0);
             return false;
