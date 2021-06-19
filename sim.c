@@ -1053,7 +1053,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
         }
         // validating infinite products requires visiting all the atoms in the
         // molecule.  that's what this loop does.
-        while (board->marked.cursor < board->marked.length) {
+        while (match && board->marked.cursor < board->marked.length) {
             struct vector p = board->marked.positions[board->marked.cursor++];
             atom a = *lookup_atom(board, p);
             for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
@@ -1080,8 +1080,6 @@ static void consume_outputs(struct solution *solution, struct board *board)
                     break;
                 }
             }
-            if (!match)
-                break;
         }
         // reset the visited flag for all the marked atoms.
         for (size_t j = 0; j < board->marked.length; ++j) {
