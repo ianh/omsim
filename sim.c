@@ -986,6 +986,26 @@ static void spawn_inputs(struct solution *solution, struct board *board)
     board->active_input_or_output = UINT32_MAX;
 }
 
+static void mark_output_position(struct board *board, struct vector pos)
+{
+    atom *a = lookup_atom(board, pos);
+    if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
+        return;
+    *a |= VISITED;
+    size_t capacity = board->marked.capacity;
+    while (board->marked.length >= capacity)
+        capacity = 4 * (capacity + 12) / 3;
+    if (capacity != board->marked.capacity) {
+        struct vector *positions = realloc(board->marked.positions,
+         sizeof(struct movement) * capacity);
+        if (!positions)
+            abort();
+        board->marked.positions = positions;
+        board->marked.capacity = capacity;
+    }
+    board->marked.positions[board->marked.length++] = pos;
+}
+
 static void consume_outputs(struct solution *solution, struct board *board)
 {
     size_t active = board->active_input_or_output;
@@ -994,6 +1014,8 @@ static void consume_outputs(struct solution *solution, struct board *board)
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (!(io->type & OUTPUT))
             continue;
+        board->marked.length = 0;
+        board->marked.cursor = 0;
         // first, check the entire output to see if it matches.
         bool match = true;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
@@ -1018,6 +1040,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                     match = false;
                     break;
                 }
+                mark_output_position(board, io->atoms[j].position);
             } else {
                 if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
                     // printf("did not match: %llx vs %llx\n", (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))), output);
@@ -1026,6 +1049,32 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 }
             }
             // printf("match!\n");
+        }
+        // validating infinite outputs requires visiting all the atoms in the
+        // molecule.  that's what this loop does.
+        while (board->marked.cursor < board->marked.length) {
+            struct vector p = board->marked.positions[board->marked.cursor++];
+            // atoms cannot appear outside the vertical bounds of the infinite
+            // product.
+            if (p.u < io->min_u || p.u > io->max_u) {
+                match = false;
+                break;
+            }
+            atom a = *lookup_atom(board, p);
+            for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
+                if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
+                    continue;
+                struct vector next = p;
+                struct vector d = v_offset_for_direction(bond_direction);
+                next.u += d.u;
+                next.v += d.v;
+                mark_output_position(board, next);
+            }
+        }
+        // reset the visited flag for all the marked atoms.
+        for (size_t j = 0; j < board->marked.length; ++j) {
+            atom *a = lookup_atom(board, board->marked.positions[j]);
+            *a &= ~VISITED;
         }
         // if the output is a match, first trigger an interrupt if necessary.
         // then remove the output and increment the output counter.
@@ -1191,6 +1240,7 @@ void destroy(struct solution *solution, struct board *board)
         free(board->atoms_at_positions);
         free(board->flag_reset);
         free(board->movements.elements);
+        free(board->marked.positions);
         memset(board, 0, sizeof(*board));
     }
 }

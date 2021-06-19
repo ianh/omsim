@@ -283,6 +283,12 @@ struct movement_list {
     size_t length;
     size_t cursor;
 };
+struct marked_positions {
+    struct vector *positions;
+    size_t capacity;
+    size_t length;
+    size_t cursor;
+};
 struct board {
     struct atom_at_position *atoms_at_positions;
 
@@ -301,6 +307,9 @@ struct board {
     size_t active_input_or_output;
 
     struct movement_list movements;
+
+    // used for checking infinite products.
+    struct marked_positions marked;
 
     bool collision;
     struct vector collision_location;
