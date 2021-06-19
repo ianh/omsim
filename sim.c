@@ -986,11 +986,11 @@ static void spawn_inputs(struct solution *solution, struct board *board)
     board->active_input_or_output = UINT32_MAX;
 }
 
-static void mark_output_position(struct board *board, struct vector pos)
+static bool mark_output_position(struct board *board, struct vector pos)
 {
     atom *a = lookup_atom(board, pos);
     if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
-        return;
+        return false;
     *a |= VISITED;
     size_t capacity = board->marked.capacity;
     while (board->marked.length >= capacity)
@@ -1004,6 +1004,7 @@ static void mark_output_position(struct board *board, struct vector pos)
         board->marked.capacity = capacity;
     }
     board->marked.positions[board->marked.length++] = pos;
+    return true;
 }
 
 static void consume_outputs(struct solution *solution, struct board *board)
@@ -1050,16 +1051,10 @@ static void consume_outputs(struct solution *solution, struct board *board)
             }
             // printf("match!\n");
         }
-        // validating infinite outputs requires visiting all the atoms in the
+        // validating infinite products requires visiting all the atoms in the
         // molecule.  that's what this loop does.
         while (board->marked.cursor < board->marked.length) {
             struct vector p = board->marked.positions[board->marked.cursor++];
-            // atoms cannot appear outside the vertical bounds of the infinite
-            // product.
-            if (p.u < io->min_u || p.u > io->max_u) {
-                match = false;
-                break;
-            }
             atom a = *lookup_atom(board, p);
             for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
                 if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
@@ -1068,8 +1063,25 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 struct vector d = v_offset_for_direction(bond_direction);
                 next.u += d.u;
                 next.v += d.v;
-                mark_output_position(board, next);
+                if (!mark_output_position(board, next))
+                    continue;
+                // atoms cannot appear outside the vertical bounds of the
+                // infinite product.
+                if (next.u < io->min_u || next.u > io->max_u) {
+                    match = false;
+                    break;
+                }
+                // atoms cannot appear between atoms in a row of the infinite
+                // product.  the row_min_v and row_max_v arrays track the
+                // disallowed range of positions for each row.
+                size_t row = next.u - io->min_u;
+                if (next.v >= io->row_min_v[row] && next.v <= io->row_max_v[row]) {
+                    match = false;
+                    break;
+                }
             }
+            if (!match)
+                break;
         }
         // reset the visited flag for all the marked atoms.
         for (size_t j = 0; j < board->marked.length; ++j) {
@@ -1231,8 +1243,11 @@ void destroy(struct solution *solution, struct board *board)
             free(solution->conduits[i].molecule_lengths);
         }
         free(solution->conduits);
-        for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
+        for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
             free(solution->inputs_and_outputs[i].atoms);
+            free(solution->inputs_and_outputs[i].row_min_v);
+            free(solution->inputs_and_outputs[i].row_max_v);
+        }
         free(solution->inputs_and_outputs);
         memset(solution, 0, sizeof(*solution));
     }

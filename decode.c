@@ -340,9 +340,9 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 .atoms = calloc(sizeof(struct atom_at_position), part.number_of_conduit_hexes),
                 .molecule_lengths = calloc(sizeof(uint32_t), part.number_of_conduit_hexes),
             };
-            for (uint32_t i = 0; i < part.number_of_conduit_hexes; ++i) {
-                conduit.positions[i].u = part.conduit_hexes[i].offset[1];
-                conduit.positions[i].v = part.conduit_hexes[i].offset[0];
+            for (uint32_t j = 0; j < part.number_of_conduit_hexes; ++j) {
+                conduit.positions[j].u = part.conduit_hexes[j].offset[1];
+                conduit.positions[j].v = part.conduit_hexes[j].offset[0];
             }
             solution->glyphs[glyph_index--] = m;
             solution->conduits[conduit_index--] = conduit;
@@ -369,12 +369,31 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             repeat_molecule(m.position, io);
             io->min_u = INT32_MAX;
             io->max_u = INT32_MIN;
-            for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
-                struct vector p = io->atoms[i].position;
+            for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+                if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+                    continue;
+                struct vector p = io->atoms[j].position;
                 if (p.u < io->min_u)
                     io->min_u = p.u;
                 if (p.u > io->max_u)
                     io->max_u = p.u;
+            }
+            size_t rows = io->max_u - io->min_u + 1;
+            io->row_min_v = calloc(rows, sizeof(int32_t));
+            io->row_max_v = calloc(rows, sizeof(int32_t));
+            for (size_t j = 0; j < rows; ++j) {
+                io->row_min_v[j] = INT32_MAX;
+                io->row_max_v[j] = INT32_MIN;
+            }
+            for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+                if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+                    continue;
+                struct vector p = io->atoms[j].position;
+                size_t row = p.u - io->min_u;
+                if (p.v < io->row_min_v[row])
+                    io->row_min_v[row] = p.v;
+                if (p.v > io->row_max_v[row])
+                    io->row_max_v[row] = p.v;
             }
             io_index--;
         }
