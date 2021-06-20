@@ -108,6 +108,10 @@ static int compare_conduits_by_id(const void *aa, const void *bb)
         return -1;
     if (a->id > b->id)
         return 1;
+    if (a->glyph_index < b->glyph_index)
+        return -1;
+    if (a->glyph_index > b->glyph_index)
+        return 1;
     return 0;
 }
 
@@ -399,7 +403,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         }
     }
     // sort conduits by id in order to find pairs of linked conduits.
-    mergesort(solution->conduits, solution->number_of_conduits,
+    qsort(solution->conduits, solution->number_of_conduits,
      sizeof(struct conduit), compare_conduits_by_id);
     struct conduit *destination = 0;
     for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
@@ -419,7 +423,6 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         }
         solution->glyphs[conduit->glyph_index].conduit_index = i;
     }
-
     // decode arm tapes in one final pass.  this has to be another pass because
     // reset instructions depend on where track has been placed.
     arm_index = 0;
