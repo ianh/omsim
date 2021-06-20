@@ -18,12 +18,12 @@ the following aren't implemented yet:
 - the "grabbed molecule can't be moved in multiple directions" error
 - two atoms occupying the same space (e.g. the surrender flare overlap solution)
 - "spooky action at a distance" via conduit cloning
+- negative instruction indexes
 
 the following issues are known:
 - track reset is different from the game in certain situations (see
   test/not-working-yet/overlapping-track-reset)
 - computed area is slightly different from the game (usually less than 1%)
-- puzzles with negative instruction offsets simulate differently
 
 these lists should get shorter over time. feel free to file github issues for
 any other bugs you find!
