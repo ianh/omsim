@@ -77,6 +77,36 @@ static void measure_throughput(struct verifier *v)
     struct board board = { 0 };
     v->throughput_cycles = -1;
     v->throughput_outputs = -1;
+
+    // compute a bounding box for the solution
+    int32_t max_u = INT32_MIN;
+    int32_t min_u = INT32_MAX;
+    int32_t max_v = INT32_MIN;
+    int32_t min_v = INT32_MAX;
+    for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
+        struct vector p = {
+            v->sf->parts[i].position[1],
+            v->sf->parts[i].position[0],
+        };
+        if (p.u < min_u)
+            min_u = p.u;
+        if (p.u > max_u)
+            max_u = p.u;
+        if (p.v < min_v)
+            min_v = p.v;
+        if (p.v > max_v)
+            max_v = p.v;
+    }
+    if (max_u < min_u || max_v < min_v) {
+        v->error = "no parts in solution";
+        return;
+    }
+    // add padding of 100 units on each side
+    max_u += 100;
+    min_u -= 100;
+    max_v += 100;
+    min_v -= 100;
+
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return;
     initial_setup(&solution, &board, v->sf->area);
@@ -88,11 +118,6 @@ static void measure_throughput(struct verifier *v)
     struct board board_snapshot = { .cycle = check_period };
     uint32_t board_snapshot_in_range = 0;
     uint64_t output_count_snapshot = 0;
-    // rough bounding box (fixme -- make this centered on the actual glyphs/arms?)
-    int32_t max_u = 200;
-    int32_t min_u = -200;
-    int32_t max_v = 200;
-    int32_t min_v = -200;
     while (board.cycle < v->cycle_limit && !board.collision) {
         if (board.cycle == board_snapshot.cycle * 2) {
             arm_snapshot = realloc(arm_snapshot, sizeof(struct mechanism) * solution.number_of_arms);
