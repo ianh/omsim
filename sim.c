@@ -823,8 +823,12 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
 
         // xx collision detection / error handling
     }
+}
+
+static void mark_arm_area(struct solution *solution, struct board *board)
+{
+    // xx definitely do this in a cleaner way...
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
-        // xx definitely do this in a cleaner way...
         struct mechanism *m = &solution->arms[i];
         int step;
         switch (m->type & ANY_ARM) {
@@ -1139,6 +1143,7 @@ enum run_result run(struct solution *solution, struct board *board)
                 goto continue_with_outputs;
         }
         perform_arm_instructions(solution, board);
+        mark_arm_area(solution, board);
         fill_conduits(solution, board);
         flag_blocked_inputs(solution, board);
 continue_with_inputs:
