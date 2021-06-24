@@ -18,10 +18,17 @@ void verifier_set_cycle_limit(void *verifier, int cycle_limit);
 // returns a string describing any error that occurred during solution parsing,
 // decoding, or verification.  if there haven't been any errors, returns a null
 // pointer.  returned strings are valid for the lifetime of the program and
-// don't need to be freed.
+// don't need to be freed.  calling this function doesn't clear the error;
+// to clear the error, create a new verifier or call verifier_error_clear().
 const char *verifier_error(void *verifier);
 
-// verifier_evaluate_metric() evaluates a metric for the given solution.
+// after calling this function, verifier_error() will return null again.
+void verifier_error_clear(void *verifier);
+
+// verifier_evaluate_metric() evaluates a metric for the given solution.  if
+// there is an error, verifier_evaluate_metric() returns -1 and sets an error
+// string, which verifier_error() will return.
+//
 // the "parsed cycles", "parsed cost", "parsed area", and "parsed instructions"
 //  metrics return the value recorded in the solution file.  if no value is
 //  recorded, returns zero.

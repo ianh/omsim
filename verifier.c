@@ -42,6 +42,12 @@ const char *verifier_error(void *verifier)
     return v->error;
 }
 
+void verifier_error_clear(void *verifier)
+{
+    struct verifier *v = verifier;
+    v->error = 0;
+}
+
 void verifier_destroy(void *verifier)
 {
     struct verifier *v = verifier;
@@ -200,8 +206,10 @@ static void measure_dimension(struct board *board, int32_t u, int32_t v, int *di
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
     struct verifier *v = verifier;
-    if (!v->sf || !v->pf)
+    if (!v->sf) {
+        v->error = "invalid solution file";
         return -1;
+    }
     if (!strcmp(metric, "parsed cycles"))
         return v->sf->cycles;
     else if (!strcmp(metric, "parsed cost"))
@@ -225,7 +233,11 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return value;
     } else if (!strcmp(metric, "cost"))
         return solution_file_cost(v->sf);
-    else if (!strcmp(metric, "throughput cycles")) {
+    if (!v->pf) {
+        v->error = "invalid puzzle file";
+        return -1;
+    }
+    if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_cycles)
             measure_throughput(v);
         return v->throughput_cycles;
