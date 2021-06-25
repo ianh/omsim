@@ -132,6 +132,23 @@ int direction_for_offset(struct vector d)
     return -1;
 }
 
+static int angular_distance_between_grabbers(enum mechanism_type type)
+{
+    switch (type & ANY_ARM) {
+    case ARM:
+    case PISTON:
+        return 6;
+    case TWO_ARM:
+        return 3;
+    case THREE_ARM:
+        return 2;
+    case SIX_ARM:
+    case VAN_BERLO:
+    default:
+        return 1;
+    }
+}
+
 atom bond_direction(struct mechanism m, int32_t du, int32_t dv)
 {
     atom base = BOND_LOW_BITS;
@@ -657,24 +674,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         }
         // next, apply the instruction to any grabbed atoms. atom movements are
         // added to a list (board->movements) and deferred until later.
-        int step;
-        switch (m->type & ANY_ARM) {
-        case ARM:
-        case PISTON:
-            step = 6;
-            break;
-        case TWO_ARM:
-            step = 3;
-            break;
-        case THREE_ARM:
-            step = 2;
-            break;
-        case SIX_ARM:
-        case VAN_BERLO:
-        default:
-            step = 1;
-            break;
-        }
+        int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
             struct vector offset = v_offset_for_direction(direction);
             struct vector saved_u = m->direction_u;
@@ -830,24 +830,7 @@ static void mark_arm_area(struct solution *solution, struct board *board)
     // xx definitely do this in a cleaner way...
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         struct mechanism *m = &solution->arms[i];
-        int step;
-        switch (m->type & ANY_ARM) {
-        case ARM:
-        case PISTON:
-            step = 6;
-            break;
-        case TWO_ARM:
-            step = 3;
-            break;
-        case THREE_ARM:
-            step = 2;
-            break;
-        case SIX_ARM:
-        case VAN_BERLO:
-        default:
-            step = 1;
-            break;
-        }
+        int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
             struct vector offset = v_offset_for_direction(direction);
             struct vector saved_u = m->direction_u;
