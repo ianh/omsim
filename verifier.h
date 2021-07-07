@@ -32,6 +32,10 @@ void verifier_error_clear(void *verifier);
 // the "parsed cycles", "parsed cost", "parsed area", and "parsed instructions"
 //  metrics return the value recorded in the solution file.  if no value is
 //  recorded, returns zero.
+// the "product <product number> <metric>" metric measures <metric> as if the
+//  solution completes after the <product number>-th product instead of after
+//  the product count specified in the puzzle file.  for example,
+//  "product 1 cycles" will measure the latency for the first product.
 // the "parts of type <part type>" metrics return the number of parts in the
 //  solution file which have that type.  here's a list of the possible types:
 //   "parts of type arm1"

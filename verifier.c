@@ -210,6 +210,21 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error = "invalid solution file";
         return -1;
     }
+    long product_count = -1;
+    if (!strncmp("product ", metric, strlen("product "))) {
+        metric += strlen("product ");
+        char *endptr = 0;
+        product_count = strtol(metric, &endptr, 10);
+        if (product_count < 0 || endptr == metric) {
+            v->error = "invalid product count";
+            return -1;
+        }
+        if (*endptr != ' ') {
+            v->error = "product count must be followed by a metric";
+            return -1;
+        }
+        metric = (const char *)(endptr + 1);
+    }
     if (!strcmp(metric, "parsed cycles"))
         return v->sf->cycles;
     else if (!strcmp(metric, "parsed cost"))
@@ -259,6 +274,8 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         destroy(&solution, &board);
         return arms;
     }
+    if (product_count >= 0)
+        solution.target_number_of_outputs = product_count;
     initial_setup(&solution, &board, v->sf->area);
     while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
         cycle(&solution, &board);
