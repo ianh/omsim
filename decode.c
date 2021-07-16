@@ -18,8 +18,8 @@ static char decode_instruction(char inst)
     case 'p': return 'q';
     case 'A': return 'g';
     case 'a': return 't';
-    case 'C': fprintf(stderr, "repeat instruction unsupported\n"); return ' ';
-    case 'X': fprintf(stderr, "reset instruction unsupported\n"); return ' ';
+    case 'C': abort(); // repeat and reset instructions are handled separately.
+    case 'X': abort();
     case 'O': return ' ';
     case ' ': return ' ';
     default: return ' ';
@@ -193,13 +193,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         error = &ignored_error;
     for (uint32_t i = 0; i < pf->number_of_inputs; ++i) {
         if (pf->inputs[i].number_of_atoms == 0) {
-            *error = "reagent has no atoms";
+            *error = "puzzle file contains a reagent with no atoms";
             return false;
         }
     }
     for (uint32_t i = 0; i < pf->number_of_outputs; ++i) {
         if (pf->outputs[i].number_of_atoms == 0) {
-            *error = "product has no atoms";
+            *error = "puzzle file contains a product with no atoms";
             return false;
         }
     }
@@ -222,7 +222,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
             for (uint32_t j = 0; j < sf->parts[i].number_of_instructions; ++j) {
                 if (sf->parts[i].instructions[j].index < 0) {
-                    *error = "negative instruction index";
+                    *error = "solution has a negative instruction index";
                     return false;
                 }
             }
@@ -233,20 +233,20 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             number_of_track_hexes += sf->parts[i].number_of_track_hexes;
         else if (byte_string_is(sf->parts[i].name, "input")) {
             if (sf->parts[i].which_input_or_output >= pf->number_of_inputs) {
-                *error = "input out of range";
+                *error = "solution refers to an input that doesn't exist in the puzzle file";
                 return false;
             }
             number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-std")) {
             if (sf->parts[i].which_input_or_output >= pf->number_of_outputs) {
-                *error = "output out of range";
+                *error = "solution refers to an output that doesn't exist in the puzzle file";
                 return false;
             }
             number_of_inputs_and_outputs++;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
             uint32_t which_output = sf->parts[i].which_input_or_output;
             if (which_output >= pf->number_of_outputs) {
-                *error = "output out of range";
+                *error = "solution refers to an output that doesn't exist in the puzzle file";
                 return false;
             }
             number_of_inputs_and_outputs++;
@@ -414,7 +414,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         if (destination && destination->id == conduit->id)
             conduit->other_side_glyph_index = destination->glyph_index;
         else if (!next || next->id != conduit->id) {
-            *error = "unpaired conduit";
+            *error = "solution contains an unpaired conduit";
             destroy(solution, 0);
             return false;
         } else {
@@ -439,7 +439,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         uint32_t min_tape = part.instructions[0].index;
         uint32_t max_tape = part.instructions[part.number_of_instructions - 1].index;
         if (max_tape - min_tape > 99999) {
-            *error = "instruction tape too long";
+            *error = "solution has an arm with an instruction tape that's too long";
             destroy(solution, 0);
             return false;
         }
@@ -456,7 +456,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         for (uint32_t j = 0; j < part.number_of_instructions; ++j) {
             struct solution_instruction inst = part.instructions[j];
             if (j > 0 && inst.index == part.instructions[j - 1].index) {
-                *error = "two instructions share the same index";
+                *error = "solution contains an arm with two instructions that have the same index";
                 destroy(solution, 0);
                 return false;
             }
@@ -464,7 +464,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             if (inst.instruction == 'C') { // repeat
                 while (j < part.number_of_instructions && part.instructions[j].instruction == 'C') {
                     if (last_end > part.instructions[j].index - min_tape) {
-                        *error = "repeat instruction overlaps with a reset instruction";
+                        *error = "solution contains a repeat instruction that overlaps with a reset instruction";
                         destroy(solution, 0);
                         return false;
                     }
