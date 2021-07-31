@@ -3,6 +3,7 @@
 #include "decode.h"
 #include "parse.h"
 #include "sim.h"
+#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -269,6 +270,40 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         int instructions = solution_instructions(&solution);
         destroy(&solution, &board);
         return instructions;
+    } else if (!strncmp("instructions with hotkey ", metric, strlen("instructions with hotkey "))) {
+        metric += strlen("instructions with hotkey ");
+        int value = 0;
+        if (!*metric) {
+            value = -1;
+            v->error = "no hotkeys specified in 'instructions with hotkey' metric";
+        }
+        for (; *metric; ++metric) {
+            switch (tolower(*metric)) {
+            case 'a':
+            case 'd':
+            case 'e':
+            case 'f':
+            case 'g':
+            case 'q':
+            case 'r':
+            case 's':
+            case 't':
+            case 'w':
+                break;
+            default:
+                v->error = "invalid instruction hotkey in 'instructions with hotkey' metric";
+                destroy(&solution, &board);
+                return -1;
+            }
+            for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+                for (size_t j = 0; j < solution.arm_tape_length[i]; ++j) {
+                    if (solution.arm_tape[i][j] == tolower(*metric))
+                        value++;
+                }
+            }
+        }
+        destroy(&solution, &board);
+        return value;
     } else if (!strcmp(metric, "number of arms")) {
         int arms = solution.number_of_arms;
         destroy(&solution, &board);

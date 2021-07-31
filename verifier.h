@@ -68,6 +68,12 @@ void verifier_error_clear(void *verifier);
 //  is considered an arm).
 // the "cost" metric returns the combined cost of all components.
 // the "instructions" metric counts each instruction like the game does.
+// the "instructions with hotkey <hotkeys>" metric counts instructions according
+//  to their in-game hotkey (QWERTASDFG).  repeat and reset instructions are
+//  expanded before instructions are counted -- specifying a C or V hotkey will
+//  produce an error, since they have already been expanded.  you can specify
+//  multiple hotkeys: e.g. "instructions with hotkey ADQE" to count rotations
+//  and pivots.
 // the "cycles" metric runs the solution to completion and returns the cycle the
 //  last output was dropped.  if the solution doesn't run to completion, it
 //  returns -1 -- run verifier_error() for the string describing the error.
