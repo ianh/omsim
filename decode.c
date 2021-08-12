@@ -376,6 +376,11 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 if (p.u > io->max_u)
                     io->max_u = p.u;
             }
+            if ((int64_t)io->max_u - (int64_t)io->min_u > 99999) {
+                *error = "solution contains an infinite product with too many rows";
+                destroy(solution, 0);
+                return false;
+            }
             size_t rows = io->max_u - io->min_u + 1;
             io->row_min_v = calloc(rows, sizeof(int32_t));
             io->row_max_v = calloc(rows, sizeof(int32_t));
