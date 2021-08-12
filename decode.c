@@ -220,12 +220,6 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 *error = "solution contains a zero-length arm";
                 return false;
             }
-            for (uint32_t j = 0; j < sf->parts[i].number_of_instructions; ++j) {
-                if (sf->parts[i].instructions[j].index < 0) {
-                    *error = "solution has a negative instruction index";
-                    return false;
-                }
-            }
             number_of_arms++;
         } else if (type & ANY_GLYPH)
             number_of_glyphs++;
@@ -267,7 +261,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->arms = calloc(solution->number_of_arms, sizeof(struct mechanism));
     solution->arm_tape = calloc(solution->number_of_arms, sizeof(char *));
     solution->arm_tape_length = calloc(solution->number_of_arms, sizeof(size_t));
-    solution->arm_tape_start_cycle = calloc(solution->number_of_arms, sizeof(uint64_t));
+    solution->arm_tape_start_cycle = calloc(solution->number_of_arms, sizeof(int64_t));
 
     solution->conduits = calloc(solution->number_of_conduits, sizeof(struct conduit));
 
@@ -436,22 +430,27 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         }
         qsort(part.instructions, part.number_of_instructions,
          sizeof(part.instructions[0]), compare_instructions_by_index);
-        uint32_t min_tape = part.instructions[0].index;
-        uint32_t max_tape = part.instructions[part.number_of_instructions - 1].index;
-        if (max_tape - min_tape > 99999) {
+        int32_t min_tape = part.instructions[0].index;
+        int32_t max_tape = part.instructions[part.number_of_instructions - 1].index;
+        if ((int64_t)max_tape - (int64_t)min_tape > 99999) {
             *error = "solution has an arm with an instruction tape that's too long";
             destroy(solution, 0);
             return false;
         }
-        uint32_t tape_length = max_tape - min_tape + 1;
+        int32_t tape_length = max_tape - min_tape + 1;
+        if ((int64_t)min_tape + (int64_t)tape_length * 2 > INT32_MAX) {
+            *error = "solution has an arm with a potential instruction tape index overflow";
+            destroy(solution, 0);
+            return false;
+        }
         // multiply by two to leave room for reset and repeat instructions
         // (which cannot exceed the length of the earlier instructions even in
         // the worst case).
         solution->arm_tape[arm_index] = calloc(tape_length * 2, 1);
         solution->arm_tape_start_cycle[arm_index] = min_tape;
-        uint32_t last_end = 0;
-        uint32_t last_repeat = 0;
-        uint32_t reset_from = 0;
+        int32_t last_end = 0;
+        int32_t last_repeat = 0;
+        int32_t reset_from = 0;
         char *tape = solution->arm_tape[arm_index];
         for (uint32_t j = 0; j < part.number_of_instructions; ++j) {
             struct solution_instruction inst = part.instructions[j];
@@ -460,7 +459,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 destroy(solution, 0);
                 return false;
             }
-            uint32_t n = inst.index - min_tape;
+            int32_t n = inst.index - min_tape;
             if (inst.instruction == 'C') { // repeat
                 while (j < part.number_of_instructions && part.instructions[j].instruction == 'C') {
                     if (last_end > part.instructions[j].index - min_tape) {
@@ -469,7 +468,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                         return false;
                     }
                     memcpy(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
-                    uint32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
+                    int32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
                     if (m > tape_length)
                         tape_length = m;
                     j++;
@@ -601,7 +600,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         arm_index++;
     }
     // adjust the tape start cycle so everything starts on cycle 1.
-    uint32_t tape_start_cycle = UINT32_MAX;
+    int64_t tape_start_cycle = INT64_MAX;
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
         if (solution->arm_tape_start_cycle[i] < tape_start_cycle)
             tape_start_cycle = solution->arm_tape_start_cycle[i];

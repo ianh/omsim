@@ -240,7 +240,7 @@ struct solution {
     // the lengths of these tape arrays.
     size_t *arm_tape_length;
     // the cycles on which to begin reading instructions from each tape.
-    uint64_t *arm_tape_start_cycle;
+    int64_t *arm_tape_start_cycle;
     size_t number_of_arms;
 
     // how many cycles until each tape loops back to the beginning.

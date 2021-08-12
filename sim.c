@@ -616,9 +616,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         uint32_t i = ii;
         if (i >= n)
             i -= n;
-        if (board->cycle < solution->arm_tape_start_cycle[i])
+        if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
             continue;
-        size_t index = board->cycle - solution->arm_tape_start_cycle[i];
+        size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
         index %= solution->tape_period;
         if (index >= solution->arm_tape_length[i])
             continue;
