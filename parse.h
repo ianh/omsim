@@ -76,6 +76,7 @@ struct solution_file {
     struct byte_string puzzle;
     struct byte_string name;
 
+    bool solved;
     uint32_t cycles;
     uint32_t cost;
     uint32_t area;

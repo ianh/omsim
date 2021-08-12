@@ -170,6 +170,7 @@ struct solution_file *parse_solution_byte_string(struct byte_string b)
     solution->puzzle = read_string(&b);
     solution->name = read_string(&b);
     if (read_uint32(&b)) {
+        solution->solved = true;
         uint32_t zero = read_uint32(&b);
         solution->cycles = read_uint32(&b);
         uint32_t one = read_uint32(&b);
