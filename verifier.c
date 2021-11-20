@@ -165,6 +165,8 @@ static void measure_throughput(struct verifier *v)
                 atom b = *lookup_atom(&board_snapshot, p);
                 if (!(b & VALID) || (b & REMOVED))
                     match = false;
+                if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)))
+                    match = false;
                 board_in_range++;
             }
             if (board_in_range != board_snapshot_in_range)
