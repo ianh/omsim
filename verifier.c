@@ -12,8 +12,8 @@ struct verifier {
     struct puzzle_file *pf;
     struct solution_file *sf;
 
-    int throughput_cycles;
-    int throughput_outputs;
+    int64_t throughput_cycles;
+    int64_t throughput_outputs;
 
     uint64_t cycle_limit;
 
@@ -69,13 +69,95 @@ static uint64_t min_output_count(struct solution *solution)
 {
     uint64_t min = UINT64_MAX;
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
-        if (!(solution->inputs_and_outputs[i].type & OUTPUT))
+        if (!(solution->inputs_and_outputs[i].type & SINGLE_OUTPUT))
             continue;
         uint64_t count = solution->inputs_and_outputs[i].number_of_outputs;
         if (count < min)
             min = count;
     }
     return min;
+}
+
+struct snapshot {
+    struct mechanism *arms;
+    struct board board;
+    uint32_t board_in_range;
+    uint64_t output_count;
+
+    int32_t max_u;
+    int32_t min_u;
+    int32_t max_v;
+    int32_t min_v;
+
+    bool done;
+
+    int64_t throughput_outputs;
+    int64_t throughput_cycles;
+
+    // only used for repeating outputs.
+    uint32_t satisfactions_until_snapshot;
+    uint32_t next_satisfactions_until_snapshot;
+    uint64_t last_satisfaction_cycle;
+    uint32_t number_of_repetitions;
+};
+
+static void take_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
+{
+    snapshot->arms = realloc(snapshot->arms, sizeof(struct mechanism) * solution->number_of_arms);
+    memcpy(snapshot->arms, solution->arms, sizeof(struct mechanism) * solution->number_of_arms);
+    struct atom_at_position *a = snapshot->board.atoms_at_positions;
+    snapshot->board = *board;
+    a = realloc(a, sizeof(struct atom_at_position) * board->capacity);
+    memcpy(a, board->atoms_at_positions, sizeof(struct atom_at_position) * board->capacity);
+    snapshot->board.atoms_at_positions = a;
+    snapshot->board_in_range = 0;
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        atom a = board->atoms_at_positions[i].atom;
+        if (!(a & VALID) || (a & REMOVED))
+            continue;
+        struct vector p = board->atoms_at_positions[i].position;
+        if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v)
+            continue;
+        snapshot->board_in_range++;
+    }
+    snapshot->output_count = min_output_count(solution);
+}
+
+static bool check_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
+{
+    if (board->collision)
+        return false;
+    for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+        struct mechanism a = snapshot->arms[i];
+        struct mechanism b = solution->arms[i];
+        if (a.position.u != b.position.u || a.position.v != b.position.v ||
+         a.direction_u.u != b.direction_u.u || a.direction_u.v != b.direction_u.v)
+            return false;
+    }
+    uint32_t board_in_range = 0;
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        atom a = board->atoms_at_positions[i].atom;
+        if (!(a & VALID) || (a & REMOVED))
+            continue;
+        struct vector p = board->atoms_at_positions[i].position;
+        bool in_range = true;
+        if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
+            if (a & VISITED)
+                in_range = false;
+            else
+                continue;
+        }
+        atom b = *lookup_atom(&snapshot->board, p);
+        if (!(b & VALID) || (b & REMOVED))
+            return false;
+        if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)))
+            return false;
+        if (in_range)
+            board_in_range++;
+    }
+    if (board_in_range != snapshot->board_in_range)
+        return false;
+    return true;
 }
 
 static void measure_throughput(struct verifier *v)
@@ -117,69 +199,175 @@ static void measure_throughput(struct verifier *v)
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return;
     initial_setup(&solution, &board, v->sf->area);
-    solution.target_number_of_outputs = UINT64_MAX;
-    struct mechanism *arm_snapshot = 0;
     uint64_t check_period = solution.tape_period;
     if (check_period == 0)
         check_period = 1;
-    struct board board_snapshot = { .cycle = check_period };
-    uint32_t board_snapshot_in_range = 0;
-    uint64_t output_count_snapshot = 0;
-    while (board.cycle < v->cycle_limit && !board.collision) {
-        if (board.cycle == board_snapshot.cycle * 2) {
-            arm_snapshot = realloc(arm_snapshot, sizeof(struct mechanism) * solution.number_of_arms);
-            memcpy(arm_snapshot, solution.arms, sizeof(struct mechanism) * solution.number_of_arms);
-            struct atom_at_position *a = board_snapshot.atoms_at_positions;
-            board_snapshot = board;
-            a = realloc(a, sizeof(struct atom_at_position) * board.capacity);
-            memcpy(a, board.atoms_at_positions, sizeof(struct atom_at_position) * board.capacity);
-            board_snapshot.atoms_at_positions = a;
-            board_snapshot_in_range = 0;
-            for (uint32_t i = 0; i < board.capacity; ++i) {
-                atom a = board.atoms_at_positions[i].atom;
-                if (!(a & VALID) || (a & REMOVED))
-                    continue;
-                struct vector p = board.atoms_at_positions[i].position;
-                if (p.u < min_u || p.u > max_u || p.v < min_v || p.v > max_v)
-                    continue;
-                board_snapshot_in_range++;
+    struct snapshot snapshot = {
+        .board = { .cycle = check_period },
+        .max_u = max_u,
+        .min_u = min_u,
+        .max_v = max_v,
+        .min_v = min_v,
+        .throughput_cycles = 0,
+        .throughput_outputs = 1,
+        .done = true,
+    };
+    uint32_t throughputs_remaining = 0;
+    struct snapshot *repeating_output_snapshots = calloc(sizeof(struct snapshot), solution.number_of_inputs_and_outputs);
+    for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution.inputs_and_outputs[i];
+        if (io->type & SINGLE_OUTPUT) {
+            throughputs_remaining++;
+            snapshot.done = false;
+        }
+        if (!(io->type & REPEATING_OUTPUT))
+            continue;
+        repeating_output_snapshots[i] = (struct snapshot){
+            .max_u = max_u,
+            .min_u = min_u,
+            .max_v = max_v,
+            .min_v = min_v,
+            .satisfactions_until_snapshot = 1,
+            .next_satisfactions_until_snapshot = 2,
+        };
+        throughputs_remaining++;
+    }
+    solution.target_number_of_outputs = UINT64_MAX;
+    struct board shifted_board = { 0 };
+    struct atom_at_position *shifted_atoms = 0;
+    uint32_t number_of_shifted_atoms = 0;
+    uint32_t shifted_atoms_cursor = 0;
+    while (throughputs_remaining > 0 && board.cycle < v->cycle_limit && !board.collision) {
+        // printf("%llu %u\n", board.cycle, throughputs_remaining);
+        // print_board(&board);
+        // normal throughput.
+        if (!snapshot.done && board.cycle == snapshot.board.cycle * 2)
+            take_snapshot(&solution, &board, &snapshot);
+        else if (!snapshot.done && !(board.cycle % check_period) && snapshot.arms) {
+            if (check_snapshot(&solution, &board, &snapshot)) {
+                snapshot.throughput_cycles = board.cycle - snapshot.board.cycle;
+                snapshot.throughput_outputs = min_output_count(&solution) - snapshot.output_count;
+                snapshot.done = true;
+                throughputs_remaining--;
             }
-            output_count_snapshot = min_output_count(&solution);
-        } else if (!(board.cycle % check_period) && arm_snapshot) {
-            bool match = true;
-            for (uint32_t i = 0; i < solution.number_of_arms && match; ++i) {
-                struct mechanism a = arm_snapshot[i];
-                struct mechanism b = solution.arms[i];
-                if (a.position.u != b.position.u || a.position.v != b.position.v ||
-                 a.direction_u.u != b.direction_u.u || a.direction_u.v != b.direction_u.v)
-                    match = false;
+        }
+        // repeating output throughput.
+        for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+            struct input_output *io = &solution.inputs_and_outputs[i];
+            if (!(io->type & REPEATING_OUTPUT))
+                continue;
+            struct snapshot *s = &repeating_output_snapshots[i];
+            if (s->done)
+                continue;
+            if (board.cycle - s->last_satisfaction_cycle > 1000)
+                goto error;
+            if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)
+                continue;
+            // the output is satisfied.
+            if (!--s->satisfactions_until_snapshot) {
+                take_snapshot(&solution, &board, s);
+                s->output_count = io->number_of_outputs;
+                s->number_of_repetitions = io->number_of_repetitions;
+                s->satisfactions_until_snapshot = s->next_satisfactions_until_snapshot;
+                s->next_satisfactions_until_snapshot *= 2;
+            } else if (s->board.cycle % check_period == board.cycle % check_period) {
+                struct atom_at_position *a = shifted_board.atoms_at_positions;
+                shifted_board = board;
+                a = realloc(a, sizeof(struct atom_at_position) * board.capacity);
+                memcpy(a, board.atoms_at_positions, sizeof(struct atom_at_position) * board.capacity);
+                shifted_board.atoms_at_positions = a;
+
+                // clear a gap corresponding to the number of repeating units added since the snapshot.
+                struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
+                struct vector offset = placeholder.position;
+                offset.u -= io->repetition_origin.u;
+                offset.v -= io->repetition_origin.v;
+                for (uint32_t i = s->number_of_repetitions - 1; i < io->number_of_repetitions - 1; ++i) {
+                    for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
+                        struct vector p = io->original_atoms[j].position;
+                        p.u += i * offset.u;
+                        p.v += i * offset.v;
+                        *lookup_atom(&shifted_board, p) |= REMOVED;
+                    }
+                }
+                // shift the remaining atoms to fill the gap.
+                shifted_atoms = realloc(shifted_atoms, sizeof(struct atom_at_position) * board.capacity);
+                number_of_shifted_atoms = 0;
+                shifted_atoms[0].position = (struct vector){
+                    .u = io->repetition_origin.u + (io->number_of_repetitions - 1) * offset.u,
+                    .v = io->repetition_origin.v + (io->number_of_repetitions - 1) * offset.v,
+                };
+                atom *base = lookup_atom(&shifted_board, shifted_atoms[0].position);
+                shifted_atoms[0].atom = *base;
+                *base |= REMOVED;
+                number_of_shifted_atoms++;
+                while (shifted_atoms_cursor < number_of_shifted_atoms) {
+                    struct atom_at_position a = shifted_atoms[shifted_atoms_cursor];
+                    for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
+                        if (!(a.atom & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
+                            continue;
+                        struct vector p = a.position;
+                        struct vector d = v_offset_for_direction(bond_direction);
+                        p.u += d.u;
+                        p.v += d.v;
+                        atom *b = lookup_atom(&shifted_board, p);
+                        if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
+                            continue;
+                        shifted_atoms[number_of_shifted_atoms++] = (struct atom_at_position){
+                            .atom = *b,
+                            .position = p,
+                        };
+                        *b |= REMOVED;
+                    }
+                    shifted_atoms_cursor++;
+                }
+                for (uint32_t i = 0; i < number_of_shifted_atoms; ++i) {
+                    struct vector p = shifted_atoms[i].position;
+                    p.u -= (io->number_of_repetitions - s->number_of_repetitions) * offset.u;
+                    p.v -= (io->number_of_repetitions - s->number_of_repetitions) * offset.v;
+                    // the VISITED flag tells check_snapshot not to skip over this atom, even if it's outside the bounding box.
+                    *insert_atom(&shifted_board, p, "collision during shift") = shifted_atoms[i].atom | VISITED;
+                }
+                // compare the snapshot with the result of this gap-clearing and
+                // shifting process.  if it matches, the machine is in a steady
+                // state.
+                if (check_snapshot(&solution, &shifted_board, s)) {
+                    s->throughput_cycles = shifted_board.cycle - s->board.cycle;
+                    s->throughput_outputs = io->number_of_outputs - s->output_count;
+                    s->done = true;
+                    throughputs_remaining--;
+                }
             }
-            uint32_t board_in_range = 0;
-            for (uint32_t i = 0; i < board.capacity && match; ++i) {
-                atom a = board.atoms_at_positions[i].atom;
-                if (!(a & VALID) || (a & REMOVED))
-                    continue;
-                struct vector p = board.atoms_at_positions[i].position;
-                if (p.u < min_u || p.u > max_u || p.v < min_v || p.v > max_v)
-                    continue;
-                atom b = *lookup_atom(&board_snapshot, p);
-                if (!(b & VALID) || (b & REMOVED))
-                    match = false;
-                if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)))
-                    match = false;
-                board_in_range++;
-            }
-            if (board_in_range != board_snapshot_in_range)
-                match = false;
-            if (match) {
-                v->throughput_cycles = board.cycle - board_snapshot.cycle;
-                v->throughput_outputs = min_output_count(&solution) - output_count_snapshot;
-                break;
-            }
+            uint32_t reps = io->number_of_repetitions + REPEATING_OUTPUT_REPETITIONS;
+            if (!repeat_molecule(io, reps, &v->error))
+                goto error;
         }
         cycle(&solution, &board);
     }
-    free(board_snapshot.atoms_at_positions);
+    if (throughputs_remaining > 0)
+        goto error;
+    v->throughput_cycles = snapshot.throughput_cycles;
+    v->throughput_outputs = snapshot.throughput_outputs;
+    for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution.inputs_and_outputs[i];
+        if (!(io->type & REPEATING_OUTPUT))
+            continue;
+        struct snapshot *s = &repeating_output_snapshots[i];
+        if (s->throughput_cycles * v->throughput_outputs > s->throughput_outputs * v->throughput_cycles) {
+            v->throughput_cycles = s->throughput_cycles;
+            v->throughput_outputs = s->throughput_outputs;
+        }
+    }
+error:
+    for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+        free(repeating_output_snapshots[i].arms);
+        free(repeating_output_snapshots[i].board.atoms_at_positions);
+    }
+    free(repeating_output_snapshots);
+    free(shifted_atoms);
+    free(snapshot.arms);
+    free(snapshot.board.atoms_at_positions);
+    free(shifted_board.atoms_at_positions);
     if (board.collision)
         v->error = board.collision_reason;
     destroy(&solution, &board);

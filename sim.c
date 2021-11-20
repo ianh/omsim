@@ -30,7 +30,6 @@ static double xy_len2(struct xy_vector xy)
 }
 
 // hash table functions -- see appendix.
-static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 static void ensure_capacity(struct board *board, uint32_t potential_insertions);
 static void schedule_flag_reset_if_needed(struct board *board, atom *a);
 
@@ -1081,7 +1080,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 return;
             }
             if (io->type & REPEATING_OUTPUT)
-                io->number_of_outputs = REPEATING_OUTPUT_REPETITIONS;
+                io->number_of_outputs = io->number_of_repetitions * io->outputs_per_repetition;
             else {
                 for (uint32_t j = 0; j < io->number_of_atoms; ++j)
                     remove_atom(board, lookup_atom(board, io->atoms[j].position));
@@ -1104,9 +1103,6 @@ static bool check_completion(struct solution *solution)
     uint64_t min = UINT64_MAX;
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         if (!(solution->inputs_and_outputs[i].type & OUTPUT))
-            continue;
-        if ((solution->inputs_and_outputs[i].type & REPEATING_OUTPUT) &&
-         solution->inputs_and_outputs[i].number_of_outputs == REPEATING_OUTPUT_REPETITIONS)
             continue;
         uint64_t count = solution->inputs_and_outputs[i].number_of_outputs;
         if (count < min)
@@ -1144,6 +1140,78 @@ continue_with_outputs:
     board->cycle++;
     board->half_cycle = 1;
     return FINISHED_CYCLE;
+}
+
+bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char **error)
+{
+    if (io->number_of_original_atoms == 0) {
+        *error = "puzzle contains an empty infinite product";
+        return false;
+    }
+    struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
+    struct vector offset = placeholder.position;
+    offset.u -= io->repetition_origin.u;
+    offset.v -= io->repetition_origin.v;
+    placeholder.position.u += offset.u * (repetitions - 1);
+    placeholder.position.v += offset.v * (repetitions - 1);
+    struct atom_at_position *atoms = calloc((io->number_of_original_atoms - 1) * repetitions + 1,
+     sizeof(io->atoms[0]));
+    for (uint32_t i = 0; i < repetitions; ++i) {
+        for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
+            struct atom_at_position *a = &atoms[(io->number_of_original_atoms - 1) * i + j];
+            *a = io->original_atoms[j];
+            a->position.u += i * offset.u;
+            a->position.v += i * offset.v;
+            a->atom = io->original_atoms[j].atom;
+            // remove bonds with the repetition placeholder -- they aren't
+            // required to validate.
+            for (uint32_t k = 0; k < repetitions; ++k) {
+                struct vector dir = v_offset_for_direction(k);
+                if (a->position.u + dir.u == placeholder.position.u &&
+                 a->position.v + dir.v == placeholder.position.v)
+                    a->atom &= ~(BOND_LOW_BITS << k);
+            }
+        }
+    }
+    atoms[(io->number_of_original_atoms - 1) * repetitions] = placeholder;
+    free(io->atoms);
+    io->atoms = atoms;
+    io->number_of_atoms = (io->number_of_original_atoms - 1) * repetitions + 1;
+    io->number_of_repetitions = repetitions;
+
+    io->min_u = INT32_MAX;
+    io->max_u = INT32_MIN;
+    for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+        if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            continue;
+        struct vector p = io->atoms[j].position;
+        if (p.u < io->min_u)
+            io->min_u = p.u;
+        if (p.u > io->max_u)
+            io->max_u = p.u;
+    }
+    if ((int64_t)io->max_u - (int64_t)io->min_u > 99999) {
+        *error = "solution contains an infinite product with too many rows";
+        return false;
+    }
+    size_t rows = io->max_u - io->min_u + 1;
+    io->row_min_v = realloc(io->row_min_v, rows * sizeof(int32_t));
+    io->row_max_v = realloc(io->row_max_v, rows * sizeof(int32_t));
+    for (size_t j = 0; j < rows; ++j) {
+        io->row_min_v[j] = INT32_MAX;
+        io->row_max_v[j] = INT32_MIN;
+    }
+    for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+        if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            continue;
+        struct vector p = io->atoms[j].position;
+        size_t row = p.u - io->min_u;
+        if (p.v < io->row_min_v[row])
+            io->row_min_v[row] = p.v;
+        if (p.v > io->row_max_v[row])
+            io->row_max_v[row] = p.v;
+    }
+    return true;
 }
 
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
@@ -1231,6 +1299,7 @@ void destroy(struct solution *solution, struct board *board)
         free(solution->conduits);
         for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
             free(solution->inputs_and_outputs[i].atoms);
+            free(solution->inputs_and_outputs[i].original_atoms);
             free(solution->inputs_and_outputs[i].row_min_v);
             free(solution->inputs_and_outputs[i].row_max_v);
         }
@@ -1320,7 +1389,7 @@ void mark_used_area(struct board *board, struct vector point)
     board->used++;
 }
 
-static atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
+atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
 {
     struct atom_at_position *a = lookup_atom_at_position(board, query);
     if ((a->atom & VALID) && !(a->atom & REMOVED))

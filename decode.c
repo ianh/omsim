@@ -141,51 +141,6 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
     }
 }
 
-static void repeat_molecule(struct vector origin, struct input_output *io)
-{
-    if (io->number_of_atoms == 0)
-        return;
-    struct atom_at_position *placeholder = &io->atoms[io->number_of_atoms - 1];
-    for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
-        if (!(io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER))
-            continue;
-        struct atom_at_position a = io->atoms[i];
-        io->atoms[i] = io->atoms[io->number_of_atoms - 1];
-        *placeholder = a;
-        break;
-    }
-    if (!(placeholder->atom & REPEATING_OUTPUT_PLACEHOLDER))
-        return;
-    struct vector offset = placeholder->position;
-    offset.u -= origin.u;
-    offset.v -= origin.v;
-    placeholder->position.u += offset.u * 5;
-    placeholder->position.v += offset.v * 5;
-    struct atom_at_position *atoms = calloc((io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1,
-     sizeof(io->atoms[0]));
-    for (int i = 0; i < REPEATING_OUTPUT_REPETITIONS; ++i) {
-        for (uint32_t j = 0; j < io->number_of_atoms - 1; ++j) {
-            struct atom_at_position *a = &atoms[(io->number_of_atoms - 1) * i + j];
-            *a = io->atoms[j];
-            a->position.u += i * offset.u;
-            a->position.v += i * offset.v;
-            a->atom = io->atoms[j].atom;
-            // remove bonds with the repetition placeholder -- they aren't
-            // required to validate.
-            for (int k = 0; k < REPEATING_OUTPUT_REPETITIONS; ++k) {
-                struct vector dir = v_offset_for_direction(k);
-                if (a->position.u + dir.u == placeholder->position.u &&
-                 a->position.v + dir.v == placeholder->position.v)
-                    a->atom &= ~(BOND_LOW_BITS << k);
-            }
-        }
-    }
-    atoms[(io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS] = *placeholder;
-    free(io->atoms);
-    io->atoms = atoms;
-    io->number_of_atoms = (io->number_of_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1;
-}
-
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
 {
     const char *ignored_error;
@@ -366,39 +321,34 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->type = REPEATING_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
-            repeat_molecule(m.position, io);
-            io->min_u = INT32_MAX;
-            io->max_u = INT32_MIN;
-            for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-                if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
-                    continue;
-                struct vector p = io->atoms[j].position;
-                if (p.u < io->min_u)
-                    io->min_u = p.u;
-                if (p.u > io->max_u)
-                    io->max_u = p.u;
-            }
-            if ((int64_t)io->max_u - (int64_t)io->min_u > 99999) {
-                *error = "solution contains an infinite product with too many rows";
+            io->original_atoms = io->atoms;
+            io->number_of_original_atoms = io->number_of_atoms;
+            if (io->number_of_original_atoms == 0) {
+                *error = "solution contains an empty infinite product";
                 destroy(solution, 0);
                 return false;
             }
-            size_t rows = io->max_u - io->min_u + 1;
-            io->row_min_v = calloc(rows, sizeof(int32_t));
-            io->row_max_v = calloc(rows, sizeof(int32_t));
-            for (size_t j = 0; j < rows; ++j) {
-                io->row_min_v[j] = INT32_MAX;
-                io->row_max_v[j] = INT32_MIN;
-            }
-            for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-                if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            struct atom_at_position *placeholder = &io->original_atoms[io->number_of_original_atoms - 1];
+            for (uint32_t i = 0; i < io->number_of_original_atoms; ++i) {
+                if (!(io->original_atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER))
                     continue;
-                struct vector p = io->atoms[j].position;
-                size_t row = p.u - io->min_u;
-                if (p.v < io->row_min_v[row])
-                    io->row_min_v[row] = p.v;
-                if (p.v > io->row_max_v[row])
-                    io->row_max_v[row] = p.v;
+                struct atom_at_position a = io->original_atoms[i];
+                io->original_atoms[i] = *placeholder;
+                *placeholder = a;
+                break;
+            }
+            if (!(placeholder->atom & REPEATING_OUTPUT_PLACEHOLDER)) {
+                *error = "solution contains an infinite product without a repetition placeholder";
+                destroy(solution, 0);
+                return false;
+            }
+            io->atoms = 0;
+            io->number_of_atoms = 0;
+            io->repetition_origin = m.position;
+            io->outputs_per_repetition = pf->output_scale;
+            if (!repeat_molecule(io, REPEATING_OUTPUT_REPETITIONS, error)) {
+                destroy(solution, 0);
+                return false;
             }
             io_index--;
         }

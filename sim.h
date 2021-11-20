@@ -219,8 +219,24 @@ struct input_output {
     // the number of times this output has consumed something.
     uint64_t number_of_outputs;
 
-    // bounding box information for repeating outputs.  only set when
-    // type & REPEATING_OUTPUT is true.
+    // normally, a repeating output only goes up to six repetitions.  but we
+    // keep counting after that so throughput can be measured in the limit.
+    // that means extending the footprint of the output every time we hit a new
+    // multiple of six.  this variable tracks the number of repetitions the
+    // footprint currently contains.
+    uint32_t number_of_repetitions;
+    // how much should number_of_outputs go up for every matched repetition?
+    uint32_t outputs_per_repetition;
+
+    // these are the original atoms, before repetition is applied.  the
+    // placeholder atom is guaranteed to be at the last position in the array.
+    struct atom_at_position *original_atoms;
+    uint32_t number_of_original_atoms;
+
+    // where the repeated atoms will be attached to the repetition placeholder.
+    struct vector repetition_origin;
+
+    // bounding box information for repeating outputs.
     int32_t min_u;
     int32_t max_u;
     // these arrays each have length (max_u - min_u + 1).  row_min_v[i] is the
@@ -339,11 +355,16 @@ static inline void cycle(struct solution *solution, struct board *board)
 // free memory associated with the solution and board.
 void destroy(struct solution *solution, struct board *board);
 
+atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
 void mark_used_area(struct board *board, struct vector point);
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
 
 uint32_t used_area(struct board *board);
+
+// used during decoding.
+bool repeat_molecule(struct input_output *io, uint32_t number_of_repetitions,
+ const char **error);
 
 // geometric helper functions.
 struct vector u_offset_for_direction(int direction);
