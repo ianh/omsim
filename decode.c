@@ -305,27 +305,29 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 if (j < part.number_of_track_hexes)
                     hex = part.track_hexes[j];
                 else {
-                    // two-hex tracks can't become a loop.
-                    if (part.number_of_track_hexes <= 2)
-                        break;
                     hex = part.track_hexes[0];
                     int32_t du = hex.offset[1] - part.track_hexes[j - 1].offset[1];
                     int32_t dv = hex.offset[0] - part.track_hexes[j - 1].offset[0];
-                    // if the offset between the two hexes isn't a cardinal
-                    // direction, then the ends are too far away for the track
-                    // to become a loop.
-                    if (direction_for_offset((struct vector){ du, dv }) < 0)
+                    // two-hex tracks can't become a loop.  also, if the offset
+                    // between the two hexes isn't a cardinal direction, then
+                    // the ends are too far away for the track to become a loop.
+                    if (part.number_of_track_hexes <= 2 || direction_for_offset((struct vector){ du, dv }) < 0) {
+                        // ensure a plus motion leaves the arm in place.
+                        uint32_t index;
+                        lookup_track(solution, last_position, &index);
+                        solution->track_plus_motions[index] = (struct vector){ 0, 0 };
                         break;
+                    }
                 }
                 struct vector p = mechanism_relative_position(m, hex.offset[1], hex.offset[0], 1);
+                if (j == 0)
+                    last_position = p;
                 uint32_t index;
                 lookup_track(solution, p, &index);
                 solution->track_positions[index] = p;
-                if (j != 0) {
-                    solution->track_minus_motions[index] = (struct vector){ last_position.u - p.u, last_position.v - p.v };
-                    lookup_track(solution, last_position, &index);
-                    solution->track_plus_motions[index] = (struct vector){ p.u - last_position.u, p.v - last_position.v };
-                }
+                solution->track_minus_motions[index] = (struct vector){ last_position.u - p.u, last_position.v - p.v };
+                lookup_track(solution, last_position, &index);
+                solution->track_plus_motions[index] = (struct vector){ p.u - last_position.u, p.v - last_position.v };
                 last_position = p;
             }
         } else if (byte_string_is(part.name, "pipe")) {
