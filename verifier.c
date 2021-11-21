@@ -209,10 +209,8 @@ static void measure_dimension(struct board *board, int32_t u, int32_t v, int *di
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
     struct verifier *v = verifier;
-    if (!v->sf) {
-        v->error = "invalid solution file";
+    if (!v->sf)
         return -1;
-    }
     long product_count = -1;
     if (!strncmp("product ", metric, strlen("product "))) {
         metric += strlen("product ");
