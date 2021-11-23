@@ -215,7 +215,7 @@ static void measure_throughput(struct verifier *v)
     struct snapshot *repeating_output_snapshots = calloc(sizeof(struct snapshot), solution.number_of_inputs_and_outputs);
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution.inputs_and_outputs[i];
-        if (io->type & SINGLE_OUTPUT) {
+        if (io->type & SINGLE_OUTPUT && snapshot.done) {
             throughputs_remaining++;
             snapshot.done = false;
         }
