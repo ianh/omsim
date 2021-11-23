@@ -259,8 +259,10 @@ static void measure_throughput(struct verifier *v)
             struct snapshot *s = &repeating_output_snapshots[i];
             if (s->done)
                 continue;
-            if (board.cycle - s->last_satisfaction_cycle > 1000)
+            if (board.cycle - s->last_satisfaction_cycle > 1000) {
+                v->error = "interval between infinite product matches exceeded limit";
                 goto error;
+            }
             if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)
                 continue;
             // the output is satisfied.
@@ -344,8 +346,14 @@ static void measure_throughput(struct verifier *v)
         }
         cycle(&solution, &board);
     }
-    if (throughputs_remaining > 0)
+    if (board.collision) {
+        v->error = board.collision_reason;
         goto error;
+    }
+    if (throughputs_remaining > 0) {
+        v->error = "solution did not converge on a throughput";
+        goto error;
+    }
     v->throughput_cycles = snapshot.throughput_cycles;
     v->throughput_outputs = snapshot.throughput_outputs;
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
@@ -368,8 +376,6 @@ error:
     free(snapshot.arms);
     free(snapshot.board.atoms_at_positions);
     free(shifted_board.atoms_at_positions);
-    if (board.collision)
-        v->error = board.collision_reason;
     destroy(&solution, &board);
 }
 
