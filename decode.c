@@ -152,7 +152,9 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             return false;
         }
     }
+    int64_t number_of_unplaced_outputs = 0;
     for (uint32_t i = 0; i < pf->number_of_outputs; ++i) {
+        number_of_unplaced_outputs++;
         if (pf->outputs[i].number_of_atoms == 0) {
             *error = "puzzle file contains a product with no atoms";
             return false;
@@ -163,8 +165,6 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     size_t number_of_conduits = 0;
     size_t number_of_track_hexes = 0;
     size_t number_of_inputs_and_outputs = 0;
-    // to ensure that the proper number of outputs are placed in the solution.
-    int64_t number_of_unplaced_outputs = 0;
     // first pass through the solution file: count how many things of each type
     // there are.  these counts are used to allocate arrays of the correct size.
     for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
@@ -194,7 +194,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 return false;
             }
             number_of_inputs_and_outputs++;
-            number_of_unplaced_outputs++;
+            number_of_unplaced_outputs--;
         } else if (byte_string_is(sf->parts[i].name, "out-rep")) {
             uint32_t which_output = sf->parts[i].which_input_or_output;
             if (which_output >= pf->number_of_outputs) {
@@ -202,11 +202,16 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 return false;
             }
             number_of_inputs_and_outputs++;
-            number_of_unplaced_outputs++;
+            number_of_unplaced_outputs--;
         } else if (byte_string_is(sf->parts[i].name, "pipe")) {
             number_of_glyphs++;
             number_of_conduits++;
         }
+    }
+    if (number_of_unplaced_outputs != 0) {
+        *error = "all products in the puzzle must be placed in the solution";
+        destroy(solution, 0);
+        return false;
     }
     solution->number_of_arms = number_of_arms;
     solution->number_of_glyphs = number_of_glyphs;
@@ -319,7 +324,6 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->puzzle_index = part.which_input_or_output;
             decode_molecule(c, m, io);
             io_index--;
-            number_of_unplaced_outputs--;
         } else if (byte_string_is(part.name, "out-rep")) {
             struct puzzle_molecule c = pf->outputs[part.which_input_or_output];
             struct input_output *io = &solution->inputs_and_outputs[io_index];
@@ -356,13 +360,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 return false;
             }
             io_index--;
-            number_of_unplaced_outputs--;
         }
-    }
-    if (number_of_unplaced_outputs != 0) {
-        *error = "all products in the puzzle must be placed in the solution";
-        destroy(solution, 0);
-        return false;
     }
     // sort conduits by id in order to find pairs of linked conduits.
     qsort(solution->conduits, solution->number_of_conduits,
