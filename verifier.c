@@ -97,7 +97,6 @@ struct snapshot {
     // only used for repeating outputs.
     uint32_t satisfactions_until_snapshot;
     uint32_t next_satisfactions_until_snapshot;
-    uint64_t last_satisfaction_cycle;
     uint32_t number_of_repetitions;
 };
 
@@ -259,8 +258,8 @@ static void measure_throughput(struct verifier *v)
             struct snapshot *s = &repeating_output_snapshots[i];
             if (s->done)
                 continue;
-            if (board.cycle - s->last_satisfaction_cycle > 1000) {
-                v->error = "interval between infinite product matches exceeded limit";
+            if (board.used - s->board.used > 20000) {
+                v->error = "throughput measurement halted due to excessive area increase";
                 goto error;
             }
             if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)
