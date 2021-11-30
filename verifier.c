@@ -198,6 +198,7 @@ static void measure_throughput(struct verifier *v)
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return;
     initial_setup(&solution, &board, v->sf->area);
+    board.ignore_swing_area = true;
     uint64_t check_period = solution.tape_period;
     if (check_period == 0)
         check_period = 1;
@@ -258,8 +259,8 @@ static void measure_throughput(struct verifier *v)
             struct snapshot *s = &repeating_output_snapshots[i];
             if (s->done)
                 continue;
-            if (board.used - s->board.used > 20000) {
-                v->error = "throughput measurement halted due to excessive area increase";
+            if (board.used - s->board.used > 10000) {
+                v->error = "throughput measurement halted due to excessive area increase without infinite product satisfaction";
                 goto error;
             }
             if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)

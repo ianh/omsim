@@ -503,6 +503,8 @@ static double ccw(struct xy_vector a, struct xy_vector b)
 
 static void record_swing_area(struct board *board, struct vector position, struct vector base, int rotation)
 {
+    if (board->ignore_swing_area)
+        return;
     struct vector p = position;
     p.u -= base.u;
     p.v -= base.v;
