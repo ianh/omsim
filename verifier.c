@@ -237,18 +237,22 @@ static void measure_throughput(struct verifier *v)
     struct atom_at_position *shifted_atoms = 0;
     uint32_t number_of_shifted_atoms = 0;
     uint32_t shifted_atoms_cursor = 0;
+    bool steady_state = false;
     while (throughputs_remaining > 0 && board.cycle < v->cycle_limit && !board.collision) {
         // printf("%llu %u\n", board.cycle, throughputs_remaining);
         // print_board(&board);
         // normal throughput.
-        if (!snapshot.done && board.cycle == snapshot.board.cycle * 2)
+        if (!steady_state && board.cycle == snapshot.board.cycle * 2)
             take_snapshot(&solution, &board, &snapshot);
-        else if (!snapshot.done && !(board.cycle % check_period) && snapshot.arms) {
+        else if (!steady_state && !(board.cycle % check_period) && snapshot.arms) {
             if (check_snapshot(&solution, &board, &snapshot)) {
-                snapshot.throughput_cycles = board.cycle - snapshot.board.cycle;
-                snapshot.throughput_outputs = min_output_count(&solution) - snapshot.output_count;
-                snapshot.done = true;
-                throughputs_remaining--;
+                steady_state = true;
+                if (!snapshot.done) {
+                    snapshot.throughput_cycles = board.cycle - snapshot.board.cycle;
+                    snapshot.throughput_outputs = min_output_count(&solution) - snapshot.output_count;
+                    snapshot.done = true;
+                    throughputs_remaining--;
+                }
             }
         }
         // repeating output throughput.
@@ -266,13 +270,13 @@ static void measure_throughput(struct verifier *v)
             if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)
                 continue;
             // the output is satisfied.
-            if (!--s->satisfactions_until_snapshot) {
+            if (steady_state && !--s->satisfactions_until_snapshot) {
                 take_snapshot(&solution, &board, s);
                 s->output_count = io->number_of_outputs;
                 s->number_of_repetitions = io->number_of_repetitions;
                 s->satisfactions_until_snapshot = s->next_satisfactions_until_snapshot;
                 s->next_satisfactions_until_snapshot *= 2;
-            } else if (s->board.cycle % check_period == board.cycle % check_period) {
+            } else if (steady_state && s->board.cycle % check_period == board.cycle % check_period) {
                 struct atom_at_position *a = shifted_board.atoms_at_positions;
                 shifted_board = board;
                 a = realloc(a, sizeof(struct atom_at_position) * board.capacity);
