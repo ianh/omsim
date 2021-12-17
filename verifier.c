@@ -20,16 +20,58 @@ struct verifier {
     const char *error;
 };
 
-void *verifier_create(const char *puzzle_filename, const char *solution_filename)
+static void *verifier_create_empty(void)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 100000;
+    return v;
+}
+
+void *verifier_create(const char *puzzle_filename, const char *solution_filename)
+{
+    struct verifier *v = verifier_create_empty();
     v->pf = parse_puzzle_file(puzzle_filename);
     if (!v->pf) {
         v->error = "invalid puzzle file";
         return v;
     }
     v->sf = parse_solution_file(solution_filename);
+    if (!v->sf) {
+        v->error = "invalid solution file";
+        return v;
+    }
+    return v;
+}
+
+void *verifier_create_from_bytes(const char *puzzle_bytes, int puzzle_length,
+ const char *solution_bytes, int solution_length)
+{
+    char *puzzle_copy = malloc(puzzle_length);
+    memcpy(puzzle_copy, puzzle_bytes, puzzle_length);
+    char *solution_copy = malloc(solution_length);
+    memcpy(solution_copy, solution_bytes, solution_length);
+    struct verifier *v = verifier_create_from_bytes_without_copying(puzzle_copy,
+     puzzle_length, solution_copy, solution_length);
+    if (!v->pf || !v->sf) {
+        free(puzzle_copy);
+        free(solution_copy);
+    } else {
+        v->pf->owns_bytes = true;
+        v->sf->owns_bytes = true;
+    }
+    return v;
+}
+
+void *verifier_create_from_bytes_without_copying(const char *puzzle_bytes, int puzzle_length,
+ const char *solution_bytes, int solution_length)
+{
+    struct verifier *v = verifier_create_empty();
+    v->pf = parse_puzzle_byte_string((struct byte_string){ (unsigned char *)puzzle_bytes, puzzle_length });
+    if (!v->pf) {
+        v->error = "invalid puzzle file";
+        return v;
+    }
+    v->sf = parse_solution_byte_string((struct byte_string){ (unsigned char *)solution_bytes, solution_length });
     if (!v->sf) {
         v->error = "invalid solution file";
         return v;

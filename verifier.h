@@ -9,6 +9,17 @@
 // error.
 void *verifier_create(const char *puzzle_filename, const char *solution_filename);
 
+// like verifier_create(), but takes two byte arrays instead of reading from the
+// filesystem.
+void *verifier_create_from_bytes(const char *puzzle_bytes, int puzzle_length,
+ const char *solution_bytes, int solution_length);
+
+// like verifier_create_from_bytes(), but doesn't make a copy of the bytes.  the
+// caller is responsible for keeping these allocations around until the verifier
+// is destroyed.
+void *verifier_create_from_bytes_without_copying(const char *puzzle_bytes, int puzzle_length,
+ const char *solution_bytes, int solution_length);
+
 // destroys a verifier object created by verifier_create(), freeing its memory.
 void verifier_destroy(void *verifier);
 
