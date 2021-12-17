@@ -212,6 +212,10 @@ static void measure_throughput(struct verifier *v)
         .throughput_outputs = 1,
         .done = true,
     };
+    for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+        while (snapshot.board.cycle * 2 < solution.arm_tape_start_cycle[i])
+            snapshot.board.cycle += check_period;
+    }
     uint32_t throughputs_remaining = 0;
     struct snapshot *repeating_output_snapshots = calloc(sizeof(struct snapshot), solution.number_of_inputs_and_outputs);
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
