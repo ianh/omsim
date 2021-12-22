@@ -1167,7 +1167,7 @@ bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char *
             a->atom = io->original_atoms[j].atom;
             // remove bonds with the repetition placeholder -- they aren't
             // required to validate.
-            for (uint32_t k = 0; k < repetitions; ++k) {
+            for (uint32_t k = 0; k < 6; ++k) {
                 struct vector dir = v_offset_for_direction(k);
                 if (a->position.u + dir.u == placeholder.position.u &&
                  a->position.v + dir.v == placeholder.position.v)
