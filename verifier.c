@@ -281,8 +281,6 @@ static void measure_throughput(struct verifier *v)
     solution.target_number_of_outputs = UINT64_MAX;
     struct board shifted_board = { 0 };
     struct atom_at_position *shifted_atoms = 0;
-    uint32_t number_of_shifted_atoms = 0;
-    uint32_t shifted_atoms_cursor = 0;
     bool steady_state = false;
     while (throughputs_remaining > 0 && board.cycle < v->cycle_limit && !board.collision) {
         // printf("%llu %u\n", board.cycle, throughputs_remaining);
@@ -309,7 +307,7 @@ static void measure_throughput(struct verifier *v)
             struct snapshot *s = &repeating_output_snapshots[i];
             if (s->done)
                 continue;
-            if (board.used - s->board.used > 10000) {
+            if (board.used - s->board.used > 50000) {
                 v->error = "throughput measurement halted due to excessive area increase without infinite product satisfaction";
                 goto error;
             }
@@ -344,7 +342,8 @@ static void measure_throughput(struct verifier *v)
                 }
                 // shift the remaining atoms to fill the gap.
                 shifted_atoms = realloc(shifted_atoms, sizeof(struct atom_at_position) * board.capacity);
-                number_of_shifted_atoms = 0;
+                uint32_t number_of_shifted_atoms = 0;
+                uint32_t shifted_atoms_cursor = 0;
                 shifted_atoms[0].position = (struct vector){
                     .u = io->repetition_origin.u + (io->number_of_repetitions - 1) * offset.u,
                     .v = io->repetition_origin.v + (io->number_of_repetitions - 1) * offset.v,
