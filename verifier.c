@@ -547,6 +547,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         }
         destroy(&solution, &board);
         return value;
+    } else if (!strcmp(metric, "instruction tape period")) {
+        int period = solution.tape_period;
+        destroy(&solution, &board);
+        return period;
     } else if (!strcmp(metric, "number of arms")) {
         int arms = solution.number_of_arms;
         destroy(&solution, &board);

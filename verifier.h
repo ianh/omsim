@@ -85,6 +85,8 @@ void verifier_error_clear(void *verifier);
 //  produce an error, since they have already been expanded.  you can specify
 //  multiple hotkeys: e.g. "instructions with hotkey ADQE" to count rotations
 //  and pivots.
+// the "instruction tape period" metric counts how many cycles elapse before the
+//  instruction tape loops.
 // the "cycles" metric runs the solution to completion and returns the cycle the
 //  last output was dropped.  if the solution doesn't run to completion, it
 //  returns -1 -- run verifier_error() for the string describing the error.
