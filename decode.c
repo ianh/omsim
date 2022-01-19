@@ -253,6 +253,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             .position = { part.position[1], part.position[0] },
             .direction_u = u_offset_for_direction(part.rotation),
             .direction_v = v_offset_for_direction(part.rotation),
+            .arm_rotation = part.rotation,
         };
         if (m.type & ANY_ARM) {
             m.direction_u.u *= part.size;

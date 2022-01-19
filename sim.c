@@ -759,6 +759,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             };
             m->direction_u = nu;
             m->direction_v = nv;
+            m->arm_rotation++;
             break;
         }
         case 'd': { // rotate cw
@@ -774,6 +775,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             };
             m->direction_u = nu;
             m->direction_v = nv;
+            m->arm_rotation--;
             break;
         }
         case 'w': // extend piston
@@ -800,6 +802,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         default:
             break;
         }
+        // the weird (uint32_t)-(int64_t) thing is to handle the INT_MIN case.
+        if (m->arm_rotation > 0 && (uint32_t)m->arm_rotation > solution->maximum_absolute_arm_rotation)
+            solution->maximum_absolute_arm_rotation = (uint32_t)m->arm_rotation;
+        else if (m->arm_rotation < 0 && (uint32_t)-(int64_t)m->arm_rotation > solution->maximum_absolute_arm_rotation)
+            solution->maximum_absolute_arm_rotation = (uint32_t)-(int64_t)m->arm_rotation;
     }
     // carry out deferred atom movements.
     ensure_capacity(board, board->movements.length);

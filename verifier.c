@@ -580,7 +580,9 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         measure_dimension(&board, 2, -1, &value, 2);
         measure_dimension(&board, 1, -2, &value, 2);
         measure_dimension(&board, 1, 1, &value, 2);
-    } else
+    } else if (!strcmp(metric, "maximum absolute arm rotation"))
+        value = solution.maximum_absolute_arm_rotation;
+    else
         v->error = "unknown metric";
     destroy(&solution, &board);
     return value;

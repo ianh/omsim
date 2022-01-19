@@ -77,6 +77,9 @@ void verifier_error_clear(void *verifier);
 //  all the segments in that piece, and returns the combined total.
 // the "number of arms" metric returns the number of arms (the van berlo's wheel
 //  is considered an arm).
+// the "maximum absolute arm rotation" metric runs the solution to completion
+//  while recording the absolute value of the rotation of each arm on every
+//  cycle.  the maximum absolute rotation value is returned.
 // the "cost" metric returns the combined cost of all components.
 // the "instructions" metric counts each instruction like the game does.
 // the "instructions with hotkey <hotkeys>" metric counts instructions according

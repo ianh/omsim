@@ -157,6 +157,9 @@ struct mechanism {
     // the index of the conduit this glyph is associated with.  only meaningful
     // for mechanisms of type CONDUIT.
     uint32_t conduit_index;
+
+    // used for arms (and only to track rotation for "overclock" detection).
+    int32_t arm_rotation;
 };
 
 struct conduit {
@@ -258,6 +261,10 @@ struct solution {
     // the cycles on which to begin reading instructions from each tape.
     int64_t *arm_tape_start_cycle;
     size_t number_of_arms;
+
+    // the maximum absolute value of all arm rotation amounts over all cycles.
+    // used to detect "overclocking".
+    uint32_t maximum_absolute_arm_rotation;
 
     // how many cycles until each tape loops back to the beginning.
     uint64_t tape_period;
