@@ -55,8 +55,6 @@ static bool conversion_output(struct board *board, bool active, struct mechanism
 {
     assert(m.type & CONVERSION_GLYPH);
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    if (board->cycle == 0)
-        mark_used_area(board, pos);
     atom *output = lookup_atom(board, pos);
     if ((*output & VALID) && !(*output & REMOVED)) {
         if (board->half_cycle == 2) {
@@ -89,8 +87,6 @@ static atom *get_atom(struct board *board, struct mechanism m, int32_t du, int32
     if ((m.type & CONVERSION_GLYPH) && board->half_cycle == 2)
         return (atom *)&empty;
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    if (board->cycle == 0)
-        mark_used_area(board, pos);
     atom *a = lookup_atom(board, pos);
     if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
         return (atom *)&empty;
@@ -545,7 +541,7 @@ static void record_swing_area(struct board *board, struct vector position, struc
         mark_used_area(board, (struct vector){
             base.u + min_cell.u,
             base.v + min_cell.v,
-        });
+        }, 0);
         // advance the current point to the point of encounter.
         current = min;
     }
@@ -683,7 +679,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             while (true) {
                 // xx do area somewhere else?
                 struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
-                mark_used_area(board, p);
+                mark_used_area(board, p, 0);
                 if (inst == 'a')
                     record_swing_area(board, p, m->position, 1);
                 if (inst == 'd')
@@ -845,7 +841,7 @@ static void mark_arm_area(struct solution *solution, struct board *board)
             struct vector saved_v = m->direction_v;
             while (true) {
                 struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
-                mark_used_area(board, p);
+                mark_used_area(board, p, 0);
                 if (vectors_equal(m->direction_u, zero_vector))
                     break;
                 adjust_axis_magnitude(&m->direction_u, -1);
@@ -1223,6 +1219,120 @@ bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char *
     return true;
 }
 
+struct footprint {
+    enum mechanism_type type;
+    const struct vector *hexes;
+};
+
+struct footprint footprints[] = {
+    {
+        .type = CALCIFICATION,
+        .hexes = (const struct vector[]){
+            { 0, 0 },
+        }
+    },
+    {
+        .type = ANIMISMUS,
+        .hexes = (const struct vector[]){
+            { 0, 1 },
+            { 1, 0 },
+            { 1, -1 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = PROJECTION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = DISPERSION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 1, -1 },
+            { 0, -1 },
+            { -1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = PURIFICATION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 1 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = DUPLICATION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = UNIFICATION,
+        .hexes = (const struct vector[]){
+            { 0, 1 },
+            { -1, 1 },
+            { 0, -1 },
+            { 1, -1 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = BONDING,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = UNBONDING,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = TRIPLEX_BONDING,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 1 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = MULTI_BONDING,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, -1 },
+            { -1, 1 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = DISPOSAL,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 1 },
+            { -1, 1 },
+            { -1, 0 },
+            { 0, -1 },
+            { 1, -1 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = EQUILIBRIUM,
+        .hexes = (const struct vector[]){
+            { 0, 0 },
+        }
+    },
+};
+
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
 {
     ensure_capacity(board, 1);
@@ -1233,6 +1343,7 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
 
 void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)
 {
+    board->overlap = solution->track_self_overlap;
     board->half_cycle = 1;
     board->active_input_or_output = UINT32_MAX;
     // in order for lookups to work, the hash table has to be allocated using
@@ -1242,34 +1353,45 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     if (initial_board_size > 999999)
         initial_board_size = 999999;
     ensure_capacity(board, initial_board_size);
-    for (uint32_t i = 0; i < solution->track_table_size; ++i) {
-        // xx do this in a cleaner way?
-        struct vector p = solution->track_positions[i];
-        if (p.u == INT32_MIN && p.v == INT32_MIN)
-            continue;
-        mark_used_area(board, p);
-    }
     for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         for (uint32_t j = 0; j < io->number_of_atoms; ++j)
-            mark_used_area(board, io->atoms[j].position);
+            mark_used_area(board, io->atoms[j].position, &board->overlap);
     }
     for (uint32_t i = 0; i < solution->number_of_glyphs; ++i) {
         struct mechanism m = solution->glyphs[i];
-        if (m.type & DISPOSAL) {
-            mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
-            mark_used_area(board, mechanism_relative_position(m, 1, 0, 1));
-            mark_used_area(board, mechanism_relative_position(m, 0, 1, 1));
-            mark_used_area(board, mechanism_relative_position(m, -1, 1, 1));
-            mark_used_area(board, mechanism_relative_position(m, -1, 0, 1));
-            mark_used_area(board, mechanism_relative_position(m, 0, -1, 1));
-            mark_used_area(board, mechanism_relative_position(m, 1, -1, 1));
-        } else if (m.type & EQUILIBRIUM)
-            mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
-        // other glyphs have their area marked in get_atom() and
-        // conversion_output().
+        for (int j = 0; j < sizeof(footprints)/sizeof(footprints[0]); ++j) {
+            if (!(m.type & footprints[j].type))
+                continue;
+            for (int k = 0; ; ++k) {
+                struct vector p = footprints[j].hexes[k];
+                mark_used_area(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
+                if (vectors_equal(p, zero_vector))
+                    break;
+            }
+        }
     }
-
+    for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
+        struct conduit *conduit = &solution->conduits[i];
+        struct mechanism m = solution->glyphs[conduit->glyph_index];
+        for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
+            struct vector p = conduit->positions[j];
+            mark_used_area(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
+        }
+    }
+    for (size_t i = 0; i < solution->number_of_arms; ++i) {
+        mark_used_area(board, solution->arms[i].position, &board->overlap);
+        // use the VISITED flag to mark arm base positions that track is allowed to occupy.
+        *lookup_atom(board, solution->arms[i].position) |= VISITED;
+    }
+    for (uint32_t i = 0; i < solution->track_table_size; ++i) {
+        struct vector p = solution->track_positions[i];
+        if (p.u == INT32_MIN && p.v == INT32_MIN)
+            continue;
+        mark_used_area(board, p, &board->overlap);
+    }
+    for (size_t i = 0; i < solution->number_of_arms; ++i)
+        *lookup_atom(board, solution->arms[i].position) &= ~VISITED;
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         if (!(solution->arms[i].type & VAN_BERLO))
             continue;
@@ -1387,12 +1509,15 @@ atom *lookup_atom(struct board *board, struct vector query)
     return &lookup_atom_at_position(board, query)->atom;
 }
 
-void mark_used_area(struct board *board, struct vector point)
+void mark_used_area(struct board *board, struct vector point, bool *overlap)
 {
     ensure_capacity(board, 1);
     struct atom_at_position *a = lookup_atom_at_position(board, point);
-    if (a->atom & VALID)
+    if (a->atom & VALID) {
+        if (overlap && !(a->atom & VISITED))
+            *overlap = true;
         return;
+    }
     a->position = point;
     a->atom = VALID | REMOVED;
     board->used++;

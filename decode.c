@@ -289,6 +289,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     last_position = p;
                 uint32_t index;
                 lookup_track(solution, p, &index);
+                if (j < part.number_of_track_hexes && (solution->track_positions[index].u != INT32_MIN || solution->track_positions[index].v != INT32_MIN))
+                    solution->track_self_overlap = true;
                 solution->track_positions[index] = p;
                 solution->track_minus_motions[index] = (struct vector){ last_position.u - p.u, last_position.v - p.v };
                 lookup_track(solution, last_position, &index);
