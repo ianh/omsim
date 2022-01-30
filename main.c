@@ -26,18 +26,18 @@ static void print_board(struct board *board)
     }
     if (maxu < minu || maxv < minv)
         return;
-    int stride = (maxv - minv + 1);
-    atom *points = calloc(sizeof(atom), stride * (maxu - minu + 1));
+    int stride = (maxu - minu + 1);
+    atom *points = calloc(sizeof(atom), stride * (maxv - minv + 1));
     for (uint32_t i = 0; i < board->capacity; ++i) {
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
-        points[(board->atoms_at_positions[i].position.v - minv) + stride * (board->atoms_at_positions[i].position.u - minu)] = board->atoms_at_positions[i].atom;
+        points[(board->atoms_at_positions[i].position.u - minu) + stride * (board->atoms_at_positions[i].position.v - minv)] = board->atoms_at_positions[i].atom;
     }
-    for (int u = maxu; u >= minu; --u) {
-        for (int n = minu; n < u; ++n)
+    for (int v = maxv; v >= minv; --v) {
+        for (int n = minv; n < v; ++n)
             printf(" ");
-        for (int v = minv; v <= maxv; ++v) {
-            atom a = points[stride * (u - minu) + (v - minv)];
+        for (int u = minu; u <= maxu; ++u) {
+            atom a = points[stride * (v - minv) + (u - minu)];
             if (!a)
                 printf("  ");
             else if (a & REMOVED)

@@ -20,8 +20,8 @@ struct xy_vector {
 static struct xy_vector to_xy(struct vector p)
 {
     return (struct xy_vector){
-        p.v + p.u * 0.5,
-        p.u * SQRT3_2,
+        p.u + p.v * 0.5,
+        p.v * SQRT3_2,
     };
 }
 static double xy_len2(struct xy_vector xy)
@@ -116,17 +116,17 @@ static inline void transform_atom(atom *a, atom new_type)
 
 int direction_for_offset(struct vector d)
 {
-    if (d.u == 0 && d.v == 1)
+    if (d.u == 1 && d.v == 0)
         return 0;
-    else if (d.u == 1 && d.v == 0)
+    else if (d.u == 0 && d.v == 1)
         return 1;
-    else if (d.u == 1 && d.v == -1)
-        return 2;
-    else if (d.u == 0 && d.v == -1)
-        return 3;
-    else if (d.u == -1 && d.v == 0)
-        return 4;
     else if (d.u == -1 && d.v == 1)
+        return 2;
+    else if (d.u == -1 && d.v == 0)
+        return 3;
+    else if (d.u == 0 && d.v == -1)
+        return 4;
+    else if (d.u == 1 && d.v == -1)
         return 5;
     return -1;
 }
@@ -194,22 +194,22 @@ static void rotate_bonds(atom *a, int rotation)
     *a |= bonds;
 }
 
-struct vector v_offset_for_direction(int direction)
+struct vector u_offset_for_direction(int direction)
 {
     switch (normalize_direction(direction)) {
-    case 0: return (struct vector){0, 1};
-    case 1: return (struct vector){1, 0};
-    case 2: return (struct vector){1, -1};
-    case 3: return (struct vector){0, -1};
-    case 4: return (struct vector){-1, 0};
-    case 5: return (struct vector){-1, 1};
+    case 0: return (struct vector){1, 0};
+    case 1: return (struct vector){0, 1};
+    case 2: return (struct vector){-1, 1};
+    case 3: return (struct vector){-1, 0};
+    case 4: return (struct vector){0, -1};
+    case 5: return (struct vector){1, -1};
     default: abort();
     }
 }
 
-struct vector u_offset_for_direction(int direction)
+struct vector v_offset_for_direction(int direction)
 {
-    return v_offset_for_direction(direction + 1);
+    return u_offset_for_direction(direction + 1);
 }
 
 static void apply_conduit(struct solution *solution, struct board *board, struct mechanism m)
@@ -217,7 +217,7 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
     struct conduit *conduit = &solution->conduits[m.conduit_index];
     ensure_capacity(board, conduit->number_of_positions);
     struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
-    int rotation = direction_for_offset(other_side.direction_v) - direction_for_offset(m.direction_v);
+    int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
     uint32_t base = 0;
     for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
         uint32_t length = conduit->molecule_lengths[j];
@@ -245,9 +245,9 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                     struct vector p = conduit->atoms[base + k].position;
                     atom a = *lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
                     for (int bond_direction = 0; bond_direction < 6 && consume; ++bond_direction) {
-                        if (!(a & (BOND_LOW_BITS << normalize_direction(bond_direction + direction_for_offset(m.direction_v)))))
+                        if (!(a & (BOND_LOW_BITS << normalize_direction(bond_direction + direction_for_offset(m.direction_u)))))
                             continue;
-                        struct vector d = v_offset_for_direction(bond_direction);
+                        struct vector d = u_offset_for_direction(bond_direction);
                         atom *b = lookup_atom(board, mechanism_relative_position(m, p.u + d.u, p.v + d.v, 1));
                         if (!(*b & VALID) || (*b & REMOVED) || !(*b & CONDUIT_SHAPE))
                             consume = false;
@@ -309,21 +309,21 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case ANIMISMUS: {
             atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 0, 1);
+            atom *b = get_atom(board, m, 1, 0);
             bool active = *a & *b & SALT;
-            bool c = conversion_output(board, active, m, 1, 0);
-            bool d = conversion_output(board, active, m, -1, 1);
+            bool c = conversion_output(board, active, m, 0, 1);
+            bool d = conversion_output(board, active, m, 1, -1);
             if (c && d && active) {
                 remove_atom(board, a);
                 remove_atom(board, b);
-                produce_atom(board, m, 1, 0, VITAE);
-                produce_atom(board, m, -1, 1, MORS);
+                produce_atom(board, m, 0, 1, VITAE);
+                produce_atom(board, m, 1, -1, MORS);
             }
             break;
         }
         case PROJECTION: {
             atom *q = get_atom(board, m, 0, 0);
-            atom *a = get_atom(board, m, 0, 1);
+            atom *a = get_atom(board, m, 1, 0);
             atom metal = *a & ANY_METAL & ~GOLD;
             if (metal && !(*q & ALL_BONDS) && !(*q & GRABBED) && (*q & QUICKSILVER)) {
                 remove_atom(board, q);
@@ -334,44 +334,44 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case DISPERSION: {
             atom *a = get_atom(board, m, 0, 0);
             bool active = *a & QUINTESSENCE;
-            bool b = conversion_output(board, active, m, 0, 1);
-            bool c = conversion_output(board, active, m, -1, 1);
-            bool d = conversion_output(board, active, m, -1, 0);
-            bool e = conversion_output(board, active, m, 0, -1);
+            bool b = conversion_output(board, active, m, 1, 0);
+            bool c = conversion_output(board, active, m, 1, -1);
+            bool d = conversion_output(board, active, m, 0, -1);
+            bool e = conversion_output(board, active, m, -1, 0);
             if (b && c && d && e && active) {
                 remove_atom(board, a);
-                produce_atom(board, m, 0, 1, EARTH);
-                produce_atom(board, m, -1, 1, WATER);
-                produce_atom(board, m, -1, 0, FIRE);
-                produce_atom(board, m, 0, -1, AIR);
+                produce_atom(board, m, 1, 0, EARTH);
+                produce_atom(board, m, 1, -1, WATER);
+                produce_atom(board, m, 0, -1, FIRE);
+                produce_atom(board, m, -1, 0, AIR);
             }
             break;
         }
         case PURIFICATION: {
             atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 0, 1);
+            atom *b = get_atom(board, m, 1, 0);
             atom metal = *a & *b & ANY_METAL & ~GOLD;
-            bool c = conversion_output(board, metal, m, 1, 0);
+            bool c = conversion_output(board, metal, m, 0, 1);
             if (c && metal) {
                 remove_atom(board, a);
                 remove_atom(board, b);
-                produce_atom(board, m, 1, 0, metal >> 1);
+                produce_atom(board, m, 0, 1, metal >> 1);
             }
             break;
         }
         case DUPLICATION: {
             atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 0, 1);
+            atom *b = get_atom(board, m, 1, 0);
             atom elemental = *a & ANY_ELEMENTAL;
             if (elemental && (*b & SALT) && !(*b & VAN_BERLO_ATOM))
                 transform_atom(b, elemental);
             break;
         }
         case UNIFICATION: {
-            atom *a = get_atom(board, m, 1, 0);
-            atom *b = get_atom(board, m, 1, -1);
-            atom *c = get_atom(board, m, -1, 0);
-            atom *d = get_atom(board, m, -1, 1);
+            atom *a = get_atom(board, m, 0, 1);
+            atom *b = get_atom(board, m, -1, 1);
+            atom *c = get_atom(board, m, 0, -1);
+            atom *d = get_atom(board, m, 1, -1);
             bool active = ((*a | *b | *c | *d) & ANY_ELEMENTAL) == ANY_ELEMENTAL;
             bool e = conversion_output(board, active, m, 0, 0);
             if (e && active) {
@@ -385,17 +385,17 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case BONDING: {
             atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 0, 1);
+            atom *b = get_atom(board, m, 1, 0);
             if (*a && *b)
-                add_bond(m, a, b, 0, 1, NORMAL_BONDS, TRIPLEX_BONDS);
+                add_bond(m, a, b, 1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
             break;
         }
         case UNBONDING: {
             atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 0, 1);
+            atom *b = get_atom(board, m, 1, 0);
             if (*a && *b) {
-                atom ab = bond_direction(m, 0, 1);
-                atom ba = bond_direction(m, 0, -1);
+                atom ab = bond_direction(m, 1, 0);
+                atom ba = bond_direction(m, -1, 0);
                 // record the bond in the RECENT_BONDS bitfield to prevent the
                 // atoms from being consumed during this half-cycle.
                 if (*a & ab) {
@@ -413,27 +413,27 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case TRIPLEX_BONDING: {
             atom *ky = get_atom(board, m, 0, 0);
-            atom *yr = get_atom(board, m, 1, 0);
-            atom *rk = get_atom(board, m, 0, 1);
+            atom *yr = get_atom(board, m, 0, 1);
+            atom *rk = get_atom(board, m, 1, 0);
             if (*ky && *yr && (*ky & *yr & FIRE))
-                add_bond(m, ky, yr, 1, 0, TRIPLEX_Y_BONDS, NORMAL_BONDS);
+                add_bond(m, ky, yr, 0, 1, TRIPLEX_Y_BONDS, NORMAL_BONDS);
             if (*yr && *rk && (*yr & *rk & FIRE))
-                add_bond(m, yr, rk, -1, 1, TRIPLEX_R_BONDS, NORMAL_BONDS);
+                add_bond(m, yr, rk, 1, -1, TRIPLEX_R_BONDS, NORMAL_BONDS);
             if (*rk && *ky && (*rk & *ky & FIRE))
-                add_bond(m, rk, ky, 0, -1, TRIPLEX_K_BONDS, NORMAL_BONDS);
+                add_bond(m, rk, ky, -1, 0, TRIPLEX_K_BONDS, NORMAL_BONDS);
             break;
         }
         case MULTI_BONDING: {
             atom *center = get_atom(board, m, 0, 0);
-            atom *a = get_atom(board, m, 0, 1);
-            atom *b = get_atom(board, m, -1, 0);
-            atom *c = get_atom(board, m, 1, -1);
+            atom *a = get_atom(board, m, 1, 0);
+            atom *b = get_atom(board, m, 0, -1);
+            atom *c = get_atom(board, m, -1, 1);
             if (*center && *a)
-                add_bond(m, a, center, 0, -1, NORMAL_BONDS, TRIPLEX_BONDS);
+                add_bond(m, a, center, -1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
             if (*center && *b)
-                add_bond(m, b, center, 1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
+                add_bond(m, b, center, 0, 1, NORMAL_BONDS, TRIPLEX_BONDS);
             if (*center && *c)
-                add_bond(m, c, center, -1, 1, NORMAL_BONDS, TRIPLEX_BONDS);
+                add_bond(m, c, center, 1, -1, NORMAL_BONDS, TRIPLEX_BONDS);
             break;
         }
         case DISPOSAL: {
@@ -509,16 +509,16 @@ static void record_swing_area(struct board *board, struct vector position, struc
     p.u -= base.u;
     p.v -= base.v;
     if (rotation == -1)
-        p = (struct vector){ -p.v, p.u + p.v };
+        p = (struct vector){ p.u + p.v, -p.u };
     struct xy_vector current = to_xy(p);
-    struct xy_vector end = to_xy((struct vector){ p.u + p.v, -p.u });
+    struct xy_vector end = to_xy((struct vector){ -p.v, p.u + p.v });
     double r2 = xy_len2(current);
     if (r2 < 1)
         return;
     while (true) {
         // convert back to grid coordinates.
-        int32_t cell_u = (int32_t)floor(current.y / SQRT3_2);
-        int32_t cell_v = (int32_t)floor(current.x - 0.5 * current.y / SQRT3_2);
+        int32_t cell_u = (int32_t)floor(current.x - 0.5 * current.y / SQRT3_2);
+        int32_t cell_v = (int32_t)floor(current.y / SQRT3_2);
         struct xy_vector min = { 0 };
         struct vector min_cell = { 0 };
         // find the intersection point for the hex at each neighboring grid
@@ -585,7 +585,7 @@ static void move_atoms(struct board *board, atom *a, struct vector position, str
             if (!(m.atom & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
                 continue;
             struct vector p = m.position;
-            struct vector d = v_offset_for_direction(bond_direction);
+            struct vector d = u_offset_for_direction(bond_direction);
             p.u += d.u;
             p.v += d.v;
             atom *b = lookup_atom(board, p);
@@ -677,7 +677,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         // added to a list (board->movements) and deferred until later.
         int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
-            struct vector offset = v_offset_for_direction(direction);
+            struct vector offset = u_offset_for_direction(direction);
             struct vector saved_u = m->direction_u;
             struct vector saved_v = m->direction_v;
             while (true) {
@@ -731,10 +731,10 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 move_atoms(board, a, atom_pos, m->position, -1, 0);
                 break;
             case 'w': // extend piston
-                move_atoms(board, a, atom_pos, normalize_axis(m->direction_v), 0, 1);
+                move_atoms(board, a, atom_pos, normalize_axis(m->direction_u), 0, 1);
                 break;
             case 's': // retract piston
-                move_atoms(board, a, atom_pos, normalize_axis(m->direction_v), 0, -1);
+                move_atoms(board, a, atom_pos, normalize_axis(m->direction_u), 0, -1);
                 break;
             case 't': // move along track, - direction
             case 'g': // move along track, + direction
@@ -840,7 +840,7 @@ static void mark_arm_area(struct solution *solution, struct board *board)
         struct mechanism *m = &solution->arms[i];
         int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
-            struct vector offset = v_offset_for_direction(direction);
+            struct vector offset = u_offset_for_direction(direction);
             struct vector saved_u = m->direction_u;
             struct vector saved_v = m->direction_v;
             while (true) {
@@ -860,14 +860,14 @@ static void mark_arm_area(struct solution *solution, struct board *board)
 static bool fill_conduit_molecule(struct solution *solution, struct board *board, struct conduit *conduit, uint32_t *atom_next, uint32_t *atom_cursor)
 {
     struct mechanism m = solution->glyphs[conduit->glyph_index];
-    int rotation = direction_for_offset(m.direction_v);
+    int rotation = direction_for_offset(m.direction_u);
     while (*atom_cursor < *atom_next) {
         struct atom_at_position ap = conduit->atoms[*atom_cursor];
         for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
             if (!(ap.atom & (BOND_LOW_BITS << normalize_direction(bond_direction + rotation)) & ~RECENT_BONDS))
                 continue;
             struct vector p = ap.position;
-            struct vector d = v_offset_for_direction(bond_direction);
+            struct vector d = u_offset_for_direction(bond_direction);
             p.u += d.u;
             p.v += d.v;
             atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
@@ -1055,22 +1055,22 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
                     continue;
                 struct vector next = p;
-                struct vector d = v_offset_for_direction(bond_direction);
+                struct vector d = u_offset_for_direction(bond_direction);
                 next.u += d.u;
                 next.v += d.v;
                 if (!mark_output_position(board, next))
                     continue;
                 // atoms cannot appear outside the vertical bounds of the
                 // infinite product.
-                if (next.u < io->min_u || next.u > io->max_u) {
+                if (next.v < io->min_v || next.v > io->max_v) {
                     match = false;
                     break;
                 }
                 // atoms cannot appear between atoms in a row of the infinite
                 // product.  the row_min_v and row_max_v arrays track the
                 // disallowed range of positions for each row.
-                size_t row = next.u - io->min_u;
-                if (next.v >= io->row_min_v[row] && next.v <= io->row_max_v[row]) {
+                size_t row = next.v - io->min_v;
+                if (next.u >= io->row_min_u[row] && next.u <= io->row_max_u[row]) {
                     match = false;
                     break;
                 }
@@ -1175,7 +1175,7 @@ bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char *
             // remove bonds with the repetition placeholder -- they aren't
             // required to validate.
             for (uint32_t k = 0; k < 6; ++k) {
-                struct vector dir = v_offset_for_direction(k);
+                struct vector dir = u_offset_for_direction(k);
                 if (a->position.u + dir.u == placeholder.position.u &&
                  a->position.v + dir.v == placeholder.position.v)
                     a->atom &= ~(BOND_LOW_BITS << k);
@@ -1188,37 +1188,37 @@ bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char *
     io->number_of_atoms = (io->number_of_original_atoms - 1) * repetitions + 1;
     io->number_of_repetitions = repetitions;
 
-    io->min_u = INT32_MAX;
-    io->max_u = INT32_MIN;
+    io->min_v = INT32_MAX;
+    io->max_v = INT32_MIN;
     for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
         if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
         struct vector p = io->atoms[j].position;
-        if (p.u < io->min_u)
-            io->min_u = p.u;
-        if (p.u > io->max_u)
-            io->max_u = p.u;
+        if (p.v < io->min_v)
+            io->min_v = p.v;
+        if (p.v > io->max_v)
+            io->max_v = p.v;
     }
-    if ((int64_t)io->max_u - (int64_t)io->min_u > 99999) {
+    if ((int64_t)io->max_v - (int64_t)io->min_v > 99999) {
         *error = "solution contains an infinite product with too many rows";
         return false;
     }
-    size_t rows = io->max_u - io->min_u + 1;
-    io->row_min_v = realloc(io->row_min_v, rows * sizeof(int32_t));
-    io->row_max_v = realloc(io->row_max_v, rows * sizeof(int32_t));
+    size_t rows = io->max_v - io->min_v + 1;
+    io->row_min_u = realloc(io->row_min_u, rows * sizeof(int32_t));
+    io->row_max_u = realloc(io->row_max_u, rows * sizeof(int32_t));
     for (size_t j = 0; j < rows; ++j) {
-        io->row_min_v[j] = INT32_MAX;
-        io->row_max_v[j] = INT32_MIN;
+        io->row_min_u[j] = INT32_MAX;
+        io->row_max_u[j] = INT32_MIN;
     }
     for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
         if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
         struct vector p = io->atoms[j].position;
-        size_t row = p.u - io->min_u;
-        if (p.v < io->row_min_v[row])
-            io->row_min_v[row] = p.v;
-        if (p.v > io->row_max_v[row])
-            io->row_max_v[row] = p.v;
+        size_t row = p.v - io->min_v;
+        if (p.u < io->row_min_u[row])
+            io->row_min_u[row] = p.u;
+        if (p.u > io->row_max_u[row])
+            io->row_max_u[row] = p.u;
     }
     return true;
 }
@@ -1258,12 +1258,12 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         struct mechanism m = solution->glyphs[i];
         if (m.type & DISPOSAL) {
             mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
-            mark_used_area(board, mechanism_relative_position(m, 0, 1, 1));
             mark_used_area(board, mechanism_relative_position(m, 1, 0, 1));
-            mark_used_area(board, mechanism_relative_position(m, 1, -1, 1));
-            mark_used_area(board, mechanism_relative_position(m, 0, -1, 1));
-            mark_used_area(board, mechanism_relative_position(m, -1, 0, 1));
+            mark_used_area(board, mechanism_relative_position(m, 0, 1, 1));
             mark_used_area(board, mechanism_relative_position(m, -1, 1, 1));
+            mark_used_area(board, mechanism_relative_position(m, -1, 0, 1));
+            mark_used_area(board, mechanism_relative_position(m, 0, -1, 1));
+            mark_used_area(board, mechanism_relative_position(m, 1, -1, 1));
         } else if (m.type & EQUILIBRIUM)
             mark_used_area(board, mechanism_relative_position(m, 0, 0, 1));
         // other glyphs have their area marked in get_atom() and
@@ -1275,12 +1275,12 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
             continue;
         solution->arms[i].type |= GRABBING;
         solution->arms[i].type |= GRABBING_EVERYTHING;
-        create_van_berlo_atom(board, solution->arms[i], 0, 1, SALT);
-        create_van_berlo_atom(board, solution->arms[i], 1, 0, WATER);
-        create_van_berlo_atom(board, solution->arms[i], 1, -1, AIR);
-        create_van_berlo_atom(board, solution->arms[i], 0, -1, SALT);
-        create_van_berlo_atom(board, solution->arms[i], -1, 0, FIRE);
-        create_van_berlo_atom(board, solution->arms[i], -1, 1, EARTH);
+        create_van_berlo_atom(board, solution->arms[i], 1, 0, SALT);
+        create_van_berlo_atom(board, solution->arms[i], 0, 1, WATER);
+        create_van_berlo_atom(board, solution->arms[i], -1, 1, AIR);
+        create_van_berlo_atom(board, solution->arms[i], -1, 0, SALT);
+        create_van_berlo_atom(board, solution->arms[i], 0, -1, FIRE);
+        create_van_berlo_atom(board, solution->arms[i], 1, -1, EARTH);
     }
     // van berlo's wheel can block inputs.
     flag_blocked_inputs(solution, board);
@@ -1309,8 +1309,8 @@ void destroy(struct solution *solution, struct board *board)
         for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
             free(solution->inputs_and_outputs[i].atoms);
             free(solution->inputs_and_outputs[i].original_atoms);
-            free(solution->inputs_and_outputs[i].row_min_v);
-            free(solution->inputs_and_outputs[i].row_max_v);
+            free(solution->inputs_and_outputs[i].row_min_u);
+            free(solution->inputs_and_outputs[i].row_max_u);
         }
         free(solution->inputs_and_outputs);
         memset(solution, 0, sizeof(*solution));

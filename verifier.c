@@ -358,7 +358,7 @@ static void measure_throughput(struct verifier *v)
                         if (!(a.atom & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
                             continue;
                         struct vector p = a.position;
-                        struct vector d = v_offset_for_direction(bond_direction);
+                        struct vector d = u_offset_for_direction(bond_direction);
                         p.u += d.u;
                         p.v += d.v;
                         atom *b = lookup_atom(&shifted_board, p);
@@ -572,13 +572,13 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         value = used_area(&board);
     else if (!strcmp(metric, "height")) {
         value = INT_MAX;
-        measure_dimension(&board, 0, -1, &value, 1);
-        measure_dimension(&board, 1, 0, &value, 1);
-        measure_dimension(&board, 1, -1, &value, 1);
+        measure_dimension(&board, -1, 0, &value, 1);
+        measure_dimension(&board, 0, 1, &value, 1);
+        measure_dimension(&board, -1, 1, &value, 1);
     } else if (!strcmp(metric, "width*2")) {
         value = INT_MAX;
-        measure_dimension(&board, 2, -1, &value, 2);
-        measure_dimension(&board, 1, -2, &value, 2);
+        measure_dimension(&board, -1, 2, &value, 2);
+        measure_dimension(&board, -2, 1, &value, 2);
         measure_dimension(&board, 1, 1, &value, 2);
     } else if (!strcmp(metric, "maximum absolute arm rotation"))
         value = solution.maximum_absolute_arm_rotation;

@@ -121,15 +121,15 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
     io->number_of_atoms = c.number_of_atoms;
     for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
         io->atoms[i].atom = decode_atom(c.atoms[i].type);
-        io->atoms[i].position = mechanism_relative_position(m, c.atoms[i].offset[1], c.atoms[i].offset[0], 1);
+        io->atoms[i].position = mechanism_relative_position(m, c.atoms[i].offset[0], c.atoms[i].offset[1], 1);
     }
     for (uint32_t i = 0; i < c.number_of_bonds; ++i) {
         struct puzzle_bond b = c.bonds[i];
         atom bonds = decode_bond_type(c.bonds[i].type);
-        struct vector p1 = mechanism_relative_position(m, b.from[1], b.from[0], 1);
-        struct vector p2 = mechanism_relative_position(m, b.to[1], b.to[0], 1);
-        atom b1 = bonds & bond_direction(m, b.to[1] - b.from[1], b.to[0] - b.from[0]);
-        atom b2 = bonds & bond_direction(m, b.from[1] - b.to[1], b.from[0] - b.to[0]);
+        struct vector p1 = mechanism_relative_position(m, b.from[0], b.from[1], 1);
+        struct vector p2 = mechanism_relative_position(m, b.to[0], b.to[1], 1);
+        atom b1 = bonds & bond_direction(m, b.to[0] - b.from[0], b.to[1] - b.from[1]);
+        atom b2 = bonds & bond_direction(m, b.from[0] - b.to[0], b.from[1] - b.to[1]);
         // yes, this is O(n^2).
         for (uint32_t j = 0; j < c.number_of_atoms; ++j) {
             struct vector p = io->atoms[j].position;
@@ -250,7 +250,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         struct solution_part part = sf->parts[i];
         struct mechanism m = {
             .type = decode_mechanism_type(part.name),
-            .position = { part.position[1], part.position[0] },
+            .position = { part.position[0], part.position[1] },
             .direction_u = u_offset_for_direction(part.rotation),
             .direction_v = v_offset_for_direction(part.rotation),
             .arm_rotation = part.rotation,
@@ -271,8 +271,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     hex = part.track_hexes[j];
                 else {
                     hex = part.track_hexes[0];
-                    int32_t du = hex.offset[1] - part.track_hexes[j - 1].offset[1];
-                    int32_t dv = hex.offset[0] - part.track_hexes[j - 1].offset[0];
+                    int32_t du = hex.offset[0] - part.track_hexes[j - 1].offset[0];
+                    int32_t dv = hex.offset[1] - part.track_hexes[j - 1].offset[1];
                     // two-hex tracks can't become a loop.  also, if the offset
                     // between the two hexes isn't a cardinal direction, then
                     // the ends are too far away for the track to become a loop.
@@ -284,7 +284,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                         break;
                     }
                 }
-                struct vector p = mechanism_relative_position(m, hex.offset[1], hex.offset[0], 1);
+                struct vector p = mechanism_relative_position(m, hex.offset[0], hex.offset[1], 1);
                 if (j == 0)
                     last_position = p;
                 uint32_t index;
@@ -306,8 +306,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 .molecule_lengths = calloc(sizeof(uint32_t), part.number_of_conduit_hexes),
             };
             for (uint32_t j = 0; j < part.number_of_conduit_hexes; ++j) {
-                conduit.positions[j].u = part.conduit_hexes[j].offset[1];
-                conduit.positions[j].v = part.conduit_hexes[j].offset[0];
+                conduit.positions[j].u = part.conduit_hexes[j].offset[0];
+                conduit.positions[j].v = part.conduit_hexes[j].offset[1];
             }
             solution->glyphs[glyph_index--] = m;
             solution->conduits[conduit_index--] = conduit;

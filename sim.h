@@ -240,13 +240,13 @@ struct input_output {
     struct vector repetition_origin;
 
     // bounding box information for repeating outputs.
-    int32_t min_u;
-    int32_t max_u;
-    // these arrays each have length (max_u - min_u + 1).  row_min_v[i] is the
-    // minimum output v coordinate for the row where u = min_u + i, and
-    // row_max_v[i] is the corresponding maximum coordinate for that row.
-    int32_t *row_min_v;
-    int32_t *row_max_v;
+    int32_t min_v;
+    int32_t max_v;
+    // these arrays each have length (max_v - min_v + 1).  row_min_u[i] is the
+    // minimum output u coordinate for the row where v = min_v + i, and
+    // row_max_u[i] is the corresponding maximum coordinate for that row.
+    int32_t *row_min_u;
+    int32_t *row_max_u;
 };
 
 struct solution {
