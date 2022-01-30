@@ -113,6 +113,7 @@ int main(int argc, char *argv[])
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
     printf("solution file says area is: %" PRIu32 "\n", sf->area);
     printf("simulation says area is: %" PRIu32 "\n", used_area(&board));
+    destroy(&solution, &board);
 
     // for (int i = 0; i < solution.number_of_glyphs; ++i) {
     //     if (solution.glyphs[i].type == EQUILIBRIUM)

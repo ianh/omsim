@@ -137,7 +137,7 @@ struct vector {
 static const struct vector zero_vector;
 static inline bool vectors_equal(struct vector a, struct vector b)
 {
-    return !memcmp(&a, &b, sizeof(a));
+    return a.u == b.u && a.v == b.v;
 }
 
 struct atom_at_position {

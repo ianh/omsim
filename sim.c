@@ -153,7 +153,7 @@ atom bond_direction(struct mechanism m, int32_t du, int32_t dv)
     atom base = BOND_LOW_BITS;
     int dir = direction_for_offset(mechanism_relative_position(m, du, dv, 0));
     if (dir < 0) {
-        fprintf(stderr, "internal error: non-orthonormal bond direction (scaled bonder?)\n");
+        // fprintf(stderr, "internal error: non-orthonormal bond direction (scaled bonder?)\n");
         return 0;
     } else
         return base << dir;

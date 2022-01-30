@@ -31,17 +31,77 @@ static struct solution_file *parse_alt_solution_byte_string(struct byte_string b
 
 static struct puzzle_file *pf;
 
+static void print_board(struct board *board)
+{
+    int32_t maxu = -10000, minu = 10000;
+    int32_t maxv = -10000, minv = 10000;
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        if (!(board->atoms_at_positions[i].atom & VALID))
+            continue;
+        struct vector p = board->atoms_at_positions[i].position;
+        if (p.u < minu)
+            minu = p.u;
+        if (p.v < minv)
+            minv = p.v;
+        if (p.u > maxu)
+            maxu = p.u;
+        if (p.v > maxv)
+            maxv = p.v;
+    }
+    if (maxu < minu || maxv < minv)
+        return;
+    int stride = (maxv - minv + 1);
+    atom *points = calloc(sizeof(atom), stride * (maxu - minu + 1));
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        if (!(board->atoms_at_positions[i].atom & VALID))
+            continue;
+        points[(board->atoms_at_positions[i].position.v - minv) + stride * (board->atoms_at_positions[i].position.u - minu)] = board->atoms_at_positions[i].atom;
+    }
+    for (int u = maxu; u >= minu; --u) {
+        for (int n = minu; n < u; ++n)
+            printf(" ");
+        for (int v = minv; v <= maxv; ++v) {
+            atom a = points[stride * (u - minu) + (v - minv)];
+            if (!a)
+                printf("  ");
+            else if (a & REMOVED)
+                printf(" .");
+            else {
+                for (int i = 1; i < 16; ++i) {
+                    if (a & (1 << i)) {
+                        printf(" %x", i & 0xf);
+                        break;
+                    }
+                }
+            }
+        }
+        printf("\n");
+    }
+    free(points);
+
+#if 0
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        atom a = board->atoms_at_positions[i].atom;
+        if (!(a & VALID) || (a & REMOVED))
+            continue;
+        struct vector position = board->atoms_at_positions[i].position;
+        printf("%" PRId32 " %" PRId32 " %" PRIx64 "\n", position.u, position.v, a);
+    }
+#endif
+}
+
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t length)
 {
     if (!pf) {
-        // struct byte_string b = { stabilized_water, sizeof(stabilized_water) };
-        struct byte_string b = { armor_filament, sizeof(armor_filament) };
+        struct byte_string b = { stabilized_water, sizeof(stabilized_water) };
+        // struct byte_string b = { armor_filament, sizeof(armor_filament) };
         pf = parse_puzzle_byte_string(b);
         if (!pf)
             abort();
     }
     struct byte_string input = { (unsigned char *)data, length };
-    struct solution_file *sf = parse_alt_solution_byte_string(input);
+    // struct solution_file *sf = parse_alt_solution_byte_string(input);
+    struct solution_file *sf = parse_solution_byte_string(input);
     if (!sf)
         return 0;
     struct solution solution = { 0 };
@@ -49,12 +109,16 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t length)
     if (decode_solution(&solution, pf, sf, 0)) {
         initial_setup(&solution, &board, sf->area);
         while (board.cycle < 200 && !board.complete) {
+            // print_board(&board);
             // printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
             cycle(&solution, &board);
             if (board.collision)
                 break;
         }
     }
+    // if (board.complete && !board.collision && board.cycle > 1) {
+    //     printf("completed on cycle %llu\n", board.cycle);
+    // }
     destroy(&solution, &board);
     free_solution_file(sf);
     return 0;
