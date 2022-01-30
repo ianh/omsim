@@ -80,6 +80,9 @@ void verifier_error_clear(void *verifier);
 // the "maximum absolute arm rotation" metric runs the solution to completion
 //  while recording the absolute value of the rotation of each arm on every
 //  cycle.  the maximum absolute rotation value is returned.
+// the "overlap" metric places each part in the solution, counting each hex of
+//  area that is placed on top of an existing part's area (not including
+//  grabbers or arm bases that overlap track).
 // the "cost" metric returns the combined cost of all components.
 // the "instructions" metric counts each instruction like the game does.
 // the "instructions with hotkey <hotkeys>" metric counts instructions according

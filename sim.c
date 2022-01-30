@@ -1509,13 +1509,13 @@ atom *lookup_atom(struct board *board, struct vector query)
     return &lookup_atom_at_position(board, query)->atom;
 }
 
-void mark_used_area(struct board *board, struct vector point, bool *overlap)
+void mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
 {
     ensure_capacity(board, 1);
     struct atom_at_position *a = lookup_atom_at_position(board, point);
     if (a->atom & VALID) {
         if (overlap && !(a->atom & VISITED))
-            *overlap = true;
+            (*overlap)++;
         return;
     }
     a->position = point;

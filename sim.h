@@ -279,7 +279,7 @@ struct solution {
 
     // overlapping track is impossible to detect after a solution is decoded, so
     // the decoder sets this flag if it sees any.
-    bool track_self_overlap;
+    uint64_t track_self_overlap;
 
     struct conduit *conduits;
     size_t number_of_conduits;
@@ -344,8 +344,8 @@ struct board {
     struct vector collision_location;
     const char *collision_reason;
 
-    // do parts overlap one another (other than arms and track)?
-    bool overlap;
+    // how many hexes overlap one another (other than arms and track)?
+    uint64_t overlap;
 
     bool complete;
 };
@@ -373,7 +373,7 @@ void destroy(struct solution *solution, struct board *board);
 
 atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
-void mark_used_area(struct board *board, struct vector point, bool *overlap);
+void mark_used_area(struct board *board, struct vector point, uint64_t *overlap);
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
 
 uint32_t used_area(struct board *board);

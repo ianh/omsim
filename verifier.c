@@ -559,6 +559,13 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     if (product_count >= 0)
         solution.target_number_of_outputs = product_count;
     initial_setup(&solution, &board, v->sf->area);
+    if (!strcmp(metric, "overlap")) {
+        int overlap = INT_MAX;
+        if (board.overlap < INT_MAX)
+            overlap = board.overlap;
+        destroy(&solution, &board);
+        return overlap;
+    }
     while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
         cycle(&solution, &board);
     int value = -1;
