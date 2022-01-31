@@ -492,6 +492,43 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return value;
     } else if (!strcmp(metric, "cost"))
         return solution_file_cost(v->sf);
+    else if (!strcmp(metric, "duplicate reagents") || !strcmp(metric, "duplicate products")) {
+        bool input = !strcmp(metric, "duplicate reagents");
+        uint32_t n = input ? v->pf->number_of_inputs : v->pf->number_of_outputs;
+        int duplicates = 0;
+        int *seen = calloc(n, sizeof(int));
+        for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
+            if (input && !byte_string_is(v->sf->parts[i].name, "input"))
+                continue;
+            if (!input && !byte_string_is(v->sf->parts[i].name, "out-std") && !byte_string_is(v->sf->parts[i].name, "out-rep"))
+                continue;
+            uint32_t index = v->sf->parts[i].which_input_or_output;
+            if (index >= n) {
+                duplicates = -1;
+                v->error = "solution refers to a reagent or product that doesn't exist in the puzzle";
+                break;
+            }
+            if (seen[index])
+                duplicates++;
+            seen[index] = 1;
+        }
+        free(seen);
+        return duplicates;
+    } else if (!strcmp(metric, "maximum track gap^2")) {
+        int64_t gap2 = 0;
+        for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
+            for (uint32_t j = 1; j < v->sf->parts[i].number_of_track_hexes; ++j) {
+                struct solution_hex_offset a = v->sf->parts[i].track_hexes[j - 1];
+                struct solution_hex_offset b = v->sf->parts[i].track_hexes[j];
+                int32_t du = b.offset[0] - a.offset[0];
+                int32_t dv = b.offset[1] - a.offset[1];
+                int64_t g = du * du + du * dv + dv * dv;
+                if (g > gap2)
+                    gap2 = g;
+            }
+        }
+        return gap2 > INT_MAX ? INT_MAX : (int)gap2;
+    }
     if (!v->pf) {
         v->error = "invalid puzzle file";
         return -1;

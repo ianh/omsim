@@ -83,6 +83,17 @@ void verifier_error_clear(void *verifier);
 // the "overlap" metric places each part in the solution, counting each hex of
 //  area that is placed on top of an existing part's area (not including
 //  grabbers or arm bases that overlap track).
+// the "duplicate reagents" metric counts how many reagents appear more than
+//  once in the solution.  each appearance after the first of each reagent adds
+//  one to the total count.  reagents that don't appear in the puzzle (and would
+//  cause the solution to crash when loaded) are not counted.
+// the "duplicate products" metric counts how many products appear more than
+//  once in the solution in the same way that "duplicate reagents" counts
+//  reagents.
+// the "maximum track gap^2" metric iterates over each track piece, measuring
+//  the distance between each segment in that piece and the next segment.  the
+//  square of the maximum distance is returned.  this will always be either 1 or
+//  0 for solutions created in-game.
 // the "cost" metric returns the combined cost of all components.
 // the "instructions" metric counts each instruction like the game does.
 // the "instructions with hotkey <hotkeys>" metric counts instructions according
