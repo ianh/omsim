@@ -15,6 +15,9 @@ struct verifier {
     int64_t throughput_cycles;
     int64_t throughput_outputs;
 
+    int64_t throughput_cycles_without_poison;
+    int64_t throughput_outputs_without_poison;
+
     uint64_t cycle_limit;
 
     const char *error;
@@ -158,7 +161,8 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
             continue;
         struct vector p = board->atoms_at_positions[i].position;
         if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
-            board->atoms_at_positions[i].atom |= POISON;
+            if (board->uses_poison)
+                board->atoms_at_positions[i].atom |= POISON;
             continue;
         }
         snapshot->board_in_range++;
@@ -205,12 +209,12 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     return true;
 }
 
-static void measure_throughput(struct verifier *v)
+static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, int64_t *throughput_outputs, bool use_poison)
 {
     struct solution solution = { 0 };
     struct board board = { 0 };
-    v->throughput_cycles = -1;
-    v->throughput_outputs = -1;
+    *throughput_cycles = -1;
+    *throughput_outputs = -1;
 
     // compute a bounding box for the solution
     int32_t max_u = INT32_MIN;
@@ -245,7 +249,7 @@ static void measure_throughput(struct verifier *v)
         return;
     initial_setup(&solution, &board, v->sf->area);
     board.ignore_swing_area = true;
-    board.uses_poison = true;
+    board.uses_poison = use_poison;
     board.poison_message = "solution behavior is too complex for throughput measurement";
     uint64_t check_period = solution.tape_period;
     if (check_period == 0)
@@ -409,16 +413,16 @@ static void measure_throughput(struct verifier *v)
         v->error = "solution did not converge on a throughput";
         goto error;
     }
-    v->throughput_cycles = snapshot.throughput_cycles;
-    v->throughput_outputs = snapshot.throughput_outputs;
+    *throughput_cycles = snapshot.throughput_cycles;
+    *throughput_outputs = snapshot.throughput_outputs;
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution.inputs_and_outputs[i];
         if (!(io->type & REPEATING_OUTPUT))
             continue;
         struct snapshot *s = &repeating_output_snapshots[i];
-        if (s->throughput_cycles * v->throughput_outputs > s->throughput_outputs * v->throughput_cycles) {
-            v->throughput_cycles = s->throughput_cycles;
-            v->throughput_outputs = s->throughput_outputs;
+        if (s->throughput_cycles * *throughput_outputs > s->throughput_outputs * *throughput_cycles) {
+            *throughput_cycles = s->throughput_cycles;
+            *throughput_outputs = s->throughput_outputs;
         }
     }
 error:
@@ -541,12 +545,20 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_cycles)
-            measure_throughput(v);
+            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, true);
         return v->throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs")) {
         if (!v->throughput_outputs)
-            measure_throughput(v);
+            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, true);
         return v->throughput_outputs;
+    } else if (!strcmp(metric, "throughput cycles (unrestricted)")) {
+        if (!v->throughput_cycles_without_poison)
+            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, false);
+        return v->throughput_cycles_without_poison;
+    } else if (!strcmp(metric, "throughput outputs (unrestricted)")) {
+        if (!v->throughput_outputs_without_poison)
+            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, false);
+        return v->throughput_outputs_without_poison;
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
