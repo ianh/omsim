@@ -54,7 +54,7 @@ static void report_collision(struct board *board, struct vector p, const char *r
 static void check_for_poison(struct board *board, atom *a, struct vector p)
 {
     if (board->uses_poison && (*a & VALID) && !(*a & REMOVED) && (*a & POISON))
-        report_collision(board, p, "touched a poison atom");
+        report_collision(board, p, board->poison_message);
 }
 
 atom *lookup_atom(struct board *board, struct vector query)

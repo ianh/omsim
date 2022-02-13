@@ -345,6 +345,7 @@ struct board {
 
     bool ignore_swing_area;
     bool uses_poison;
+    const char *poison_message;
 
     bool collision;
     struct vector collision_location;

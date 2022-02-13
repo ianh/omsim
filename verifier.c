@@ -246,6 +246,7 @@ static void measure_throughput(struct verifier *v)
     initial_setup(&solution, &board, v->sf->area);
     board.ignore_swing_area = true;
     board.uses_poison = true;
+    board.poison_message = "solution behavior is too complex for throughput measurement";
     uint64_t check_period = solution.tape_period;
     if (check_period == 0)
         check_period = 1;
