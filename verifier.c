@@ -157,8 +157,10 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
         if (!(a & VALID) || (a & REMOVED))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
-        if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v)
+        if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
+            board->atoms_at_positions[i].atom |= POISON;
             continue;
+        }
         snapshot->board_in_range++;
     }
     snapshot->output_count = min_output_count(solution);
@@ -188,7 +190,9 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
             else
                 continue;
         }
-        atom b = *lookup_atom(&snapshot->board, p);
+        if (a & POISON)
+            return false;
+        atom b = *lookup_atom_without_checking_for_poison(&snapshot->board, p);
         if (!(b & VALID) || (b & REMOVED))
             return false;
         if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)))
@@ -241,6 +245,7 @@ static void measure_throughput(struct verifier *v)
         return;
     initial_setup(&solution, &board, v->sf->area);
     board.ignore_swing_area = true;
+    board.uses_poison = true;
     uint64_t check_period = solution.tape_period;
     if (check_period == 0)
         check_period = 1;
@@ -337,7 +342,7 @@ static void measure_throughput(struct verifier *v)
                         struct vector p = io->original_atoms[j].position;
                         p.u += i * offset.u;
                         p.v += i * offset.v;
-                        *lookup_atom(&shifted_board, p) |= REMOVED;
+                        *lookup_atom_without_checking_for_poison(&shifted_board, p) |= REMOVED;
                     }
                 }
                 // shift the remaining atoms to fill the gap.
@@ -348,7 +353,7 @@ static void measure_throughput(struct verifier *v)
                     .u = io->repetition_origin.u + (io->number_of_repetitions - 1) * offset.u,
                     .v = io->repetition_origin.v + (io->number_of_repetitions - 1) * offset.v,
                 };
-                atom *base = lookup_atom(&shifted_board, shifted_atoms[0].position);
+                atom *base = lookup_atom_without_checking_for_poison(&shifted_board, shifted_atoms[0].position);
                 shifted_atoms[0].atom = *base;
                 *base |= REMOVED;
                 number_of_shifted_atoms++;
@@ -361,7 +366,7 @@ static void measure_throughput(struct verifier *v)
                         struct vector d = u_offset_for_direction(bond_direction);
                         p.u += d.u;
                         p.v += d.v;
-                        atom *b = lookup_atom(&shifted_board, p);
+                        atom *b = lookup_atom_without_checking_for_poison(&shifted_board, p);
                         if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
                             continue;
                         shifted_atoms[number_of_shifted_atoms++] = (struct atom_at_position){
@@ -377,7 +382,7 @@ static void measure_throughput(struct verifier *v)
                     p.u -= (io->number_of_repetitions - s->number_of_repetitions) * offset.u;
                     p.v -= (io->number_of_repetitions - s->number_of_repetitions) * offset.v;
                     // the VISITED flag tells check_snapshot not to skip over this atom, even if it's outside the bounding box.
-                    *insert_atom(&shifted_board, p, "collision during shift") = shifted_atoms[i].atom | VISITED;
+                    *insert_atom(&shifted_board, p, "collision during shift") = (shifted_atoms[i].atom & ~POISON) | VISITED;
                 }
                 // compare the snapshot with the result of this gap-clearing and
                 // shifting process.  if it matches, the machine is in a steady

@@ -39,6 +39,11 @@ typedef uint64_t atom;
 // is this atom part of a van berlo's wheel?
 #define VAN_BERLO_ATOM (1ULL << 20)
 
+// if the uses_poison flag is set on a board, observing a poison atom on that
+// board produces a collision, except when moving that atom as part of a larger
+// molecule.  this is used for waste chains in throughput computation.
+#define POISON (1ULL << 21)
+
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
@@ -339,6 +344,7 @@ struct board {
     struct marked_positions marked;
 
     bool ignore_swing_area;
+    bool uses_poison;
 
     bool collision;
     struct vector collision_location;
@@ -373,6 +379,7 @@ void destroy(struct solution *solution, struct board *board);
 
 atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
+atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query);
 void mark_used_area(struct board *board, struct vector point, uint64_t *overlap);
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
 

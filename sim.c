@@ -51,6 +51,19 @@ static void report_collision(struct board *board, struct vector p, const char *r
     board->collision_reason = reason;
 }
 
+static void check_for_poison(struct board *board, atom *a, struct vector p)
+{
+    if (board->uses_poison && (*a & VALID) && !(*a & REMOVED) && (*a & POISON))
+        report_collision(board, p, "touched a poison atom");
+}
+
+atom *lookup_atom(struct board *board, struct vector query)
+{
+    atom *a = lookup_atom_without_checking_for_poison(board, query);
+    check_for_poison(board, a, query);
+    return a;
+}
+
 static bool conversion_output(struct board *board, bool active, struct mechanism m, int32_t du, int32_t dv)
 {
     assert(m.type & CONVERSION_GLYPH);
@@ -584,7 +597,7 @@ static void move_atoms(struct board *board, atom *a, struct vector position, str
             struct vector d = u_offset_for_direction(bond_direction);
             p.u += d.u;
             p.v += d.v;
-            atom *b = lookup_atom(board, p);
+            atom *b = lookup_atom_without_checking_for_poison(board, p);
             if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
                 continue;
             enqueue_movement(board, (struct movement){
@@ -979,7 +992,7 @@ static void spawn_inputs(struct solution *solution, struct board *board)
 
 static bool mark_output_position(struct board *board, struct vector pos)
 {
-    atom *a = lookup_atom(board, pos);
+    atom *a = lookup_atom_without_checking_for_poison(board, pos);
     if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
         return false;
     *a |= VISITED;
@@ -1014,7 +1027,9 @@ static void consume_outputs(struct solution *solution, struct board *board)
             atom output = io->atoms[j].atom;
             if (output & REPEATING_OUTPUT_PLACEHOLDER)
                 continue;
-            atom *a = lookup_atom(board, io->atoms[j].position);
+            atom *a = lookup_atom_without_checking_for_poison(board, io->atoms[j].position);
+            if (board->uses_poison && (io->type & SINGLE_OUTPUT))
+                check_for_poison(board, a, io->atoms[j].position);
             // printf("checking %d %d... ", io->atoms[j].position.u, io->atoms[j].position.v);
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
                 // printf("no atom\n");
@@ -1046,7 +1061,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
         // molecule.  that's what this loop does.
         while (match && board->marked.cursor < board->marked.length) {
             struct vector p = board->marked.positions[board->marked.cursor++];
-            atom a = *lookup_atom(board, p);
+            atom a = *lookup_atom_without_checking_for_poison(board, p);
             for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
                 if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
                     continue;
@@ -1074,7 +1089,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
         }
         // reset the visited flag for all the marked atoms.
         for (size_t j = 0; j < board->marked.length; ++j) {
-            atom *a = lookup_atom(board, board->marked.positions[j]);
+            atom *a = lookup_atom_without_checking_for_poison(board, board->marked.positions[j]);
             *a &= ~VISITED;
         }
         // if the output is a match, first trigger an interrupt if necessary.
@@ -1504,7 +1519,7 @@ static struct atom_at_position *lookup_atom_at_position(struct board *board, str
     }
 }
 
-atom *lookup_atom(struct board *board, struct vector query)
+atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query)
 {
     return &lookup_atom_at_position(board, query)->atom;
 }
