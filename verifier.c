@@ -8,6 +8,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+const char *verifier_find_puzzle_name_in_solution_bytes(const char *solution_bytes,
+ int solution_length, int *name_length)
+{
+    struct byte_string bytes = { (unsigned char *)solution_bytes, solution_length };
+    struct solution_file *sf = parse_solution_byte_string(bytes);
+    if (!sf)
+        return 0;
+    if (name_length)
+        *name_length = (int)sf->puzzle.length;
+    return (const char *)sf->puzzle.bytes;
+}
+
 struct verifier {
     struct puzzle_file *pf;
     struct solution_file *sf;

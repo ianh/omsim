@@ -3,6 +3,13 @@
 
 // this "verifier" API is designed to be called from an FFI.
 
+// find the puzzle name within the bytes of a solution.  returns a pointer to
+// the first byte of the puzzle name within the solution_bytes, or a null
+// pointer if the solution failed to parse.  if successful, also sets the value
+// pointed to by name_length to the length of the puzzle name.
+const char *verifier_find_puzzle_name_in_solution_bytes(const char *solution_bytes,
+ int solution_length, int *name_length);
+
 // takes the path of a .puzzle and a .solution file.  returns a pointer to a
 // newly-allocated verifier object.  if the files couldn't be parsed, the
 // verifier_error() function will return a non-null string value describing the
