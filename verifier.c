@@ -17,7 +17,9 @@ const char *verifier_find_puzzle_name_in_solution_bytes(const char *solution_byt
         return 0;
     if (name_length)
         *name_length = (int)sf->puzzle.length;
-    return (const char *)sf->puzzle.bytes;
+    const char *name = (const char *)sf->puzzle.bytes;
+    free_solution_file(sf);
+    return name;
 }
 
 struct verifier {
