@@ -14,6 +14,7 @@ struct verifier {
 
     int64_t throughput_cycles;
     int64_t throughput_outputs;
+    int throughput_waste;
 
     int64_t throughput_cycles_without_poison;
     int64_t throughput_outputs_without_poison;
@@ -138,6 +139,7 @@ struct snapshot {
 
     int64_t throughput_outputs;
     int64_t throughput_cycles;
+    int throughput_waste;
 
     // only used for repeating outputs.
     uint32_t satisfactions_until_snapshot;
@@ -155,6 +157,7 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
     memcpy(a, board->atoms_at_positions, sizeof(struct atom_at_position) * board->capacity);
     snapshot->board.atoms_at_positions = a;
     snapshot->board_in_range = 0;
+    snapshot->throughput_waste = 0;
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID) || (a & REMOVED))
@@ -163,6 +166,7 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
         if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
             if (board->uses_poison)
                 board->atoms_at_positions[i].atom |= POISON;
+            snapshot->throughput_waste = 1;
             continue;
         }
         snapshot->board_in_range++;
@@ -209,7 +213,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     return true;
 }
 
-static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, int64_t *throughput_outputs, bool use_poison)
+static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, int64_t *throughput_outputs, int *throughput_waste, bool use_poison)
 {
     struct solution solution = { 0 };
     struct board board = { 0 };
@@ -262,6 +266,7 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
         .min_v = min_v,
         .throughput_cycles = 0,
         .throughput_outputs = 1,
+        .throughput_waste = 0,
         .done = true,
     };
     for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
@@ -415,6 +420,8 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     }
     *throughput_cycles = snapshot.throughput_cycles;
     *throughput_outputs = snapshot.throughput_outputs;
+    if (throughput_waste)
+        *throughput_waste = snapshot.throughput_waste;
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution.inputs_and_outputs[i];
         if (!(io->type & REPEATING_OUTPUT))
@@ -545,19 +552,23 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_cycles)
-            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, true);
+            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
         return v->throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs")) {
-        if (!v->throughput_outputs)
-            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, true);
+        if (!v->throughput_cycles)
+            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
         return v->throughput_outputs;
+    } else if (!strcmp(metric, "throughput waste")) {
+        if (!v->throughput_cycles)
+            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
+        return v->throughput_waste;
     } else if (!strcmp(metric, "throughput cycles (unrestricted)")) {
         if (!v->throughput_cycles_without_poison)
-            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, false);
+            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
         return v->throughput_cycles_without_poison;
     } else if (!strcmp(metric, "throughput outputs (unrestricted)")) {
-        if (!v->throughput_outputs_without_poison)
-            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, false);
+        if (!v->throughput_cycles_without_poison)
+            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
         return v->throughput_outputs_without_poison;
     }
     struct solution solution = { 0 };

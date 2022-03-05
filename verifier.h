@@ -115,6 +115,9 @@ void verifier_error_clear(void *verifier);
 // the "throughput cycles (unrestricted)" & "throughput outputs (unrestricted)"
 //  metrics are similar to the above metrics, but give an approximate result for
 //  some solutions that would be rejected.
+// the "throughput waste" metric runs the solution until it loops.  if the
+//  solution grows larger forever, a positive number is returned.  otherwise,
+//  zero is returned.
 // the "height" metric runs the solution to completion, then measures the length
 //  of the area footprint perpendicular to each axis.  the smallest measured
 //  length is returned.
