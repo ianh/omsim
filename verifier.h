@@ -33,6 +33,20 @@ void verifier_destroy(void *verifier);
 // set how many cycles to wait for a solution to complete.
 void verifier_set_cycle_limit(void *verifier, int cycle_limit);
 
+// set whether the verifier fails if an output of the correct shape but with the
+// wrong atoms is dropped on the output with puzzle file index output_index.
+void verifier_set_fails_on_wrong_output(void *verifier, int output_index, int fails_on_wrong_output);
+// get the puzzle file index of the current wrong output or -1 if no wrong
+// outputs were detected.
+int verifier_wrong_output_index(void *verifier);
+// get the atom type at the given offset in the current wrong output.  the u and
+// v offsets are as they appear in the puzzle file.  if there's no wrong output
+// or no atom at this position, the value -1 is returned.
+int verifier_wrong_output_atom(void *verifier, int u, int v);
+// clears the current wrong output so that verifier_failing_output_index will
+// return -1 until another wrong output is detected.
+void verifier_wrong_output_clear(void *verifier);
+
 // returns a string describing any error that occurred during solution parsing,
 // decoding, or verification.  if there haven't been any errors, returns a null
 // pointer.  returned strings are valid for the lifetime of the program and

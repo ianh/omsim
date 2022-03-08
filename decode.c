@@ -318,6 +318,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             struct input_output *io = &solution->inputs_and_outputs[io_index];
             io->type = INPUT;
             io->puzzle_index = part.which_input_or_output;
+            io->solution_index = i;
             decode_molecule(c, m, io);
             io_index--;
         } else if (byte_string_is(part.name, "out-std")) {
@@ -325,6 +326,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             struct input_output *io = &solution->inputs_and_outputs[io_index];
             io->type = SINGLE_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
+            io->solution_index = i;
             decode_molecule(c, m, io);
             io_index--;
         } else if (byte_string_is(part.name, "out-rep")) {
@@ -332,6 +334,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             struct input_output *io = &solution->inputs_and_outputs[io_index];
             io->type = REPEATING_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
+            io->solution_index = i;
             decode_molecule(c, m, io);
             io->original_atoms = io->atoms;
             io->number_of_original_atoms = io->number_of_atoms;

@@ -1019,10 +1019,12 @@ static void consume_outputs(struct solution *solution, struct board *board)
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (!(io->type & OUTPUT))
             continue;
+        bool fails_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
         board->marked.length = 0;
         board->marked.cursor = 0;
         // first, check the entire output to see if it matches.
         bool match = true;
+        bool wrong_output = true;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
             atom output = io->atoms[j].atom;
             if (output & REPEATING_OUTPUT_PLACEHOLDER)
@@ -1034,6 +1036,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
                 // printf("no atom\n");
                 match = false;
+                wrong_output = false;
                 break;
             }
             // variable outputs match any atom.
@@ -1048,6 +1051,16 @@ static void consume_outputs(struct solution *solution, struct board *board)
                     break;
                 }
                 mark_output_position(board, io->atoms[j].position);
+            } else if (fails_on_wrong_output) {
+                if ((*a & (ALL_BONDS & ~RECENT_BONDS)) != (output & ALL_BONDS & ~RECENT_BONDS) || (*a & GRABBED)) {
+                    match = false;
+                    wrong_output = false;
+                    break;
+                }
+                if ((*a & ANY_ATOM) != (output & ANY_ATOM)) {
+                    match = false;
+                    // this could be a wrong output.
+                }
             } else {
                 if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
                     // printf("did not match: %llx vs %llx\n", (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))), output);
@@ -1106,6 +1119,9 @@ static void consume_outputs(struct solution *solution, struct board *board)
                     remove_atom(board, lookup_atom(board, io->atoms[j].position));
                 io->number_of_outputs++;
             }
+        } else if (fails_on_wrong_output && wrong_output) {
+            report_collision(board, io->atoms[0].position, "output didn't match");
+            board->wrong_output_index = i;
         }
     }
     board->active_input_or_output = UINT32_MAX;
@@ -1361,6 +1377,7 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     board->overlap = solution->track_self_overlap;
     board->half_cycle = 1;
     board->active_input_or_output = UINT32_MAX;
+    board->wrong_output_index = SIZE_MAX;
     // in order for lookups to work, the hash table has to be allocated using
     // ensure_capacity().
     if (initial_board_size < 1)

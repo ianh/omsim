@@ -35,6 +35,13 @@ struct verifier {
 
     uint64_t cycle_limit;
 
+    uint64_t fails_on_wrong_output_mask;
+    int wrong_output_index;
+    struct board wrong_output_board;
+    struct vector wrong_output_origin;
+    struct vector wrong_output_basis_u;
+    struct vector wrong_output_basis_v;
+
     const char *error;
 };
 
@@ -42,6 +49,7 @@ static void *verifier_create_empty(void)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 100000;
+    v->wrong_output_index = -1;
     return v;
 }
 
@@ -114,6 +122,7 @@ void verifier_destroy(void *verifier)
     struct verifier *v = verifier;
     free_puzzle_file(v->pf);
     free_solution_file(v->sf);
+    verifier_wrong_output_clear(v);
     free(v);
 }
 
@@ -123,6 +132,54 @@ void verifier_set_cycle_limit(void *verifier, int cycle_limit)
     if (cycle_limit < 0)
         cycle_limit = 0;
     v->cycle_limit = cycle_limit;
+}
+
+void verifier_set_fails_on_wrong_output(void *verifier, int output_index, int fails_on_wrong_output)
+{
+    struct verifier *v = verifier;
+    v->fails_on_wrong_output_mask &= ~(1ULL << (uint64_t)output_index);
+    v->fails_on_wrong_output_mask |= fails_on_wrong_output ? (1ULL << (uint64_t)output_index) : 0;
+}
+int verifier_wrong_output_index(void *verifier)
+{
+    struct verifier *v = verifier;
+    return v->wrong_output_index;
+}
+int verifier_wrong_output_atom(void *verifier, int offset_u, int offset_v)
+{
+    struct verifier *v = verifier;
+    if (v->wrong_output_index < 0)
+        return -1;
+    struct vector p = v->wrong_output_origin;
+    p.u += v->wrong_output_basis_u.u * offset_u + v->wrong_output_basis_v.u * offset_v;
+    p.v += v->wrong_output_basis_u.v * offset_u + v->wrong_output_basis_v.v * offset_v;
+    atom a = *lookup_atom(&v->wrong_output_board, p);
+    for (int i = 0; i <= 16; ++i) {
+        if (a & (1ULL << i))
+            return i;
+    }
+    return -1;
+}
+void verifier_wrong_output_clear(void *verifier)
+{
+    struct verifier *v = verifier;
+    v->wrong_output_index = -1;
+    destroy(0, &v->wrong_output_board);
+}
+
+static void check_wrong_output_and_destroy(struct verifier *v, struct solution *solution, struct board *board)
+{
+    if (board->wrong_output_index < solution->number_of_inputs_and_outputs && v->wrong_output_index < 0) {
+        struct input_output *io = &solution->inputs_and_outputs[board->wrong_output_index];
+        v->wrong_output_index = io->puzzle_index;
+        v->wrong_output_board = *board;
+        struct solution_part *part = &v->sf->parts[io->solution_index];
+        v->wrong_output_origin = (struct vector){ part->position[0], part->position[1] };
+        v->wrong_output_basis_u = u_offset_for_direction(part->rotation);
+        v->wrong_output_basis_v = v_offset_for_direction(part->rotation);
+        destroy(solution, 0);
+    } else
+        destroy(solution, board);
 }
 
 static uint64_t min_output_count(struct solution *solution)
@@ -266,6 +323,7 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return;
     initial_setup(&solution, &board, v->sf->area);
+    board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.ignore_swing_area = true;
     board.uses_poison = use_poison;
     board.poison_message = "solution behavior is too complex for throughput measurement";
@@ -456,7 +514,7 @@ error:
     free(snapshot.arms);
     free(snapshot.board.atoms_at_positions);
     free(shifted_board.atoms_at_positions);
-    destroy(&solution, &board);
+    check_wrong_output_and_destroy(v, &solution, &board);
 }
 
 static void measure_dimension(struct board *board, int32_t u, int32_t v, int *dimension, int hex_width)
@@ -639,6 +697,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     if (product_count >= 0)
         solution.target_number_of_outputs = product_count;
     initial_setup(&solution, &board, v->sf->area);
+    board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     if (!strcmp(metric, "overlap")) {
         int overlap = INT_MAX;
         if (board.overlap < INT_MAX)
@@ -671,6 +730,6 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         value = solution.maximum_absolute_arm_rotation;
     else
         v->error = "unknown metric";
-    destroy(&solution, &board);
+    check_wrong_output_and_destroy(v, &solution, &board);
     return value;
 }

@@ -223,6 +223,8 @@ struct input_output {
 
     // the original index of this input or output in the puzzle file.
     uint32_t puzzle_index;
+    // the original index of this input or output in the solution file.
+    uint32_t solution_index;
 
     // the number of times this output has consumed something.
     uint64_t number_of_outputs;
@@ -350,6 +352,12 @@ struct board {
     bool collision;
     struct vector collision_location;
     const char *collision_reason;
+
+    // a bitmask of which output indexes cause the solution to fail if a wrong
+    // output of the correct shape is dropped onto them.
+    uint64_t fails_on_wrong_output_mask;
+    // the index of the wrong output in the solution file (or SIZE_MAX).
+    size_t wrong_output_index;
 
     // how many hexes overlap one another (other than arms and track)?
     uint64_t overlap;
