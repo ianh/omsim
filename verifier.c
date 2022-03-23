@@ -42,6 +42,9 @@ struct verifier {
     struct vector wrong_output_basis_u;
     struct vector wrong_output_basis_v;
 
+    int cycles;
+    int area;
+
     const char *error;
 };
 
@@ -50,6 +53,8 @@ static void *verifier_create_empty(void)
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 100000;
     v->wrong_output_index = -1;
+    v->cycles = -1;
+    v->area = -1;
     return v;
 }
 
@@ -540,9 +545,14 @@ static void measure_dimension(struct board *board, int32_t u, int32_t v, int *di
 
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
+    const char *original_metric = metric;
     struct verifier *v = verifier;
     if (!v->sf)
         return -1;
+    if (!strcmp(metric, "cycles") && v->cycles >= 0)
+        return v->cycles;
+    if (!strcmp(metric, "area (approximate)") && v->area >= 0)
+        return v->area;
     long product_count = -1;
     if (!strncmp("product ", metric, strlen("product "))) {
         metric += strlen("product ");
@@ -712,24 +722,30 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error = board.collision_reason;
     else if (!board.complete)
         v->error = "solution did not complete within cycle limit";
-    else if (!strcmp(metric, "cycles"))
-        value = board.cycle;
-    else if (!strcmp(metric, "area (approximate)"))
-        value = used_area(&board);
-    else if (!strcmp(metric, "height")) {
-        value = INT_MAX;
-        measure_dimension(&board, -1, 0, &value, 1);
-        measure_dimension(&board, 0, 1, &value, 1);
-        measure_dimension(&board, -1, 1, &value, 1);
-    } else if (!strcmp(metric, "width*2")) {
-        value = INT_MAX;
-        measure_dimension(&board, -1, 2, &value, 2);
-        measure_dimension(&board, -2, 1, &value, 2);
-        measure_dimension(&board, 1, 1, &value, 2);
-    } else if (!strcmp(metric, "maximum absolute arm rotation"))
-        value = solution.maximum_absolute_arm_rotation;
-    else
-        v->error = "unknown metric";
+    else {
+        if (metric == original_metric) {
+            v->cycles = board.cycle;
+            v->area = used_area(&board);
+        }
+        if (!strcmp(metric, "cycles"))
+            value = board.cycle;
+        else if (!strcmp(metric, "area (approximate)"))
+            value = used_area(&board);
+        else if (!strcmp(metric, "height")) {
+            value = INT_MAX;
+            measure_dimension(&board, -1, 0, &value, 1);
+            measure_dimension(&board, 0, 1, &value, 1);
+            measure_dimension(&board, -1, 1, &value, 1);
+        } else if (!strcmp(metric, "width*2")) {
+            value = INT_MAX;
+            measure_dimension(&board, -1, 2, &value, 2);
+            measure_dimension(&board, -2, 1, &value, 2);
+            measure_dimension(&board, 1, 1, &value, 2);
+        } else if (!strcmp(metric, "maximum absolute arm rotation"))
+            value = solution.maximum_absolute_arm_rotation;
+        else
+            v->error = "unknown metric";
+    }
     check_wrong_output_and_destroy(v, &solution, &board);
     return value;
 }
