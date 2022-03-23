@@ -43,7 +43,7 @@ int verifier_wrong_output_index(void *verifier);
 // v offsets are as they appear in the puzzle file.  if there's no wrong output
 // or no atom at this position, the value -1 is returned.
 int verifier_wrong_output_atom(void *verifier, int u, int v);
-// clears the current wrong output so that verifier_failing_output_index will
+// clears the current wrong output so that verifier_wrong_output_index will
 // return -1 until another wrong output is detected.
 void verifier_wrong_output_clear(void *verifier);
 
