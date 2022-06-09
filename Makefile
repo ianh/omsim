@@ -8,20 +8,20 @@ EMEXPORTS1=_malloc,_free,_verifier_create_from_bytes,_verifier_create_from_bytes
 EMEXPORTS2=_verifier_destroy,_verifier_set_cycle_limit,_verifier_error,_verifier_error_clear,_verifier_evaluate_metric
 EMEXPORTS3=_verifier_set_fails_on_wrong_output,_verifier_wrong_output_index,_verifier_wrong_output_atom,_verifier_wrong_output_clear
 
-omsim: main.c parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c decode.c $(LDLIBS)
+omsim: main.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
+	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c decode.c collision.c $(LDLIBS)
 
-libverify.so: verifier.c verifier.h parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(CC) $(CFLAGS) -shared -fpic -o $@ verifier.c sim.c parse.c decode.c $(LDLIBS)
+libverify.so: verifier.c verifier.h parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
+	$(CC) $(CFLAGS) -shared -fpic -o $@ verifier.c sim.c parse.c decode.c collision.c $(LDLIBS)
 
-libverify.wasm: verifier.c verifier.h parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS=$(EMEXPORTS1),$(EMEXPORTS2),$(EMEXPORTS3) -o $@ verifier.c sim.c parse.c decode.c
+libverify.wasm: verifier.c verifier.h parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
+	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS=$(EMEXPORTS1),$(EMEXPORTS2),$(EMEXPORTS3) -o $@ verifier.c sim.c parse.c decode.c collision.c
 
-run-tests: run-tests.c parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(CC) $(CFLAGS) -o $@ run-tests.c parse.c sim.c decode.c $(LDLIBS)
+run-tests: run-tests.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
+	$(CC) $(CFLAGS) -o $@ run-tests.c parse.c sim.c decode.c collision.c $(LDLIBS)
 
-llvm-fuzz: llvm-fuzz.c parse.c sim.c decode.c parse.h sim.h decode.h Makefile
-	$(LLVMCC) $(CFLAGS) -fsanitize=fuzzer,address -o $@ llvm-fuzz.c parse.c sim.c decode.c $(LDLIBS)
+llvm-fuzz: llvm-fuzz.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
+	$(LLVMCC) $(CFLAGS) -fsanitize=fuzzer,address -o $@ llvm-fuzz.c parse.c sim.c decode.c collision.c $(LDLIBS)
 
 clean:
 	-rm omsim libverify.so libverify.wasm run-tests llvm-fuzz

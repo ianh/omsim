@@ -163,7 +163,10 @@ struct mechanism {
     // for mechanisms of type CONDUIT.
     uint32_t conduit_index;
 
-    // used for arms (and only to track rotation for "overclock" detection).
+    // used for arms that move on tracks.
+    struct vector movement;
+
+    // used for arms to track rotation for collision and "overclock" detection.
     int32_t arm_rotation;
 };
 
@@ -297,22 +300,36 @@ struct solution {
 
     uint64_t target_number_of_outputs;
 };
+enum movement_type {
+    SWING_MOVEMENT = 0,
+    PIVOT_MOVEMENT = 1,
+    PISTON_MOVEMENT = 2,
+    TRACK_MOVEMENT = 3,
 
+    IS_PISTON = 4,
+};
 struct movement {
-    // the starting position of the atom.
-    struct vector position;
+    // the number of atoms involved in this movement.
+    size_t number_of_atoms;
 
-    // the atom being moved.
-    atom atom;
+    uint32_t type;
 
-    // for rotations, the base is the point around which the atom rotates.
-    // for translations, the base is the direction of translation.
     struct vector base;
-    int rotation;
-    int translation;
+    struct vector grabber_offset; // without rotations applied.
+    struct vector absolute_grab_position;
+    struct vector translation;
+
+    int32_t base_rotation;
+    int32_t rotation;
 };
 struct movement_list {
-    struct movement *elements;
+    struct movement *movements;
+    size_t capacity;
+    size_t length;
+    size_t cursor;
+};
+struct moving_atoms {
+    struct atom_at_position *atoms_at_positions;
     size_t capacity;
     size_t length;
     size_t cursor;
@@ -321,7 +338,6 @@ struct marked_positions {
     struct vector *positions;
     size_t capacity;
     size_t length;
-    size_t cursor;
 };
 struct board {
     struct atom_at_position *atoms_at_positions;
@@ -341,6 +357,7 @@ struct board {
     size_t active_input_or_output;
 
     struct movement_list movements;
+    struct moving_atoms moving_atoms;
 
     // used for checking infinite products.
     struct marked_positions marked;
@@ -389,7 +406,10 @@ void destroy(struct solution *solution, struct board *board);
 atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
 atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query);
-void mark_used_area(struct board *board, struct vector point, uint64_t *overlap);
+
+// returns the atom value at the point (for collision detection).
+atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap);
+
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
 
 uint32_t used_area(struct board *board);

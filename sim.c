@@ -1,5 +1,6 @@
 #include "sim.h"
 
+#include "collision.h"
 #include "parse.h"
 #include <assert.h>
 #include <inttypes.h>
@@ -80,7 +81,6 @@ static bool conversion_output(struct board *board, bool active, struct mechanism
             report_collision(board, pos, "conversion glyph output overlaps with van berlo's wheel");
             return true;
         }
-        // xx add hitbox
         return false;
     }
     return true;
@@ -190,6 +190,8 @@ static int normalize_direction(int direction)
 static void rotate_bonds(atom *a, int rotation)
 {
     rotation = normalize_direction(rotation);
+    if (rotation == 0)
+        return;
     // first, shift the bond bits by the rotation amount.
     atom bonds = *a & ALL_BONDS;
     bonds <<= rotation;
@@ -566,30 +568,44 @@ static void enqueue_movement(struct board *board, struct movement m)
     while (board->movements.length >= capacity)
         capacity = 4 * (capacity + 12) / 3;
     if (capacity != board->movements.capacity) {
-        struct movement *elems = realloc(board->movements.elements,
+        struct movement *elems = realloc(board->movements.movements,
          sizeof(struct movement) * capacity);
         if (!elems)
             abort();
-        board->movements.elements = elems;
+        board->movements.movements = elems;
         board->movements.capacity = capacity;
     }
-    board->movements.elements[board->movements.length++] = m;
+    board->movements.movements[board->movements.length++] = m;
 }
 
-static void move_atoms(struct board *board, atom *a, struct vector position, struct vector base, int rotation, int translation)
+static void move_atom(struct board *board, atom *a, struct vector position)
 {
-    enqueue_movement(board, (struct movement){
-        .position = position,
+    size_t capacity = board->moving_atoms.capacity;
+    while (board->moving_atoms.length >= capacity)
+        capacity = 4 * (capacity + 12) / 3;
+    if (capacity != board->moving_atoms.capacity) {
+        struct atom_at_position *elems = realloc(board->moving_atoms.atoms_at_positions,
+         sizeof(struct atom_at_position) * capacity);
+        if (!elems)
+            abort();
+        board->moving_atoms.atoms_at_positions = elems;
+        board->moving_atoms.capacity = capacity;
+    }
+    board->moving_atoms.atoms_at_positions[board->moving_atoms.length++] = (struct atom_at_position){
         .atom = *a,
-        .base = base,
-        .rotation = rotation,
-        .translation = translation,
-    });
+        .position = position,
+    };
     remove_atom(board, a);
+}
+
+static void move_atoms(struct board *board, atom *a, struct movement movement)
+{
+    size_t start = board->moving_atoms.cursor;
+    move_atom(board, a, movement.absolute_grab_position);
     // do a breadth-first search over the molecule, removing each atom from the
     // board as it's discovered.
-    while (board->movements.cursor < board->movements.length) {
-        struct movement m = board->movements.elements[board->movements.cursor];
+    while (board->moving_atoms.cursor < board->moving_atoms.length) {
+        struct atom_at_position m = board->moving_atoms.atoms_at_positions[board->moving_atoms.cursor];
         for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
             if (!(m.atom & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
                 continue;
@@ -600,23 +616,20 @@ static void move_atoms(struct board *board, atom *a, struct vector position, str
             atom *b = lookup_atom_without_checking_for_poison(board, p);
             if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
                 continue;
-            enqueue_movement(board, (struct movement){
-                .position = p,
-                .atom = *b,
-                .base = base,
-                .rotation = rotation,
-                .translation = translation,
-            });
-            remove_atom(board, b);
+            move_atom(board, b, p);
         }
-        board->movements.cursor++;
+        board->moving_atoms.cursor++;
     }
+    movement.number_of_atoms = board->moving_atoms.cursor - start;
+    enqueue_movement(board, movement);
 }
 
 static void perform_arm_instructions(struct solution *solution, struct board *board)
 {
     if (solution->tape_period == 0)
         return;
+    board->moving_atoms.length = 0;
+    board->moving_atoms.cursor = 0;
     board->movements.length = 0;
     board->movements.cursor = 0;
     uint32_t n = solution->number_of_arms;
@@ -726,28 +739,51 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 continue;
             }
             struct vector atom_pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
+            struct movement movement = {
+                .type = (m->type & PISTON) ? IS_PISTON : 0,
+                .base = m->position,
+                .base_rotation = m->arm_rotation,
+                .grabber_offset = offset,
+                .absolute_grab_position = atom_pos,
+            };
             switch (inst) {
             case 'q': // pivot ccw
-                move_atoms(board, a, atom_pos, atom_pos, 1, 0);
+                movement.type |= PIVOT_MOVEMENT;
+                movement.rotation = 1;
+                move_atoms(board, a, movement);
                 break;
             case 'e': // pivot cw
-                move_atoms(board, a, atom_pos, atom_pos, -1, 0);
+                movement.type |= PIVOT_MOVEMENT;
+                movement.rotation = -1;
+                move_atoms(board, a, movement);
                 break;
             case 'a': // rotate ccw
-                move_atoms(board, a, atom_pos, m->position, 1, 0);
+                movement.type |= SWING_MOVEMENT;
+                movement.rotation = 1;
+                move_atoms(board, a, movement);
                 break;
             case 'd': // rotate cw
-                move_atoms(board, a, atom_pos, m->position, -1, 0);
+                movement.type |= SWING_MOVEMENT;
+                movement.rotation = -1;
+                move_atoms(board, a, movement);
                 break;
             case 'w': // extend piston
-                move_atoms(board, a, atom_pos, normalize_axis(m->direction_u), 0, 1);
+                movement.type |= PISTON_MOVEMENT;
+                movement.translation = normalize_axis(m->direction_u);
+                move_atoms(board, a, movement);
                 break;
             case 's': // retract piston
-                move_atoms(board, a, atom_pos, normalize_axis(m->direction_u), 0, -1);
+                movement.type |= PISTON_MOVEMENT;
+                movement.translation = normalize_axis(m->direction_u);
+                movement.translation.u = -movement.translation.u;
+                movement.translation.v = -movement.translation.v;
+                move_atoms(board, a, movement);
                 break;
             case 't': // move along track, - direction
             case 'g': // move along track, + direction
-                move_atoms(board, a, atom_pos, track_motion, 0, 1);
+                movement.type |= TRACK_MOVEMENT;
+                movement.translation = track_motion;
+                move_atoms(board, a, movement);
                 break;
             default:
                 break;
@@ -817,28 +853,35 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         else if (m->arm_rotation < 0 && (uint32_t)-(int64_t)m->arm_rotation > solution->maximum_absolute_arm_rotation)
             solution->maximum_absolute_arm_rotation = (uint32_t)-(int64_t)m->arm_rotation;
     }
-    // carry out deferred atom movements.
-    ensure_capacity(board, board->movements.length);
-    for (size_t i = 0; i < board->movements.length; ++i) {
-        struct movement m = board->movements.elements[i];
-        // printf("movement: %d %d by %d / %d around %d %d\n", m.position.u, m.position.v, m.rotation, m.translation, m.base.u, m.base.v);
-        struct vector delta = m.position;
-        delta.u -= m.base.u;
-        delta.v -= m.base.v;
-        struct vector u = u_offset_for_direction(m.rotation);
-        struct vector v = v_offset_for_direction(m.rotation);
-        struct vector to = {
-            u.u * delta.u + v.u * delta.v + m.base.u + m.translation * m.base.u,
-            u.v * delta.u + v.v * delta.v + m.base.v + m.translation * m.base.v,
-        };
-        if (m.rotation) {
-            rotate_bonds(&m.atom, m.rotation);
-            record_swing_area(board, m.position, m.base, m.rotation);
+    // carry out deferred movements.
+    if (board->half_cycle == 2) {
+        struct vector collision_location;
+        if (collision(solution, board, &collision_location)) {
+            report_collision(board, collision_location, "collision during motion phase");
+            return;
         }
-        atom *a = insert_atom(board, to, "atom moved on top of another atom");
-        *a = VALID | m.atom;
-
-        // xx collision detection / error handling
+        ensure_capacity(board, board->moving_atoms.length);
+        size_t atom_index = 0;
+        for (size_t i = 0; i < board->movements.length; ++i) {
+            struct movement m = board->movements.movements[i];
+            // printf("movement: %d %d by %d / %d %d around %d %d (%d)\n", m.absolute_grab_position.u, m.absolute_grab_position.v, m.rotation, m.translation.u, m.translation.v, m.base.u, m.base.v, m.type);
+            struct vector base = ((m.type & 3) == SWING_MOVEMENT) ? m.base : m.absolute_grab_position;
+            struct vector u = u_offset_for_direction(m.rotation);
+            struct vector v = v_offset_for_direction(m.rotation);
+            for (size_t j = 0; j < m.number_of_atoms; ++j) {
+                struct atom_at_position ap = board->moving_atoms.atoms_at_positions[atom_index++];
+                struct vector delta = ap.position;
+                delta.u -= base.u;
+                delta.v -= base.v;
+                struct vector to = {
+                    u.u * delta.u + v.u * delta.v + base.u + m.translation.u,
+                    u.v * delta.u + v.v * delta.v + base.v + m.translation.v,
+                };
+                atom *a = insert_atom(board, to, "atom moved on top of another atom");
+                rotate_bonds(&ap.atom, m.rotation);
+                *a = VALID | ap.atom;
+            }
+        }
     }
 }
 
@@ -1021,7 +1064,6 @@ static void consume_outputs(struct solution *solution, struct board *board)
             continue;
         bool fails_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
         board->marked.length = 0;
-        board->marked.cursor = 0;
         // first, check the entire output to see if it matches.
         bool match = true;
         bool wrong_output = true;
@@ -1072,8 +1114,9 @@ static void consume_outputs(struct solution *solution, struct board *board)
         }
         // validating infinite products requires visiting all the atoms in the
         // molecule.  that's what this loop does.
-        while (match && board->marked.cursor < board->marked.length) {
-            struct vector p = board->marked.positions[board->marked.cursor++];
+        size_t cursor = 0;
+        while (match && cursor < board->marked.length) {
+            struct vector p = board->marked.positions[cursor++];
             atom a = *lookup_atom_without_checking_for_poison(board, p);
             for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
                 if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
@@ -1472,7 +1515,8 @@ void destroy(struct solution *solution, struct board *board)
     if (board) {
         free(board->atoms_at_positions);
         free(board->flag_reset);
-        free(board->movements.elements);
+        free(board->movements.movements);
+        free(board->moving_atoms.atoms_at_positions);
         free(board->marked.positions);
         memset(board, 0, sizeof(*board));
     }
@@ -1480,7 +1524,6 @@ void destroy(struct solution *solution, struct board *board)
 
 uint32_t used_area(struct board *board)
 {
-    // xx record/replay swings for extra efficiency
     return board->used;
 }
 
@@ -1541,18 +1584,19 @@ atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector
     return &lookup_atom_at_position(board, query)->atom;
 }
 
-void mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
+atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
 {
     ensure_capacity(board, 1);
     struct atom_at_position *a = lookup_atom_at_position(board, point);
     if (a->atom & VALID) {
         if (overlap && !(a->atom & VISITED))
             (*overlap)++;
-        return;
+        return a->atom;
     }
     a->position = point;
     a->atom = VALID | REMOVED;
     board->used++;
+    return a->atom;
 }
 
 atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
