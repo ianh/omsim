@@ -3,6 +3,14 @@
 #include <math.h>
 #include <stdlib.h>
 
+#include <stdio.h>
+
+#define printf(...)
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
 struct xy_vector {
     float x;
     float y;
@@ -110,23 +118,26 @@ static void add_collider(struct collider_list *list, struct board *board, struct
     mark_area_and_check_board(list, board, collider, p.u - 1, p.v);
     mark_area_and_check_board(list, board, collider, p.u, p.v - 1);
     mark_area_and_check_board(list, board, collider, p.u + 1, p.v - 1);
-    if (list->collision)
+    if (list->collision) {
+        list->colliders[list->length++] = collider;
         return;
+    }
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
         if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
             continue;
+        // printf("%f %f %f x %f %f %f\n", collider.radius, collider.center.x, collider.center.y, other.radius, other.center.x, other.center.y);
         list->collision = true;
         if (list->collision_location)
             *list->collision_location = p;
+        list->colliders[list->length++] = collider;
         return;
     }
     list->colliders[list->length++] = collider;
 }
 
-bool collision(struct solution *solution, struct board *board, struct vector *collision_location)
+bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
 {
-    return false;
     size_t number_of_colliders = solution->number_of_arms + board->moving_atoms.length;
     struct collider_list list = {
         .colliders = calloc(number_of_colliders, sizeof(struct collider)),
@@ -142,8 +153,8 @@ bool collision(struct solution *solution, struct board *board, struct vector *co
     }
     list.cursor = list.length;
     size_t fixed_colliders = list.length;
-    float progressIncrement = 0.1f; // xx make this dynamic
-    for (float progress = progressIncrement; progress < 1.f; progress += progressIncrement) {
+    // printf("==\n"); // xx
+    for (float progress = increment; progress < 1.f; progress += increment) {
         if (list.collision)
             break;
         list.cursor = fixed_colliders;
@@ -151,11 +162,19 @@ bool collision(struct solution *solution, struct board *board, struct vector *co
         for (size_t i = 0; i < solution->number_of_arms; ++i) {
             if (vectors_equal(solution->arms[i].movement, zero_vector))
                 continue;
-            // xx add arm collider
+            struct xy_vector xy = to_xy(solution->arms[i].position);
+            struct xy_vector tr = to_xy(solution->arms[i].movement);
+            xy.x -= tr.x * (1.f - progress);
+            xy.y -= tr.y * (1.f - progress);
+            add_collider(&list, board, (struct collider){
+                .center = xy,
+                .radius = armBaseRadius,
+            });
         }
         size_t atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement m = board->movements.movements[i];
+            // print_movement(m);
             struct xy_vector v = to_xy(m.base);
             float rotation = to_radians(m.rotation);
             float armRotation = 0;
@@ -176,7 +195,10 @@ bool collision(struct solution *solution, struct board *board, struct vector *co
             float baseRotation = to_radians(m.base_rotation);
             struct xy_vector g = to_xy(m.grabber_offset);
             if (m.type & IS_PISTON) {
-                // xx scale g to new length according to translation
+                float len = xy_len(g);
+                float newlen = xy_len(g) - ((float)m.piston_extension) * hexSizeX * (1.f - progress);
+                g.x = newlen / len * g.x;
+                g.y = newlen / len * g.y;
             }
             float grabberRotation = baseRotation - armRotation * (1.f - progress);
             float grx = (float)cos(grabberRotation);
@@ -199,7 +221,17 @@ bool collision(struct solution *solution, struct board *board, struct vector *co
                 });
             }
         }
+
+        // xx
+        printf("[");
+        for (size_t i = 0; i < list.length; ++i) {
+            if (i > 0)
+                printf(",");
+            printf("[%f,%f,%f]", list.colliders[i].radius, list.colliders[i].center.x, list.colliders[i].center.y);
+        }
+        printf("],");
     }
+
     free(list.colliders);
     return list.collision;
 }

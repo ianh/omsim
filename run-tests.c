@@ -106,7 +106,7 @@ int main()
         while (board.cycle < 200000 && !board.complete) {
             cycle(&solution, &board);
             if (board.collision) {
-                fprintf(stderr, "collision in '%s' at at %" PRId32 ", %" PRId32 ": %s\n", buf,
+                fprintf(stderr, "collision in '%s' at %" PRId32 ", %" PRId32 ": %s\n", buf,
                  board.collision_location.u, board.collision_location.v,
                  board.collision_reason);
                 break;
@@ -118,16 +118,17 @@ int main()
             fprintf(stderr, "simulation says cycle count is: %" PRIu64 "\n", board.cycle);
             goto fail;
         }
-        if (false) {
+        // if (false) {
             // xx re-enable
             uint32_t area = used_area(&board);
-            if (!puzzle->pf->is_production && abs((int)sf->area - (int)area) > (int)(sf->area * AREA_TOLERANCE)) {
+            if (!puzzle->pf->is_production && sf->area != area) {
+            // if (!puzzle->pf->is_production && abs((int)sf->area - (int)area) > (int)(sf->area * AREA_TOLERANCE)) {
                 fprintf(stderr, "area mismatch for '%s'\n", buf);
                 fprintf(stderr, "solution file says area is: %" PRIu32 "\n", sf->area);
                 fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);
                 goto fail;
             }
-        }
+        // }
         validated_solutions++;
     fail:
         destroy(&solution, &board);

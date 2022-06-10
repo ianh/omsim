@@ -4,6 +4,6 @@
 #include "sim.h"
 
 // this function also marks the area covered by any moving atoms.
-bool collision(struct solution *solution, struct board *board, struct vector *collision_location);
+bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location);
 
 #endif

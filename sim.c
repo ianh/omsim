@@ -639,6 +639,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         uint32_t i = ii;
         if (i >= n)
             i -= n;
+        struct mechanism *m = &solution->arms[i];
+        if (ii == i)
+            m->movement = zero_vector;
         if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
             continue;
         size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
@@ -655,7 +658,6 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         // perform grabs after drops so handoffs work.
         if ((ii != i) != (inst == 'r'))
             continue;
-        struct mechanism *m = &solution->arms[i];
         struct vector track_motion = {0, 0};
         // first, validate the instruction.
         if (inst == 'r') {
@@ -702,6 +704,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct vector offset = u_offset_for_direction(direction);
             struct vector saved_u = m->direction_u;
             struct vector saved_v = m->direction_v;
+            int length = 0;
             while (true) {
                 // xx do area somewhere else?
                 struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
@@ -714,6 +717,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                     break;
                 adjust_axis_magnitude(&m->direction_u, -1);
                 adjust_axis_magnitude(&m->direction_v, -1);
+                length++;
             }
             m->direction_u = saved_u;
             m->direction_v = saved_v;
@@ -746,6 +750,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 .grabber_offset = offset,
                 .absolute_grab_position = atom_pos,
             };
+            movement.grabber_offset.u *= length;
+            movement.grabber_offset.v *= length;
             switch (inst) {
             case 'q': // pivot ccw
                 movement.type |= PIVOT_MOVEMENT;
@@ -769,11 +775,13 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 break;
             case 'w': // extend piston
                 movement.type |= PISTON_MOVEMENT;
+                movement.piston_extension = 1;
                 movement.translation = normalize_axis(m->direction_u);
                 move_atoms(board, a, movement);
                 break;
             case 's': // retract piston
                 movement.type |= PISTON_MOVEMENT;
+                movement.piston_extension = -1;
                 movement.translation = normalize_axis(m->direction_u);
                 movement.translation.u = -movement.translation.u;
                 movement.translation.v = -movement.translation.v;
@@ -835,6 +843,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         case 'g': // move along track, + direction
             m->position.u += track_motion.u;
             m->position.v += track_motion.v;
+            m->movement = track_motion;
             break;
         case 'r': // grab
             m->type |= GRABBING;
@@ -855,31 +864,68 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
     }
     // carry out deferred movements.
     if (board->half_cycle == 2) {
+        int32_t maximum_rotation_distance = 0;
+        // this is kind of terrible.  we have to fix up the movement structs to
+        // look like the game is expecting (instead of the initial state, before
+        // the movement, the game expects to see the final state, after the
+        // movement already happened).  so, for now, we'll do two passes.  this
+        // code should be cleaned up at some point.
+        size_t atom_index = 0;
+        for (size_t i = 0; i < board->movements.length; ++i) {
+            struct movement *m = &board->movements.movements[i];
+            // printf("movement: %d %d by %d / %d %d around %d %d (%d)\n", m.absolute_grab_position.u, m.absolute_grab_position.v, m.rotation, m.translation.u, m.translation.v, m.base.u, m.base.v, m.type);
+            struct vector base = ((m->type & 3) == SWING_MOVEMENT) ? m->base : m->absolute_grab_position;
+            struct vector u = u_offset_for_direction(m->rotation);
+            struct vector v = v_offset_for_direction(m->rotation);
+            for (size_t j = 0; j < m->number_of_atoms; ++j) {
+                struct atom_at_position *ap = &board->moving_atoms.atoms_at_positions[atom_index++];
+                struct vector delta = ap->position;
+                delta.u -= base.u;
+                delta.v -= base.v;
+                ap->position = (struct vector){
+                    u.u * delta.u + v.u * delta.v + base.u + m->translation.u,
+                    u.v * delta.u + v.v * delta.v + base.v + m->translation.v,
+                };
+                if (m->rotation != 0) {
+                    int32_t distance = (abs(delta.u) + abs(delta.v) + abs(delta.u + delta.v)) / 2;
+                    if (distance > maximum_rotation_distance)
+                        maximum_rotation_distance = distance;
+                    rotate_bonds(&ap->atom, m->rotation);
+                }
+            }
+            if ((m->type & 3) == TRACK_MOVEMENT) {
+                m->base.u += m->translation.u;
+                m->base.v += m->translation.v;
+            } else if ((m->type & 3) == PISTON_MOVEMENT) {
+                struct vector g = normalize_axis(m->grabber_offset);
+                m->grabber_offset.u = g.u * (m->grabber_offset.u / g.u + m->piston_extension);
+                m->grabber_offset.v = g.v * (m->grabber_offset.v / g.v + m->piston_extension);
+            }
+            struct vector delta = m->absolute_grab_position;
+            delta.u -= base.u;
+            delta.v -= base.v;
+            m->absolute_grab_position = (struct vector){
+                u.u * delta.u + v.u * delta.v + base.u + m->translation.u,
+                u.v * delta.u + v.v * delta.v + base.v + m->translation.v,
+            };
+            if ((m->type & 3) == SWING_MOVEMENT)
+                m->base_rotation += m->rotation;
+        }
+        double collision_increment = 0.25 / pow(2, round(log2(maximum_rotation_distance)));
+        if (!(collision_increment >= 0.125))
+            collision_increment = 0.125;
         struct vector collision_location;
-        if (collision(solution, board, &collision_location)) {
+        if (collision(solution, board, (float)collision_increment, &collision_location)) {
             report_collision(board, collision_location, "collision during motion phase");
             return;
         }
         ensure_capacity(board, board->moving_atoms.length);
-        size_t atom_index = 0;
+        atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement m = board->movements.movements[i];
-            // printf("movement: %d %d by %d / %d %d around %d %d (%d)\n", m.absolute_grab_position.u, m.absolute_grab_position.v, m.rotation, m.translation.u, m.translation.v, m.base.u, m.base.v, m.type);
-            struct vector base = ((m.type & 3) == SWING_MOVEMENT) ? m.base : m.absolute_grab_position;
-            struct vector u = u_offset_for_direction(m.rotation);
-            struct vector v = v_offset_for_direction(m.rotation);
             for (size_t j = 0; j < m.number_of_atoms; ++j) {
                 struct atom_at_position ap = board->moving_atoms.atoms_at_positions[atom_index++];
-                struct vector delta = ap.position;
-                delta.u -= base.u;
-                delta.v -= base.v;
-                struct vector to = {
-                    u.u * delta.u + v.u * delta.v + base.u + m.translation.u,
-                    u.v * delta.u + v.v * delta.v + base.v + m.translation.v,
-                };
-                atom *a = insert_atom(board, to, "atom moved on top of another atom");
-                rotate_bonds(&ap.atom, m.rotation);
-                *a = VALID | ap.atom;
+                *insert_atom(board, ap.position, "atom moved on top of another atom") = VALID | ap.atom;
             }
         }
     }
