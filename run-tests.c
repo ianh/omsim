@@ -118,17 +118,13 @@ int main()
             fprintf(stderr, "simulation says cycle count is: %" PRIu64 "\n", board.cycle);
             goto fail;
         }
-        // if (false) {
-            // xx re-enable
-            uint32_t area = used_area(&board);
-            if (!puzzle->pf->is_production && sf->area != area) {
-            // if (!puzzle->pf->is_production && abs((int)sf->area - (int)area) > (int)(sf->area * AREA_TOLERANCE)) {
-                fprintf(stderr, "area mismatch for '%s'\n", buf);
-                fprintf(stderr, "solution file says area is: %" PRIu32 "\n", sf->area);
-                fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);
-                goto fail;
-            }
-        // }
+        uint32_t area = used_area(&board);
+        if (!puzzle->pf->is_production && sf->area != area) {
+            fprintf(stderr, "area mismatch for '%s'\n", buf);
+            fprintf(stderr, "solution file says area is: %" PRIu32 "\n", sf->area);
+            fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);
+            goto fail;
+        }
         validated_solutions++;
     fail:
         destroy(&solution, &board);

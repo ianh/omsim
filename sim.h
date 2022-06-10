@@ -5,9 +5,6 @@
 #include <stdint.h>
 #include <string.h>
 
-// xx
-#include <stdio.h>
-
 typedef uint64_t atom;
 
 // these shift amounts must match the atom bytes in the puzzle file format.
@@ -327,11 +324,6 @@ struct movement {
 
     int piston_extension;
 };
-
-static inline void print_movement(struct movement m) {
-    printf("type=%x base=%d,%d grabber_offset=%d,%d absolute_grab_position=%d,%d translation=%d,%d base_rotation=%d rotation=%d\n",
-        m.type, m.base.u, m.base.v, m.grabber_offset.u, m.grabber_offset.v, m.absolute_grab_position.u, m.absolute_grab_position.v, m.translation.u, m.translation.v, m.base_rotation, m.rotation);
-}
 
 struct movement_list {
     struct movement *movements;

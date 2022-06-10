@@ -3,10 +3,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-#include <stdio.h>
-
-#define printf(...)
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -153,7 +149,6 @@ bool collision(struct solution *solution, struct board *board, float increment, 
     }
     list.cursor = list.length;
     size_t fixed_colliders = list.length;
-    // printf("==\n"); // xx
     for (float progress = increment; progress < 1.f; progress += increment) {
         if (list.collision)
             break;
@@ -174,7 +169,6 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         size_t atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement m = board->movements.movements[i];
-            // print_movement(m);
             struct xy_vector v = to_xy(m.base);
             float rotation = to_radians(m.rotation);
             float armRotation = 0;
@@ -222,14 +216,13 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             }
         }
 
-        // xx
-        printf("[");
-        for (size_t i = 0; i < list.length; ++i) {
-            if (i > 0)
-                printf(",");
-            printf("[%f,%f,%f]", list.colliders[i].radius, list.colliders[i].center.x, list.colliders[i].center.y);
-        }
-        printf("],");
+        // printf("[");
+        // for (size_t i = 0; i < list.length; ++i) {
+        //     if (i > 0)
+        //         printf(",");
+        //     printf("[%f,%f,%f]", list.colliders[i].radius, list.colliders[i].center.x, list.colliders[i].center.y);
+        // }
+        // printf("],");
     }
 
     free(list.colliders);
