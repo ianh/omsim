@@ -42,8 +42,8 @@ struct verifier {
     struct vector wrong_output_basis_u;
     struct vector wrong_output_basis_v;
 
-    int gif_start_cycle;
-    int gif_end_cycle;
+    int visual_loop_start_cycle;
+    int visual_loop_end_cycle;
 
     int cycles;
     int area;
@@ -299,8 +299,8 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     *throughput_cycles = -1;
     *throughput_outputs = -1;
     if (!use_poison) {
-        v->gif_start_cycle = -1;
-        v->gif_end_cycle = -1;
+        v->visual_loop_start_cycle = -1;
+        v->visual_loop_end_cycle = -1;
     }
     // compute a bounding box for the solution
     int32_t max_u = INT32_MIN;
@@ -396,8 +396,8 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
                     throughputs_remaining--;
                 }
                 if (!use_poison) {
-                    v->gif_start_cycle = snapshot.board.cycle;
-                    v->gif_end_cycle = board.cycle;
+                    v->visual_loop_start_cycle = snapshot.board.cycle;
+                    v->visual_loop_end_cycle = board.cycle;
                 }
             }
         }
@@ -662,14 +662,14 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         if (!v->throughput_cycles_without_poison)
             measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
         return v->throughput_outputs_without_poison;
-    } else if (!strcmp(metric, "gif start cycle")) {
-        if (!v->gif_start_cycle)
+    } else if (!strcmp(metric, "visual loop start cycle")) {
+        if (!v->visual_loop_start_cycle)
             measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
-        return v->gif_start_cycle;
-    } else if (!strcmp(metric, "gif end cycle")) {
-        if (!v->gif_end_cycle)
+        return v->visual_loop_start_cycle;
+    } else if (!strcmp(metric, "visual loop end cycle")) {
+        if (!v->visual_loop_end_cycle)
             measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
-        return v->gif_end_cycle;
+        return v->visual_loop_end_cycle;
     }
     struct solution solution = { 0 };
     struct board board = { 0 };

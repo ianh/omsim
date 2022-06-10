@@ -139,8 +139,8 @@ void verifier_error_clear(void *verifier);
 // the "throughput waste" metric runs the solution until it loops.  if the
 //  solution grows larger forever, a positive number is returned.  otherwise,
 //  zero is returned.
-// the "gif start cycle" and "gif end cycle" metrics return the cycle to start
-//  recording and the cycle to end recording to make a properly looping gif.
+// the "visual loop start cycle" and "visual loop end cycle" metrics return
+//  cycles between which the solution visibly loops.
 // the "height" metric runs the solution to completion, then measures the length
 //  of the area footprint perpendicular to each axis.  the smallest measured
 //  length is returned.
