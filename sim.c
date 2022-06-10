@@ -864,7 +864,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
     }
     // carry out deferred movements.
     if (board->half_cycle == 2) {
-        int32_t maximum_rotation_distance = 0;
+        int32_t maximum_rotation_distance = 1;
         // this is kind of terrible.  we have to fix up the movement structs to
         // look like the game is expecting (instead of the initial state, before
         // the movement, the game expects to see the final state, after the
@@ -911,8 +911,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if ((m->type & 3) == SWING_MOVEMENT)
                 m->base_rotation += m->rotation;
         }
-        double collision_increment = 0.25 / pow(2, round(log2(maximum_rotation_distance)));
-        if (!(collision_increment >= 0.125))
+        double collision_increment = 0.25 / pow(2, round(log(maximum_rotation_distance) / log(2)));
+        if (!(collision_increment <= 0.125))
             collision_increment = 0.125;
         struct vector collision_location;
         if (collision(solution, board, (float)collision_increment, &collision_location)) {
