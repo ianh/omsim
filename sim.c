@@ -898,8 +898,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 m->base.v += m->translation.v;
             } else if ((m->type & 3) == PISTON_MOVEMENT) {
                 struct vector g = normalize_axis(m->grabber_offset);
-                m->grabber_offset.u = g.u * (m->grabber_offset.u / g.u + m->piston_extension);
-                m->grabber_offset.v = g.v * (m->grabber_offset.v / g.v + m->piston_extension);
+                m->grabber_offset.u = g.u ? g.u * (m->grabber_offset.u / g.u + m->piston_extension) : 0;
+                m->grabber_offset.v = g.v ? g.v * (m->grabber_offset.v / g.v + m->piston_extension) : 0;
             }
             struct vector delta = m->absolute_grab_position;
             delta.u -= base.u;
