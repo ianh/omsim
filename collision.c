@@ -165,6 +165,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 .center = xy,
                 .radius = armBaseRadius,
             });
+            list.cursor = list.length;
         }
         size_t atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
@@ -214,6 +215,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                     .radius = atomRadius,
                 });
             }
+            list.cursor = list.length;
         }
 
         // printf("[");
