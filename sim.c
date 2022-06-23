@@ -911,13 +911,17 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if ((m->type & 3) == SWING_MOVEMENT)
                 m->base_rotation += m->rotation;
         }
-        double collision_increment = 0.25 / pow(2, round(log(maximum_rotation_distance) / log(2)));
-        if (!(collision_increment <= 0.125))
-            collision_increment = 0.125;
-        struct vector collision_location;
-        if (collision(solution, board, (float)collision_increment, &collision_location)) {
-            report_collision(board, collision_location, "collision during motion phase");
-            return;
+        if (!board->ignore_swing_area) {
+            // xx rate should still check collision/measure area, but in a
+            // different way that isn't so slow...
+            double collision_increment = 0.25 / pow(2, round(log(maximum_rotation_distance) / log(2)));
+            if (!(collision_increment <= 0.125))
+                collision_increment = 0.125;
+            struct vector collision_location;
+            if (collision(solution, board, (float)collision_increment, &collision_location)) {
+                report_collision(board, collision_location, "collision during motion phase");
+                return;
+            }
         }
         ensure_capacity(board, board->moving_atoms.length);
         atom_index = 0;
