@@ -532,7 +532,7 @@ error:
     check_wrong_output_and_destroy(v, &solution, &board);
 }
 
-static void measure_dimension(struct board *board, int32_t u, int32_t v, int *dimension, int hex_width)
+static void measure_dimension(struct board *board, int32_t u, int32_t v, int *dimension, int hex_width, int sortorder)
 {
     int32_t max = INT32_MIN;
     int32_t min = INT32_MAX;
@@ -549,7 +549,7 @@ static void measure_dimension(struct board *board, int32_t u, int32_t v, int *di
     }
     if (max < min)
         *dimension = 0;
-    else if (max - min + hex_width < *dimension)
+    else if (sortorder * (max - min + hex_width) < sortorder * *dimension)
         *dimension = max - min + hex_width;
 }
 
@@ -751,14 +751,24 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             value = used_area(&board);
         else if (!strcmp(metric, "height")) {
             value = INT_MAX;
-            measure_dimension(&board, -1, 0, &value, 1);
-            measure_dimension(&board, 0, 1, &value, 1);
-            measure_dimension(&board, -1, 1, &value, 1);
+            measure_dimension(&board, -1, 0, &value, 1, 1);
+            measure_dimension(&board, 0, 1, &value, 1, 1);
+            measure_dimension(&board, -1, 1, &value, 1, 1);
         } else if (!strcmp(metric, "width*2")) {
             value = INT_MAX;
-            measure_dimension(&board, -1, 2, &value, 2);
-            measure_dimension(&board, -2, 1, &value, 2);
-            measure_dimension(&board, 1, 1, &value, 2);
+            measure_dimension(&board, -1, 2, &value, 2, 1);
+            measure_dimension(&board, -2, 1, &value, 2, 1);
+            measure_dimension(&board, 1, 1, &value, 2, 1);
+        } else if (!strcmp(metric, "omniheight")) {
+            value = -INT_MAX;
+            measure_dimension(&board, -1, 0, &value, 1, -1);
+            measure_dimension(&board, 0, 1, &value, 1, -1);
+            measure_dimension(&board, -1, 1, &value, 1, -1);
+        } else if (!strcmp(metric, "omniwidth*2")) {
+            value = -INT_MAX;
+            measure_dimension(&board, -1, 2, &value, 2, -1);
+            measure_dimension(&board, -2, 1, &value, 2, -1);
+            measure_dimension(&board, 1, 1, &value, 2, -1);
         } else if (!strcmp(metric, "maximum absolute arm rotation"))
             value = solution.maximum_absolute_arm_rotation;
         else
