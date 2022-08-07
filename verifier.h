@@ -54,6 +54,12 @@ void verifier_wrong_output_clear(void *verifier);
 // to clear the error, create a new verifier or call verifier_error_clear().
 const char *verifier_error(void *verifier);
 
+// these functions return more information about errors occurring during the
+// simulation.
+int verifier_error_cycle(void *verifier);
+int verifier_error_location_u(void *verifier);
+int verifier_error_location_v(void *verifier);
+
 // after calling this function, verifier_error() will return null again.
 void verifier_error_clear(void *verifier);
 

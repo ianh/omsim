@@ -49,6 +49,9 @@ struct verifier {
     int area;
 
     const char *error;
+    int error_cycle;
+    int error_location_u;
+    int error_location_v;
 };
 
 static void *verifier_create_empty(void)
@@ -119,10 +122,31 @@ const char *verifier_error(void *verifier)
     return v->error;
 }
 
+int verifier_error_cycle(void *verifier)
+{
+    struct verifier *v = verifier;
+    return v->error_cycle;
+}
+
+int verifier_error_location_u(void *verifier)
+{
+    struct verifier *v = verifier;
+    return v->error_location_u;
+}
+
+int verifier_error_location_v(void *verifier)
+{
+    struct verifier *v = verifier;
+    return v->error_location_v;
+}
+
 void verifier_error_clear(void *verifier)
 {
     struct verifier *v = verifier;
     v->error = 0;
+    v->error_cycle = 0;
+    v->error_location_u = 0;
+    v->error_location_v = 0;
 }
 
 void verifier_destroy(void *verifier)
@@ -499,6 +523,9 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     }
     if (board.collision) {
         v->error = board.collision_reason;
+        v->error_cycle = (int)board.cycle;
+        v->error_location_u = (int)board.collision_location.u;
+        v->error_location_v = (int)board.collision_location.v;
         goto error;
     }
     if (throughputs_remaining > 0) {
@@ -736,9 +763,12 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
         cycle(&solution, &board);
     int value = -1;
-    if (board.collision)
+    if (board.collision) {
         v->error = board.collision_reason;
-    else if (!board.complete)
+        v->error_cycle = (int)board.cycle;
+        v->error_location_u = (int)board.collision_location.u;
+        v->error_location_v = (int)board.collision_location.v;
+    } else if (!board.complete)
         v->error = "solution did not complete within cycle limit";
     else {
         if (metric == original_metric) {
