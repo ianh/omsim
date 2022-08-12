@@ -274,6 +274,21 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
         snapshot->output_count[i] = solution->inputs_and_outputs[i].number_of_outputs;
 }
 
+static bool arm_directions_equivalent(struct mechanism *a, struct mechanism *b)
+{
+    if (a->direction_u.u == b->direction_u.u && a->direction_u.v == b->direction_u.v)
+        return true;
+    else if (a->type & SIX_ARM)
+        return true;
+    else if (a->type & TWO_ARM)
+        return a->direction_u.u == -b->direction_u.u && a->direction_u.v == -b->direction_u.v;
+    else if (a->type & THREE_ARM) {
+        return ((-a->direction_u.u + a->direction_v.u) == b->direction_u.u && (-a->direction_u.v + a->direction_v.v) == b->direction_u.v) ||
+         (-a->direction_v.u == b->direction_u.u && -a->direction_v.v == b->direction_u.v);
+    } else
+        return false;
+}
+
 static bool check_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
 {
     if (board->collision)
@@ -281,8 +296,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
         struct mechanism a = snapshot->arms[i];
         struct mechanism b = solution->arms[i];
-        if (a.position.u != b.position.u || a.position.v != b.position.v ||
-         a.direction_u.u != b.direction_u.u || a.direction_u.v != b.direction_u.v)
+        if (a.position.u != b.position.u || a.position.v != b.position.v || !arm_directions_equivalent(&a, &b))
             return false;
     }
     uint32_t board_in_range = 0;
