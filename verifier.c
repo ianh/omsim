@@ -317,7 +317,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
         atom b = *lookup_atom_without_checking_for_poison(&snapshot->board, p);
         if (!(b & VALID) || (b & REMOVED))
             return false;
-        if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM)))
+        if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM | GRABBED)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM | GRABBED)))
             return false;
         if (in_range)
             board_in_range++;
