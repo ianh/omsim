@@ -414,7 +414,6 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     struct board shifted_board = { 0 };
     struct atom_at_position *shifted_atoms = 0;
     bool steady_state = false;
-    int output_intervals_repeat_marker = 0;
     while (throughputs_remaining > 0 && board.cycle < v->cycle_limit && !board.collision) {
         // mark output intervals.
         if (!steady_state && v->output_to_measure_intervals_for >= 0) {
@@ -431,14 +430,14 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
         // print_board(&board);
         // normal throughput.
         if (!steady_state && board.cycle == snapshot.board.cycle * 2) {
-            output_intervals_repeat_marker = v->number_of_output_intervals;
+            v->output_intervals_repeat_after = v->number_of_output_intervals;
             take_snapshot(&solution, &board, &snapshot);
         } else if (!steady_state && !(board.cycle % check_period) && snapshot.arms) {
             if (check_snapshot(&solution, &board, &snapshot)) {
                 steady_state = true;
-                if (v->output_to_measure_intervals_for >= 0 && output_intervals_repeat_marker < v->number_of_output_intervals) {
-                    mark_output_interval_cycle(v, board.cycle + v->output_intervals[output_intervals_repeat_marker] - snapshot.board.cycle);
-                    v->output_intervals_repeat_after = output_intervals_repeat_marker + 1;
+                if (v->output_to_measure_intervals_for >= 0 && v->output_intervals_repeat_after < v->number_of_output_intervals) {
+                    mark_output_interval_cycle(v, board.cycle + v->output_intervals[v->output_intervals_repeat_after] - snapshot.board.cycle);
+                    v->output_intervals_repeat_after++;
                 }
                 if (!snapshot.done) {
                     snapshot.throughput_cycles = board.cycle - snapshot.board.cycle;
