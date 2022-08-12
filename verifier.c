@@ -48,6 +48,12 @@ struct verifier {
     int cycles;
     int area;
 
+    int output_to_measure_intervals_for;
+    int *output_intervals;
+    int output_intervals_capacity;
+    int number_of_output_intervals;
+    int output_intervals_repeat_after;
+
     const char *error;
     int error_cycle;
     int error_location_u;
@@ -61,6 +67,7 @@ static void *verifier_create_empty(void)
     v->wrong_output_index = -1;
     v->cycles = -1;
     v->area = -1;
+    v->output_to_measure_intervals_for = -1;
     return v;
 }
 
@@ -155,6 +162,7 @@ void verifier_destroy(void *verifier)
     free_puzzle_file(v->pf);
     free_solution_file(v->sf);
     verifier_wrong_output_clear(v);
+    free(v->output_intervals);
     free(v);
 }
 
@@ -305,6 +313,19 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     return true;
 }
 
+static void mark_output_interval_cycle(struct verifier *v, int cycle)
+{
+    if (v->number_of_output_intervals >= v->output_intervals_capacity) {
+        if (v->output_intervals_capacity > 9999999) {
+            v->error = "too many outputs while computing output intervals";
+            return;
+        }
+        v->output_intervals_capacity = (v->output_intervals_capacity + 16) * 2;
+        v->output_intervals = realloc(v->output_intervals, v->output_intervals_capacity * sizeof(v->output_intervals[0]));
+    }
+    v->output_intervals[v->number_of_output_intervals++] = cycle;
+}
+
 static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, int64_t *throughput_outputs, int *throughput_waste, bool use_poison)
 {
     struct solution solution = { 0 };
@@ -393,15 +414,32 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     struct board shifted_board = { 0 };
     struct atom_at_position *shifted_atoms = 0;
     bool steady_state = false;
+    int output_intervals_repeat_marker = 0;
     while (throughputs_remaining > 0 && board.cycle < v->cycle_limit && !board.collision) {
+        // mark output intervals.
+        if (!steady_state && v->output_to_measure_intervals_for >= 0) {
+            for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+                if (!(solution.inputs_and_outputs[i].type & SINGLE_OUTPUT))
+                    continue;
+                if (solution.inputs_and_outputs[i].puzzle_index != v->output_to_measure_intervals_for)
+                    continue;
+                while (solution.inputs_and_outputs[i].number_of_outputs > v->number_of_output_intervals)
+                    mark_output_interval_cycle(v, board.cycle);
+            }
+        }
         // printf("%llu %u\n", board.cycle, throughputs_remaining);
         // print_board(&board);
         // normal throughput.
-        if (!steady_state && board.cycle == snapshot.board.cycle * 2)
+        if (!steady_state && board.cycle == snapshot.board.cycle * 2) {
+            output_intervals_repeat_marker = v->number_of_output_intervals;
             take_snapshot(&solution, &board, &snapshot);
-        else if (!steady_state && !(board.cycle % check_period) && snapshot.arms) {
+        } else if (!steady_state && !(board.cycle % check_period) && snapshot.arms) {
             if (check_snapshot(&solution, &board, &snapshot)) {
                 steady_state = true;
+                if (v->output_to_measure_intervals_for >= 0 && output_intervals_repeat_marker < v->number_of_output_intervals) {
+                    mark_output_interval_cycle(v, board.cycle + v->output_intervals[output_intervals_repeat_marker] - snapshot.board.cycle);
+                    v->output_intervals_repeat_after = output_intervals_repeat_marker + 1;
+                }
                 if (!snapshot.done) {
                     snapshot.throughput_cycles = board.cycle - snapshot.board.cycle;
                     snapshot.throughput_outputs = 0;
@@ -519,6 +557,7 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
         cycle(&solution, &board);
     }
     if (board.collision) {
+        v->output_intervals_repeat_after = -1;
         v->error = board.collision_reason;
         v->error_cycle = (int)board.cycle;
         v->error_location_u = (int)board.collision_location.u;
@@ -526,6 +565,7 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
         goto error;
     }
     if (throughputs_remaining > 0) {
+        v->output_intervals_repeat_after = -1;
         v->error = "solution did not converge on a throughput";
         goto error;
     }
@@ -556,6 +596,76 @@ error:
     free(snapshot.output_count);
     free(shifted_board.atoms_at_positions);
     check_wrong_output_and_destroy(v, &solution, &board);
+}
+
+static void ensure_output_intervals(struct verifier *v, int which_output)
+{
+    if (v->output_to_measure_intervals_for == which_output)
+        return;
+    v->output_to_measure_intervals_for = which_output;
+    v->number_of_output_intervals = 0;
+    v->output_intervals_repeat_after = -1;
+    measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
+    verifier_error_clear(v);
+
+    // during measurement, the intervals are actually absolute cycles.  fix that
+    // up here as a post-processing pass.
+    int last = 0;
+    for (int i = 0; i < v->number_of_output_intervals; ++i) {
+        int delta = v->output_intervals[i] - last;
+        last = v->output_intervals[i];
+        v->output_intervals[i] = delta;
+    }
+
+    int cycle_start = v->output_intervals_repeat_after;
+    int n = v->number_of_output_intervals - cycle_start;
+    if (v->output_intervals_repeat_after > 0 && n > 0) {
+        // eliminate extra repetitions within the repeating range.
+        for (int i = 1; i <= n / 2; ++i) {
+            if ((n % i) != 0)
+                continue;
+            bool repeating = true;
+            for (int j = 0; j < n; ++j) {
+                if (v->output_intervals[cycle_start + j] != v->output_intervals[cycle_start + (j % i)]) {
+                    repeating = false;
+                    break;
+                }
+            }
+            if (repeating) {
+                v->number_of_output_intervals = cycle_start + i;
+                n = i;
+                break;
+            }
+        }
+        // eliminate extra repetitions before the repeating range.
+        while (v->number_of_output_intervals > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
+            v->output_intervals_repeat_after--;
+            v->number_of_output_intervals--;
+        }
+    }
+}
+
+int verifier_number_of_output_intervals(void *verifier, int which_output)
+{
+    struct verifier *v = verifier;
+    ensure_output_intervals(v, which_output);
+    return v->number_of_output_intervals;
+}
+
+int verifier_output_interval(void *verifier, int which_output, int which_interval)
+{
+    struct verifier *v = verifier;
+    ensure_output_intervals(v, which_output);
+    if (which_interval < 0 || which_interval >= v->number_of_output_intervals)
+        return -1;
+    return v->output_intervals[which_interval];
+}
+
+int verifier_output_intervals_repeat_after(void *verifier, int which_output)
+{
+    struct verifier *v = verifier;
+    ensure_output_intervals(v, which_output);
+    return v->output_intervals_repeat_after;
 }
 
 static void measure_dimension(struct board *board, int32_t u, int32_t v, int *dimension, int hex_width, int sortorder)

@@ -71,4 +71,16 @@ void verifier_error_clear(void *verifier);
 // <http://events.critelli.technology/static/metrics.html>.
 int verifier_evaluate_metric(void *verifier, const char *metric);
 
+// used to compute the lexicographic cycles metric.  the first interval is
+// the cycle on which the first output is dropped; the second interval is the
+// difference between the cycles on which the second and the first inputs are
+// dropped; the third interval is the difference between the third and the
+// second; and so on through verifier_number_of_output_intervals().
+// if the index returned by verifier_output_intervals_repeat_after() is
+// non-negative, the output intervals from that index onward repeat cyclically.
+// the output is specified using the puzzle file's output index.
+int verifier_number_of_output_intervals(void *verifier, int which_output);
+int verifier_output_interval(void *verifier, int which_output, int which_interval);
+int verifier_output_intervals_repeat_after(void *verifier, int which_output);
+
 #endif
