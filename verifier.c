@@ -615,11 +615,37 @@ static void ensure_output_intervals(struct verifier *v, int which_output)
 {
     if (v->output_to_measure_intervals_for == which_output)
         return;
+
+    const char *saved_error = v->error;
+    int saved_error_cycle = v->error_cycle;
+    int saved_error_location_u = v->error_location_u;
+    int saved_error_location_v = v->error_location_v;
+
+    v->error = 0;
+
     v->output_to_measure_intervals_for = which_output;
     v->number_of_output_intervals = 0;
     v->output_intervals_repeat_after = -1;
-    measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
-    verifier_error_clear(v);
+
+    int64_t throughput_cycles;
+    int64_t throughput_outputs;
+    int throughput_waste;
+    measure_throughput(v, &throughput_cycles, &throughput_outputs, &throughput_waste, true);
+    if (!v->error) {
+        // only set throughput values if there wasn't an error.  we don't want
+        // to later measure throughput only to "successfully" return an
+        // erroneous value.
+        v->throughput_cycles = throughput_cycles;
+        v->throughput_outputs = throughput_outputs;
+        v->throughput_waste = throughput_waste;
+    }
+
+    // it's fine if there's an error -- that just stops the list short.  restore
+    // the existing error in case an earlier call had one.
+    v->error = saved_error;
+    v->error_cycle = saved_error_cycle;
+    v->error_location_u = saved_error_location_u;
+    v->error_location_v = saved_error_location_v;
 
     // during measurement, the intervals are actually absolute cycles.  fix that
     // up here as a post-processing pass.
