@@ -1137,8 +1137,9 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 output |= *a & ANY_ATOM;
             }
             if (io->type & REPEATING_OUTPUT) {
-                if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS & output))) != output) {
-                    // printf("did not match: %llx vs %llx\n", (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS & output))), output);
+                uint64_t bond_mask = (((output & RECENT_BONDS) >> RECENT_BOND) * BOND_LOW_BITS) & ~RECENT_BONDS;
+                if ((*a & (ANY_ATOM | bond_mask)) != (output & (ANY_ATOM | bond_mask))) {
+                    // printf("did not match at %d %d: %llx vs %llx\n", io->atoms[j].position.u, io->atoms[j].position.v, (*a & (ANY_ATOM | bond_mask)), output & (ANY_ATOM | bond_mask));
                     match = false;
                     break;
                 }
@@ -1289,17 +1290,13 @@ bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char *
         for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
             struct atom_at_position *a = &atoms[(io->number_of_original_atoms - 1) * i + j];
             *a = io->original_atoms[j];
+            bool origin = vectors_equal(a->position, io->repetition_origin);
             a->position.u += i * offset.u;
             a->position.v += i * offset.v;
             a->atom = io->original_atoms[j].atom;
-            // remove bonds with the repetition placeholder -- they aren't
-            // required to validate.
-            for (uint32_t k = 0; k < 6; ++k) {
-                struct vector dir = u_offset_for_direction(k);
-                if (a->position.u + dir.u == placeholder.position.u &&
-                 a->position.v + dir.v == placeholder.position.v)
-                    a->atom &= ~(BOND_LOW_BITS << k);
-            }
+            // add the incoming bonds from the previous monomer.
+            if (origin && i > 0)
+                a->atom |= placeholder.atom & ALL_BONDS;
         }
     }
     atoms[(io->number_of_original_atoms - 1) * repetitions] = placeholder;
@@ -1339,6 +1336,30 @@ bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char *
             io->row_min_u[row] = p.u;
         if (p.u > io->row_max_u[row])
             io->row_max_u[row] = p.u;
+    }
+    for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+        if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            continue;
+        struct vector p = io->atoms[j].position;
+        size_t row = p.v - io->min_v;
+        if (p.u + 1 <= io->row_max_u[row])
+            io->atoms[j].atom |= 1ULL << (RECENT_BOND + 0);
+        if (p.v != io->max_v) {
+            size_t neighbor = p.v + 1 - io->min_v;
+            if (p.u >= io->row_min_u[neighbor] && p.u <= io->row_max_u[neighbor])
+                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 1);
+            if (p.u - 1 >= io->row_min_u[neighbor] && p.u - 1 <= io->row_max_u[neighbor])
+                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 2);
+        }
+        if (p.u - 1 >= io->row_min_u[row])
+            io->atoms[j].atom |= 1ULL << (RECENT_BOND + 3);
+        if (p.v != io->min_v) {
+            size_t neighbor = p.v - 1 - io->min_v;
+            if (p.u >= io->row_min_u[neighbor] && p.u <= io->row_max_u[neighbor])
+                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 4);
+            if (p.u + 1 >= io->row_min_u[neighbor] && p.u + 1 <= io->row_max_u[neighbor])
+                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 5);
+        }
     }
     return true;
 }

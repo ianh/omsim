@@ -54,7 +54,7 @@ typedef uint64_t atom;
 #define REMOVED (1ULL << 28)
 
 // offsets for the bits that indicate bonds.
-#define RECENT_BOND 29
+#define RECENT_BOND 29 // also used to mark neighboring atoms in infinite products.
 #define NORMAL_BOND 35
 #define TRIPLEX_BOND_R 41
 #define TRIPLEX_BOND_Y 47
