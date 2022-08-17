@@ -54,6 +54,8 @@ struct verifier {
     int number_of_output_intervals;
     int output_intervals_repeat_after;
 
+    int throughput_margin;
+
     const char *error;
     int error_cycle;
     int error_location_u;
@@ -68,6 +70,7 @@ static void *verifier_create_empty(void)
     v->cycles = -1;
     v->area = -1;
     v->output_to_measure_intervals_for = -1;
+    v->throughput_margin = 100;
     return v;
 }
 
@@ -222,6 +225,20 @@ static void check_wrong_output_and_destroy(struct verifier *v, struct solution *
         destroy(solution, board);
 }
 
+void verifier_set_throughput_margin(void *verifier, int margin)
+{
+    struct verifier *v = verifier;
+    v->throughput_margin = margin;
+    // reset throughput metrics so they're measured again if necessary.
+    v->throughput_cycles = 0;
+    v->throughput_outputs = 0;
+    v->throughput_waste = 0;
+    v->throughput_cycles_without_poison = 0;
+    v->throughput_outputs_without_poison = 0;
+    v->visual_loop_start_cycle = 0;
+    v->visual_loop_end_cycle = 0;
+}
+
 struct snapshot {
     struct mechanism *arms;
     struct board board;
@@ -373,11 +390,10 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
         v->error = "no parts in solution";
         return;
     }
-    // add padding of 100 units on each side
-    max_u += 100;
-    min_u -= 100;
-    max_v += 100;
-    min_v -= 100;
+    max_u += v->throughput_margin;
+    min_u -= v->throughput_margin;
+    max_v += v->throughput_margin;
+    min_v -= v->throughput_margin;
 
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
         return;

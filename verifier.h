@@ -47,6 +47,11 @@ int verifier_wrong_output_atom(void *verifier, int u, int v);
 // return -1 until another wrong output is detected.
 void verifier_wrong_output_clear(void *verifier);
 
+// when computing throughput, the verifier compares the state of the board
+// within a certain margin of the part locations in the solution.  this function
+// lets you set that margin.
+void verifier_set_throughput_margin(void *verifier, int margin);
+
 // returns a string describing any error that occurred during solution parsing,
 // decoding, or verification.  if there haven't been any errors, returns a null
 // pointer.  returned strings are valid for the lifetime of the program and
