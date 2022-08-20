@@ -1010,7 +1010,7 @@ static void fill_conduits(struct solution *solution, struct board *board)
         for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
             struct vector p = conduit->positions[j];
             atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
-            if ((*a & VALID) && !(*a & REMOVED) && !(*a & BEING_PRODUCED) && !(*a & VISITED) && (*a & BEING_DROPPED) && !(*a & GRABBED)) {
+            if ((*a & VALID) && !(*a & REMOVED) && !(*a & BEING_PRODUCED) && (*a & BEING_DROPPED) && !(*a & GRABBED)) {
                 conduit->atoms[atom_next].atom = *a & ~BEING_DROPPED & ~CONDUIT_SHAPE;
                 conduit->atoms[atom_next].position = p;
                 *a |= VISITED;
@@ -1027,6 +1027,12 @@ static void fill_conduits(struct solution *solution, struct board *board)
                     conduit->molecule_lengths[conduit->number_of_molecules++] = atom_cursor - saved_cursor;
                 } else {
                     // the molecule doesn't match the conduit shape.
+                    // reset the visited flag and the cursor.
+                    for (uint32_t k = saved_cursor; k < atom_next; ++k) {
+                        struct vector p = conduit->atoms[k].position;
+                        p = mechanism_relative_position(m, p.u, p.v, 1);
+                        *lookup_atom(board, p) &= ~VISITED;
+                    }
                     atom_next = saved_cursor;
                     atom_cursor = saved_cursor;
                 }
