@@ -918,10 +918,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (!(collision_increment <= 0.125))
                 collision_increment = 0.125;
             struct vector collision_location;
-            if (collision(solution, board, (float)collision_increment, &collision_location)) {
+            if (collision(solution, board, (float)collision_increment, &collision_location))
                 report_collision(board, collision_location, "collision during motion phase");
-                return;
-            }
         }
         ensure_capacity(board, board->moving_atoms.length);
         atom_index = 0;
@@ -1162,7 +1160,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 }
             } else {
                 if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
-                    // printf("did not match: %llx vs %llx\n", (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))), output);
+                    // printf("did not match at %d %d: %llx vs %llx\n", io->atoms[j].position.u, io->atoms[j].position.v, (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))), output);
                     match = false;
                     break;
                 }

@@ -7,6 +7,84 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+
+static void print_bonds(atom a, uint64_t bond_shift, const char *name)
+{
+    if (a & (1ULL << (bond_shift + 0)))
+        printf(" %s[1,0]", name);
+    if (a & (1ULL << (bond_shift + 1)))
+        printf(" %s[0,1]", name);
+    if (a & (1ULL << (bond_shift + 2)))
+        printf(" %s[-1,1]", name);
+    if (a & (1ULL << (bond_shift + 3)))
+        printf(" %s[-1,0]", name);
+    if (a & (1ULL << (bond_shift + 4)))
+        printf(" %s[0,-1]", name);
+    if (a & (1ULL << (bond_shift + 5)))
+        printf(" %s[1,-1]", name);
+}
+
+static void print_atom(atom a)
+{
+    if (a & REMOVED) {
+        printf(" empty");
+        return;
+    }
+    if (a & SALT)
+        printf(" salt");
+    if (a & AIR)
+        printf(" air");
+    if (a & EARTH)
+        printf(" earth");
+    if (a & FIRE)
+        printf(" fire");
+    if (a & WATER)
+        printf(" water");
+    if (a & QUICKSILVER)
+        printf(" quicksilver");
+    if (a & GOLD)
+        printf(" gold");
+    if (a & SILVER)
+        printf(" silver");
+    if (a & COPPER)
+        printf(" copper");
+    if (a & IRON)
+        printf(" iron");
+    if (a & TIN)
+        printf(" tin");
+    if (a & LEAD)
+        printf(" lead");
+    if (a & VITAE)
+        printf(" vitae");
+    if (a & MORS)
+        printf(" mors");
+    if (a & REPEATING_OUTPUT_PLACEHOLDER)
+        printf(" repetition-placeholder");
+    if (a & QUINTESSENCE)
+        printf(" quintessence");
+    if (a & VARIABLE_OUTPUT)
+        printf(" variable-output");
+    if (a & BEING_PRODUCED)
+        printf(" produced");
+    if (a & BEING_DROPPED)
+        printf(" dropped");
+    if (a & VAN_BERLO_ATOM)
+        printf(" van-berlo");
+    if (a & POISON)
+        printf(" poison");
+    if (a & GRABBED)
+        printf(" grabbed[%llu]", (a & GRABBED) / GRABBED_ONCE);
+    if (a & CONDUIT_SHAPE)
+        printf(" conduit");
+    if (a & VISITED)
+        printf(" visited");
+    print_bonds(a, RECENT_BOND, "recent-bond");
+    print_bonds(a, NORMAL_BOND, "bond");
+    print_bonds(a, TRIPLEX_BOND_R, "triplex-r");
+    print_bonds(a, TRIPLEX_BOND_Y, "triplex-y");
+    print_bonds(a, TRIPLEX_BOND_K, "triplex-k");
+}
+
 static void print_board(struct board *board)
 {
     int32_t maxu = -10000, minu = 10000;
@@ -31,6 +109,11 @@ static void print_board(struct board *board)
     for (uint32_t i = 0; i < board->capacity; ++i) {
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
+        if (!(board->atoms_at_positions[i].atom & REMOVED)) {
+            printf("%d %d %llx", board->atoms_at_positions[i].position.u, board->atoms_at_positions[i].position.v, board->atoms_at_positions[i].atom);
+            print_atom(board->atoms_at_positions[i].atom);
+            printf("\n");
+        }
         points[(board->atoms_at_positions[i].position.u - minu) + stride * (board->atoms_at_positions[i].position.v - minv)] = board->atoms_at_positions[i].atom;
     }
     for (int v = maxv; v >= minv; --v) {
@@ -38,7 +121,9 @@ static void print_board(struct board *board)
             printf(" ");
         for (int u = minu; u <= maxu; ++u) {
             atom a = points[stride * (v - minv) + (u - minu)];
-            if (!a)
+            if (u == 0 && v == 0)
+                printf(" *");
+            else if (!a)
                 printf("  ");
             else if (a & REMOVED)
                 printf(" .");
@@ -109,6 +194,7 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    print_board(&board);
     printf("solution file says cycle count is: %" PRIu32 "\n", sf->cycles);
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
     printf("solution file says area is: %" PRIu32 "\n", sf->area);
