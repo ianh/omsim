@@ -374,8 +374,8 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     int32_t min_v = INT32_MAX;
     for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
         struct vector p = {
-            v->sf->parts[i].position[1],
             v->sf->parts[i].position[0],
+            v->sf->parts[i].position[1],
         };
         if (p.u < min_u)
             min_u = p.u;
