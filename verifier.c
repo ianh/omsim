@@ -487,6 +487,14 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
                 if (!use_poison) {
                     v->visual_loop_start_cycle = snapshot.board.cycle;
                     v->visual_loop_end_cycle = board.cycle;
+                    for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+                        struct mechanism a = snapshot.arms[i];
+                        struct mechanism b = solution.arms[i];
+                        if (a.pivot_parity != b.pivot_parity) {
+                            v->visual_loop_end_cycle = 2 * (board.cycle - snapshot.board.cycle) + snapshot.board.cycle;
+                            break;
+                        }
+                    }
                 }
             }
         }

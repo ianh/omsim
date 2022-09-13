@@ -168,6 +168,9 @@ struct mechanism {
 
     // used for arms to track rotation for collision and "overclock" detection.
     int32_t arm_rotation;
+
+    // used for visual loop detection.  either 0 or 1.
+    int pivot_parity;
 };
 
 struct conduit {

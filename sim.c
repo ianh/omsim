@@ -799,6 +799,10 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         }
         // finally, transform the arm itself.
         switch (inst) {
+        case 'q': // pivot ccw
+        case 'e': // pivot cw
+            m->pivot_parity = !m->pivot_parity;
+            break;
         case 'a': { // rotate ccw
             struct vector u = u_offset_for_direction(1);
             struct vector v = v_offset_for_direction(1);
