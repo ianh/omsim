@@ -797,6 +797,19 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         }
         metric = (const char *)(endptr + 1);
     }
+    bool steady_state = false;
+    if (!strncmp("steady state ", metric, strlen("steady state "))) {
+        steady_state = true;
+        metric += strlen("steady state ");
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v, true);
+        if (!v->throughput_measurements.valid)
+            return -1;
+        if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
+            v->error = "metric doesn't reach a steady state";
+            return -1;
+        }
+    }
     if (!strcmp(metric, "parsed cycles"))
         return v->sf->cycles;
     else if (!strcmp(metric, "parsed cost"))
@@ -894,19 +907,6 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             return 2 * (end - start) + start;
         else
             return end;
-    }
-    bool steady_state = false;
-    if (!strncmp("steady state ", metric, strlen("steady state "))) {
-        steady_state = true;
-        metric += strlen("steady state ");
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v, true);
-        if (!v->throughput_measurements.valid)
-            return -1;
-        if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
-            v->error = "metric doesn't reach a steady state";
-            return -1;
-        }
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
