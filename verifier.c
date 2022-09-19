@@ -996,7 +996,17 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         }
         if (!strcmp(metric, "cycles"))
             value = board.cycle;
-        else if (!strcmp(metric, "maximum absolute arm rotation"))
+        else if (!strcmp(metric, "executed instructions")) {
+            value = 0;
+            for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+                if (board.cycle < solution.arm_tape_start_cycle[i])
+                    continue;
+                for (size_t j = 0; j < solution.arm_tape_length[i] && j < board.cycle - solution.arm_tape_start_cycle[i]; ++j) {
+                    if (solution.arm_tape[i][j] != ' ' && solution.arm_tape[i][j] != '\0')
+                        value++;
+                }
+            }
+        } else if (!strcmp(metric, "maximum absolute arm rotation"))
             value = solution.maximum_absolute_arm_rotation;
         else {
             value = evaluate_arealike_metric(v, &board, metric);
