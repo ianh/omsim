@@ -743,6 +743,35 @@ static void measure_dimension(struct board *board, int32_t u, int32_t v, int *di
         *dimension = max - min + hex_width;
 }
 
+static int evaluate_arealike_metric(struct verifier *v, struct board *board, const char *metric)
+{
+    int value = -1;
+    if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
+        value = used_area(board);
+    else if (!strcmp(metric, "height")) {
+        value = INT_MAX;
+        measure_dimension(board, -1, 0, &value, 1, 1);
+        measure_dimension(board, 0, 1, &value, 1, 1);
+        measure_dimension(board, -1, 1, &value, 1, 1);
+    } else if (!strcmp(metric, "width*2")) {
+        value = INT_MAX;
+        measure_dimension(board, -1, 2, &value, 2, 1);
+        measure_dimension(board, -2, 1, &value, 2, 1);
+        measure_dimension(board, 1, 1, &value, 2, 1);
+    } else if (!strcmp(metric, "omniheight")) {
+        value = -INT_MAX;
+        measure_dimension(board, -1, 0, &value, 1, -1);
+        measure_dimension(board, 0, 1, &value, 1, -1);
+        measure_dimension(board, -1, 1, &value, 1, -1);
+    } else if (!strcmp(metric, "omniwidth*2")) {
+        value = -INT_MAX;
+        measure_dimension(board, -1, 2, &value, 2, -1);
+        measure_dimension(board, -2, 1, &value, 2, -1);
+        measure_dimension(board, 1, 1, &value, 2, -1);
+    }
+    return value;
+}
+
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
     const char *original_metric = metric;
@@ -866,6 +895,19 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         else
             return end;
     }
+    bool steady_state = false;
+    if (!strncmp("steady state ", metric, strlen("steady state "))) {
+        steady_state = true;
+        metric += strlen("steady state ");
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v, true);
+        if (!v->throughput_measurements.valid)
+            return -1;
+        if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
+            v->error = "metric doesn't reach a steady state";
+            return -1;
+        }
+    }
     struct solution solution = { 0 };
     struct board board = { 0 };
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
@@ -928,8 +970,17 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         destroy(&solution, &board);
         return overlap;
     }
-    while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
-        cycle(&solution, &board);
+    int steady_state_start_value = -1;
+    if (steady_state) {
+        while (board.cycle < v->throughput_measurements.steady_state_start_cycle && !board.collision)
+            cycle(&solution, &board);
+        steady_state_start_value = evaluate_arealike_metric(v, &board, metric);
+        while (board.cycle < v->throughput_measurements.steady_state_end_cycle && !board.collision)
+            cycle(&solution, &board);
+    } else {
+        while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
+            cycle(&solution, &board);
+    }
     int value = -1;
     if (board.collision) {
         v->error = board.collision_reason;
@@ -945,32 +996,17 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         }
         if (!strcmp(metric, "cycles"))
             value = board.cycle;
-        else if (!strcmp(metric, "area (approximate)"))
-            value = used_area(&board);
-        else if (!strcmp(metric, "height")) {
-            value = INT_MAX;
-            measure_dimension(&board, -1, 0, &value, 1, 1);
-            measure_dimension(&board, 0, 1, &value, 1, 1);
-            measure_dimension(&board, -1, 1, &value, 1, 1);
-        } else if (!strcmp(metric, "width*2")) {
-            value = INT_MAX;
-            measure_dimension(&board, -1, 2, &value, 2, 1);
-            measure_dimension(&board, -2, 1, &value, 2, 1);
-            measure_dimension(&board, 1, 1, &value, 2, 1);
-        } else if (!strcmp(metric, "omniheight")) {
-            value = -INT_MAX;
-            measure_dimension(&board, -1, 0, &value, 1, -1);
-            measure_dimension(&board, 0, 1, &value, 1, -1);
-            measure_dimension(&board, -1, 1, &value, 1, -1);
-        } else if (!strcmp(metric, "omniwidth*2")) {
-            value = -INT_MAX;
-            measure_dimension(&board, -1, 2, &value, 2, -1);
-            measure_dimension(&board, -2, 1, &value, 2, -1);
-            measure_dimension(&board, 1, 1, &value, 2, -1);
-        } else if (!strcmp(metric, "maximum absolute arm rotation"))
+        else if (!strcmp(metric, "maximum absolute arm rotation"))
             value = solution.maximum_absolute_arm_rotation;
-        else
-            v->error = "unknown metric";
+        else {
+            value = evaluate_arealike_metric(v, &board, metric);
+            if (value < 0)
+                v->error = "unknown metric";
+        }
+        if (steady_state_start_value >= 0 && value != steady_state_start_value) {
+            v->error = "metric doesn't reach a steady state";
+            value = -1;
+        }
     }
     check_wrong_output_and_destroy(v, &solution, &board);
     return value;
