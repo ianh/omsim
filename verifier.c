@@ -22,16 +22,22 @@ const char *verifier_find_puzzle_name_in_solution_bytes(const char *solution_byt
     return name;
 }
 
+struct throughput_measurements {
+    int64_t throughput_cycles;
+    int64_t throughput_outputs;
+    int throughput_waste;
+    int steady_state_start_cycle;
+    int steady_state_end_cycle;
+    int pivot_parity;
+    bool valid;
+};
+
 struct verifier {
     struct puzzle_file *pf;
     struct solution_file *sf;
 
-    int64_t throughput_cycles;
-    int64_t throughput_outputs;
-    int throughput_waste;
-
-    int64_t throughput_cycles_without_poison;
-    int64_t throughput_outputs_without_poison;
+    struct throughput_measurements throughput_measurements;
+    struct throughput_measurements throughput_measurements_without_poison;
 
     uint64_t cycle_limit;
 
@@ -41,9 +47,6 @@ struct verifier {
     struct vector wrong_output_origin;
     struct vector wrong_output_basis_u;
     struct vector wrong_output_basis_v;
-
-    int visual_loop_start_cycle;
-    int visual_loop_end_cycle;
 
     int cycles;
     int area;
@@ -230,13 +233,8 @@ void verifier_set_throughput_margin(void *verifier, int margin)
     struct verifier *v = verifier;
     v->throughput_margin = margin;
     // reset throughput metrics so they're measured again if necessary.
-    v->throughput_cycles = 0;
-    v->throughput_outputs = 0;
-    v->throughput_waste = 0;
-    v->throughput_cycles_without_poison = 0;
-    v->throughput_outputs_without_poison = 0;
-    v->visual_loop_start_cycle = 0;
-    v->visual_loop_end_cycle = 0;
+    v->throughput_measurements = (struct throughput_measurements){ 0 };
+    v->throughput_measurements_without_poison = (struct throughput_measurements){ 0 };
 }
 
 struct snapshot {
@@ -357,16 +355,16 @@ static void mark_output_interval_cycle(struct verifier *v, int cycle)
     v->output_intervals[v->number_of_output_intervals++] = cycle;
 }
 
-static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, int64_t *throughput_outputs, int *throughput_waste, bool use_poison)
+static struct throughput_measurements measure_throughput(struct verifier *v, bool use_poison)
 {
+    struct throughput_measurements m = {
+        .throughput_cycles = -1,
+        .throughput_outputs = -1,
+        .steady_state_start_cycle = -1,
+        .steady_state_end_cycle = -1,
+    };
     struct solution solution = { 0 };
     struct board board = { 0 };
-    *throughput_cycles = -1;
-    *throughput_outputs = -1;
-    if (!use_poison) {
-        v->visual_loop_start_cycle = -1;
-        v->visual_loop_end_cycle = -1;
-    }
     // compute a bounding box for the solution
     int32_t max_u = INT32_MIN;
     int32_t min_u = INT32_MAX;
@@ -388,7 +386,7 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     }
     if (max_u < min_u || max_v < min_v) {
         v->error = "no parts in solution";
-        return;
+        return m;
     }
     max_u += v->throughput_margin;
     min_u -= v->throughput_margin;
@@ -396,7 +394,7 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
     min_v -= v->throughput_margin;
 
     if (!decode_solution(&solution, v->pf, v->sf, &v->error))
-        return;
+        return m;
     initial_setup(&solution, &board, v->sf->area);
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.ignore_swing_area = true;
@@ -484,17 +482,14 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
                     snapshot.done = true;
                     throughputs_remaining--;
                 }
-                if (!use_poison) {
-                    v->visual_loop_start_cycle = snapshot.board.cycle;
-                    v->visual_loop_end_cycle = board.cycle;
-                    for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
-                        struct mechanism a = snapshot.arms[i];
-                        struct mechanism b = solution.arms[i];
-                        if (a.pivot_parity != b.pivot_parity) {
-                            v->visual_loop_end_cycle = 2 * (board.cycle - snapshot.board.cycle) + snapshot.board.cycle;
-                            break;
-                        }
-                    }
+                m.steady_state_start_cycle = snapshot.board.cycle;
+                m.steady_state_end_cycle = board.cycle;
+                for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+                    struct mechanism a = snapshot.arms[i];
+                    struct mechanism b = solution.arms[i];
+                    m.pivot_parity = a.pivot_parity != b.pivot_parity;
+                    if (m.pivot_parity)
+                        break;
                 }
             }
         }
@@ -606,18 +601,18 @@ static void measure_throughput(struct verifier *v, int64_t *throughput_cycles, i
         v->error = "solution did not converge on a throughput";
         goto error;
     }
-    *throughput_cycles = snapshot.throughput_cycles;
-    *throughput_outputs = snapshot.throughput_outputs;
-    if (throughput_waste)
-        *throughput_waste = snapshot.throughput_waste;
+    m.valid = true;
+    m.throughput_cycles = snapshot.throughput_cycles;
+    m.throughput_outputs = snapshot.throughput_outputs;
+    m.throughput_waste = snapshot.throughput_waste;
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution.inputs_and_outputs[i];
         if (!(io->type & REPEATING_OUTPUT))
             continue;
         struct snapshot *s = &repeating_output_snapshots[i];
-        if (s->throughput_cycles * *throughput_outputs > s->throughput_outputs * *throughput_cycles) {
-            *throughput_cycles = s->throughput_cycles;
-            *throughput_outputs = s->throughput_outputs;
+        if (s->throughput_cycles * m.throughput_outputs > s->throughput_outputs * m.throughput_cycles) {
+            m.throughput_cycles = s->throughput_cycles;
+            m.throughput_outputs = s->throughput_outputs;
         }
     }
 error:
@@ -633,6 +628,7 @@ error:
     free(snapshot.output_count);
     free(shifted_board.atoms_at_positions);
     check_wrong_output_and_destroy(v, &solution, &board);
+    return m;
 }
 
 static void ensure_output_intervals(struct verifier *v, int which_output)
@@ -651,17 +647,12 @@ static void ensure_output_intervals(struct verifier *v, int which_output)
     v->number_of_output_intervals = 0;
     v->output_intervals_repeat_after = -1;
 
-    int64_t throughput_cycles;
-    int64_t throughput_outputs;
-    int throughput_waste;
-    measure_throughput(v, &throughput_cycles, &throughput_outputs, &throughput_waste, true);
+    struct throughput_measurements m = measure_throughput(v, true);
     if (!v->error) {
         // only set throughput values if there wasn't an error.  we don't want
         // to later measure throughput only to "successfully" return an
         // erroneous value.
-        v->throughput_cycles = throughput_cycles;
-        v->throughput_outputs = throughput_outputs;
-        v->throughput_waste = throughput_waste;
+        v->throughput_measurements = m;
     }
 
     // it's fine if there's an error -- that just stops the list short.  restore
@@ -842,33 +833,38 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return -1;
     }
     if (!strcmp(metric, "throughput cycles")) {
-        if (!v->throughput_cycles)
-            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
-        return v->throughput_cycles;
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v, true);
+        return v->throughput_measurements.throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs")) {
-        if (!v->throughput_cycles)
-            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
-        return v->throughput_outputs;
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v, true);
+        return v->throughput_measurements.throughput_outputs;
     } else if (!strcmp(metric, "throughput waste")) {
-        if (!v->throughput_cycles)
-            measure_throughput(v, &v->throughput_cycles, &v->throughput_outputs, &v->throughput_waste, true);
-        return v->throughput_waste;
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v, true);
+        return v->throughput_measurements.throughput_waste;
     } else if (!strcmp(metric, "throughput cycles (unrestricted)")) {
-        if (!v->throughput_cycles_without_poison)
-            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
-        return v->throughput_cycles_without_poison;
+        if (!v->throughput_measurements_without_poison.valid)
+            v->throughput_measurements_without_poison = measure_throughput(v, false);
+        return v->throughput_measurements_without_poison.throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs (unrestricted)")) {
-        if (!v->throughput_cycles_without_poison)
-            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
-        return v->throughput_outputs_without_poison;
+        if (!v->throughput_measurements_without_poison.valid)
+            v->throughput_measurements_without_poison = measure_throughput(v, false);
+        return v->throughput_measurements_without_poison.throughput_outputs;
     } else if (!strcmp(metric, "visual loop start cycle")) {
-        if (!v->visual_loop_start_cycle)
-            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
-        return v->visual_loop_start_cycle;
+        if (!v->throughput_measurements_without_poison.valid)
+            v->throughput_measurements_without_poison = measure_throughput(v, false);
+        return v->throughput_measurements_without_poison.steady_state_start_cycle;
     } else if (!strcmp(metric, "visual loop end cycle")) {
-        if (!v->visual_loop_end_cycle)
-            measure_throughput(v, &v->throughput_cycles_without_poison, &v->throughput_outputs_without_poison, 0, false);
-        return v->visual_loop_end_cycle;
+        if (!v->throughput_measurements_without_poison.valid)
+            v->throughput_measurements_without_poison = measure_throughput(v, false);
+        int start = v->throughput_measurements_without_poison.steady_state_start_cycle;
+        int end = v->throughput_measurements_without_poison.steady_state_end_cycle;
+        if (v->throughput_measurements_without_poison.pivot_parity)
+            return 2 * (end - start) + start;
+        else
+            return end;
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
