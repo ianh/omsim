@@ -167,7 +167,7 @@ static size_t number_of_walls_for_cabinet_type(struct byte_string type)
         return 0;
 }
 
-static void copy_walls_for_cabinet_type(struct byte_string type, struct vector *dest, int32_t u, int32_t v)
+static size_t copy_walls_for_cabinet_type(struct byte_string type, struct vector *dest, int32_t u, int32_t v)
 {
     struct vector *src;
     if (byte_string_is(type, "Small"))
@@ -183,12 +183,13 @@ static void copy_walls_for_cabinet_type(struct byte_string type, struct vector *
     else if (byte_string_is(type, "Large"))
         src = cabinet_walls_Large;
     else
-        return;
+        return 0;
     size_t n = number_of_walls_for_cabinet_type(type);
     for (size_t i = 0; i < n; ++i) {
         dest[i].u = src[i].u + u;
         dest[i].v = src[i].v + v;
     }
+    return n;
 }
 
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
@@ -217,11 +218,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->cabinet_walls = calloc(number_of_cabinet_walls, sizeof(struct vector));
     number_of_cabinet_walls = 0;
     for (uint32_t i = 0; pf->production_info && i < pf->production_info->number_of_cabinets; ++i) {
-        copy_walls_for_cabinet_type(pf->production_info->cabinets[i].type,
+        number_of_cabinet_walls += copy_walls_for_cabinet_type(pf->production_info->cabinets[i].type,
             solution->cabinet_walls + number_of_cabinet_walls,
             pf->production_info->cabinets[i].position[0],
             pf->production_info->cabinets[i].position[1]);
-        number_of_cabinet_walls += number_of_walls_for_cabinet_type(pf->production_info->cabinets[i].type);
     }
 
     size_t number_of_arms = 0;
