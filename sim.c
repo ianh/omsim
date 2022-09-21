@@ -1582,6 +1582,7 @@ void destroy(struct solution *solution, struct board *board)
             free(solution->conduits[i].molecule_lengths);
         }
         free(solution->conduits);
+        free(solution->cabinet_walls);
         for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
             free(solution->inputs_and_outputs[i].atoms);
             free(solution->inputs_and_outputs[i].original_atoms);

@@ -141,6 +141,56 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
     }
 }
 
+// thanks to Syx for this data
+static struct vector cabinet_walls_Small[] = { {2,0}, {1,1}, {0,2}, {-1,2}, {-2,2}, {-2,1}, {-2,0}, {-1,-1}, {0,-2}, {1,-2}, {2,-2}, {2,-1} };
+static struct vector cabinet_walls_SmallWide[] = { {3,0}, {2,1}, {1,2}, {0,2}, {-1,2}, {-2,2}, {-2,1}, {-2,0}, {-1,-1}, {0,-2}, {1,-2}, {2,-2}, {3,-2}, {3,-1} };
+static struct vector cabinet_walls_SmallWider[] = { {4,0}, {3,1}, {2,2}, {1,2}, {0,2}, {-1,2}, {-2,2}, {-2,1}, {-2,0}, {-1,-1}, {0,-2}, {1,-2}, {2,-2}, {3,-2}, {4,-2}, {4,-1} };
+static struct vector cabinet_walls_Medium[] = { {3,0}, {2,1}, {1,2}, {0,3}, {-1,3}, {-2,3}, {-3,3}, {-3,2}, {-3,1}, {-3,0}, {-2,-1}, {-1,-2}, {0,-3}, {1,-3}, {2,-3}, {3,-3}, {3,-2}, {3,-1} };
+static struct vector cabinet_walls_MediumWide[] = { {4,0}, {3,1}, {2,2}, {1,3}, {0,3}, {-1,3}, {-2,3}, {-3,3}, {-3,2}, {-3,1}, {-3,0}, {-2,-1}, {-1,-2}, {0,-3}, {1,-3}, {2,-3}, {3,-3}, {4,-3}, {4,-2}, {4,-1} };
+static struct vector cabinet_walls_Large[] = { {4,0}, {3,1}, {2,2}, {1,3}, {0,4}, {-1,4}, {-2,4}, {-3,4}, {-4,4}, {-4,3}, {-4,2}, {-4,1}, {-4,0}, {-3,-1}, {-2,-2}, {-1,-3}, {0,-4}, {1,-4}, {2,-4}, {3,-4}, {4,-4}, {4,-3}, {4,-2}, {4,-1} };
+
+static size_t number_of_walls_for_cabinet_type(struct byte_string type)
+{
+    if (byte_string_is(type, "Small"))
+        return sizeof(cabinet_walls_Small) / sizeof(cabinet_walls_Small[0]);
+    else if (byte_string_is(type, "SmallWide"))
+        return sizeof(cabinet_walls_SmallWide) / sizeof(cabinet_walls_SmallWide[0]);
+    else if (byte_string_is(type, "SmallWider"))
+        return sizeof(cabinet_walls_SmallWider) / sizeof(cabinet_walls_SmallWider[0]);
+    else if (byte_string_is(type, "Medium"))
+        return sizeof(cabinet_walls_Medium) / sizeof(cabinet_walls_Medium[0]);
+    else if (byte_string_is(type, "MediumWide"))
+        return sizeof(cabinet_walls_MediumWide) / sizeof(cabinet_walls_MediumWide[0]);
+    else if (byte_string_is(type, "Large"))
+        return sizeof(cabinet_walls_Large) / sizeof(cabinet_walls_Large[0]);
+    else
+        return 0;
+}
+
+static void copy_walls_for_cabinet_type(struct byte_string type, struct vector *dest, int32_t u, int32_t v)
+{
+    struct vector *src;
+    if (byte_string_is(type, "Small"))
+        src = cabinet_walls_Small;
+    else if (byte_string_is(type, "SmallWide"))
+        src = cabinet_walls_SmallWide;
+    else if (byte_string_is(type, "SmallWider"))
+        src = cabinet_walls_SmallWider;
+    else if (byte_string_is(type, "Medium"))
+        src = cabinet_walls_Medium;
+    else if (byte_string_is(type, "MediumWide"))
+        src = cabinet_walls_MediumWide;
+    else if (byte_string_is(type, "Large"))
+        src = cabinet_walls_Large;
+    else
+        return;
+    size_t n = number_of_walls_for_cabinet_type(type);
+    for (size_t i = 0; i < n; ++i) {
+        dest[i].u = src[i].u + u;
+        dest[i].v = src[i].v + v;
+    }
+}
+
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
 {
     const char *ignored_error;
@@ -160,6 +210,20 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             return false;
         }
     }
+    size_t number_of_cabinet_walls = 0;
+    for (uint32_t i = 0; pf->production_info && i < pf->production_info->number_of_cabinets; ++i)
+        number_of_cabinet_walls += number_of_walls_for_cabinet_type(pf->production_info->cabinets[i].type);
+    solution->number_of_cabinet_walls = number_of_cabinet_walls;
+    solution->cabinet_walls = calloc(number_of_cabinet_walls, sizeof(struct vector));
+    for (uint32_t i = 0; pf->production_info && i < pf->production_info->number_of_cabinets; ++i) {
+        number_of_cabinet_walls = 0;
+        copy_walls_for_cabinet_type(pf->production_info->cabinets[i].type,
+            solution->cabinet_walls + number_of_cabinet_walls,
+            pf->production_info->cabinets[i].position[0],
+            pf->production_info->cabinets[i].position[1]);
+        number_of_cabinet_walls += number_of_walls_for_cabinet_type(pf->production_info->cabinets[i].type);
+    }
+
     size_t number_of_arms = 0;
     size_t number_of_glyphs = 0;
     size_t number_of_conduits = 0;

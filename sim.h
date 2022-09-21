@@ -297,6 +297,9 @@ struct solution {
     struct conduit *conduits;
     size_t number_of_conduits;
 
+    struct vector *cabinet_walls;
+    size_t number_of_cabinet_walls;
+
     // whether it's an input or an output is determined by the type.
     struct input_output *inputs_and_outputs;
     size_t number_of_inputs_and_outputs;
