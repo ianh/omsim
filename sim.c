@@ -1507,6 +1507,9 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     if (initial_board_size > 999999)
         initial_board_size = 999999;
     ensure_capacity(board, initial_board_size);
+    // place cabinet walls first; wall-wall overlap isn't counted.
+    for (uint32_t i = 0; i < solution->number_of_cabinet_walls; ++i)
+        mark_used_area(board, solution->cabinet_walls[i], 0);
     for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         for (uint32_t j = 0; j < io->number_of_atoms; ++j)
@@ -1533,8 +1536,6 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
             mark_used_area(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
         }
     }
-    for (uint32_t i = 0; i < solution->number_of_cabinet_walls; ++i)
-        mark_used_area(board, solution->cabinet_walls[i], &board->overlap);
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         mark_used_area(board, solution->arms[i].position, &board->overlap);
         // use the VISITED flag to mark arm base positions that track is allowed to occupy.
