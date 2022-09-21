@@ -31,6 +31,7 @@ static inline bool byte_string_is(struct byte_string b, const char *str)
 struct puzzle_atom;
 struct puzzle_bond;
 struct puzzle_molecule;
+struct puzzle_production_info;
 struct puzzle_file {
     struct byte_string name;
 
@@ -43,11 +44,10 @@ struct puzzle_file {
     uint32_t number_of_outputs;
     struct puzzle_molecule *outputs;
 
-    // xx name of this field?
     uint32_t output_scale;
 
-    // xx cabinets etc
-    bool is_production;
+    // production_info is non-null only for production puzzles.
+    struct puzzle_production_info *production_info;
 
     void *bytes;
     bool owns_bytes;
@@ -67,6 +67,44 @@ struct puzzle_bond {
     unsigned char type;
     signed char from[2];
     signed char to[2];
+};
+
+struct puzzle_cabinet;
+struct puzzle_conduit;
+struct puzzle_conduit_hex;
+struct puzzle_vial;
+struct puzzle_production_info {
+    bool shrink_left;
+    bool shrink_right;
+    bool isolate_inputs_from_outputs;
+
+    uint32_t number_of_cabinets;
+    struct puzzle_cabinet *cabinets;
+
+    uint32_t number_of_conduits;
+    struct puzzle_conduit *conduits;
+
+    uint32_t number_of_vials;
+    struct puzzle_vial *vials;
+};
+struct puzzle_cabinet {
+    signed char position[2];
+    struct byte_string type;
+};
+struct puzzle_conduit {
+    signed char starting_position_a[2];
+    signed char starting_position_b[2];
+
+    uint32_t number_of_hexes;
+    struct puzzle_conduit_hex *hexes;
+};
+struct puzzle_conduit_hex {
+    signed char offset[2];
+};
+struct puzzle_vial {
+    signed char position[2];
+    unsigned char style;
+    uint32_t count;
 };
 
 struct solution_hex_offset;

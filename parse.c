@@ -124,8 +124,40 @@ struct puzzle_file *parse_puzzle_byte_string(struct byte_string b)
         parse_puzzle_molecule(&b, &puzzle->outputs[i]);
     puzzle->output_scale = read_uint32(&b);
     if (read_byte(&b)) {
-        puzzle->is_production = true;
-        // xx cabinets etc
+        struct puzzle_production_info *info = calloc(1, sizeof(struct puzzle_production_info));
+        puzzle->production_info = info;
+        info->shrink_left = read_byte(&b);
+        info->shrink_right = read_byte(&b);
+        info->isolate_inputs_from_outputs = read_byte(&b);
+        info->number_of_cabinets = read_uint32(&b);
+        info->cabinets = calloc(info->number_of_cabinets, sizeof(struct puzzle_cabinet));
+        for (uint32_t i = 0; i < info->number_of_cabinets; ++i) {
+            info->cabinets[i].position[0] = read_signed_byte(&b);
+            info->cabinets[i].position[1] = read_signed_byte(&b);
+            info->cabinets[i].type = read_string(&b);
+        }
+        info->number_of_conduits = read_uint32(&b);
+        info->conduits = calloc(info->number_of_conduits, sizeof(struct puzzle_conduit));
+        for (uint32_t i = 0; i < info->number_of_conduits; ++i) {
+            info->conduits[i].starting_position_a[0] = read_signed_byte(&b);
+            info->conduits[i].starting_position_a[1] = read_signed_byte(&b);
+            info->conduits[i].starting_position_b[0] = read_signed_byte(&b);
+            info->conduits[i].starting_position_b[1] = read_signed_byte(&b);
+            info->conduits[i].number_of_hexes = read_uint32(&b);
+            info->conduits[i].hexes = calloc(info->conduits[i].number_of_hexes, sizeof(struct puzzle_conduit_hex));
+            for (uint32_t j = 0; j < info->conduits[i].number_of_hexes; ++j) {
+                info->conduits[i].hexes[j].offset[0] = read_signed_byte(&b);
+                info->conduits[i].hexes[j].offset[1] = read_signed_byte(&b);
+            }
+        }
+        info->number_of_vials = read_uint32(&b);
+        info->vials = calloc(info->number_of_vials, sizeof(struct puzzle_vial));
+        for (uint32_t i = 0; i < info->number_of_vials; ++i) {
+            info->vials[i].position[0] = read_signed_byte(&b);
+            info->vials[i].position[1] = read_signed_byte(&b);
+            info->vials[i].style = read_byte(&b);
+            info->vials[i].count = read_uint32(&b);
+        }
     }
     return puzzle;
 }
@@ -154,6 +186,14 @@ void free_puzzle_file(struct puzzle_file *puzzle)
         free(puzzle->outputs[i].bonds);
     }
     free(puzzle->outputs);
+    if (puzzle->production_info) {
+        free(puzzle->production_info->cabinets);
+        for (uint32_t i = 0; i < puzzle->production_info->number_of_conduits; ++i)
+            free(puzzle->production_info->conduits[i].hexes);
+        free(puzzle->production_info->conduits);
+        free(puzzle->production_info->vials);
+    }
+    free(puzzle->production_info);
     if (puzzle->owns_bytes)
         free(puzzle->bytes);
     free(puzzle);
