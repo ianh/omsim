@@ -215,8 +215,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         number_of_cabinet_walls += number_of_walls_for_cabinet_type(pf->production_info->cabinets[i].type);
     solution->number_of_cabinet_walls = number_of_cabinet_walls;
     solution->cabinet_walls = calloc(number_of_cabinet_walls, sizeof(struct vector));
+    number_of_cabinet_walls = 0;
     for (uint32_t i = 0; pf->production_info && i < pf->production_info->number_of_cabinets; ++i) {
-        number_of_cabinet_walls = 0;
         copy_walls_for_cabinet_type(pf->production_info->cabinets[i].type,
             solution->cabinet_walls + number_of_cabinet_walls,
             pf->production_info->cabinets[i].position[0],
