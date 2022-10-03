@@ -358,6 +358,7 @@ static void mark_output_interval_cycle(struct verifier *v, int cycle)
 static struct throughput_measurements measure_throughput(struct verifier *v, bool use_poison)
 {
     struct throughput_measurements m = {
+        .valid = true,
         .throughput_cycles = -1,
         .throughput_outputs = -1,
         .steady_state_start_cycle = -1,
@@ -601,7 +602,6 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
         v->error = "solution did not converge on a throughput";
         goto error;
     }
-    m.valid = true;
     m.throughput_cycles = snapshot.throughput_cycles;
     m.throughput_outputs = snapshot.throughput_outputs;
     m.throughput_waste = snapshot.throughput_waste;
