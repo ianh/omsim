@@ -987,7 +987,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error_cycle = (int)board.cycle;
         v->error_location_u = (int)board.collision_location.u;
         v->error_location_v = (int)board.collision_location.v;
-    } else if (!board.complete)
+    } else if (!board.complete && !steady_state)
         v->error = "solution did not complete within cycle limit";
     else {
         if (metric == original_metric) {
