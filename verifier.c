@@ -22,6 +22,13 @@ const char *verifier_find_puzzle_name_in_solution_bytes(const char *solution_byt
     return name;
 }
 
+struct error {
+    const char *description;
+    int cycle;
+    int location_u;
+    int location_v;
+};
+
 struct throughput_measurements {
     int64_t throughput_cycles;
     int64_t throughput_outputs;
@@ -29,6 +36,7 @@ struct throughput_measurements {
     int steady_state_start_cycle;
     int steady_state_end_cycle;
     int pivot_parity;
+    struct error error;
     bool valid;
 };
 
@@ -59,10 +67,7 @@ struct verifier {
 
     int throughput_margin;
 
-    const char *error;
-    int error_cycle;
-    int error_location_u;
-    int error_location_v;
+    struct error error;
 };
 
 static void *verifier_create_empty(void)
@@ -82,12 +87,12 @@ void *verifier_create(const char *puzzle_filename, const char *solution_filename
     struct verifier *v = verifier_create_empty();
     v->pf = parse_puzzle_file(puzzle_filename);
     if (!v->pf) {
-        v->error = "invalid puzzle file";
+        v->error.description = "invalid puzzle file";
         return v;
     }
     v->sf = parse_solution_file(solution_filename);
     if (!v->sf) {
-        v->error = "invalid solution file";
+        v->error.description = "invalid solution file";
         return v;
     }
     return v;
@@ -118,12 +123,12 @@ void *verifier_create_from_bytes_without_copying(const char *puzzle_bytes, int p
     struct verifier *v = verifier_create_empty();
     v->pf = parse_puzzle_byte_string((struct byte_string){ (unsigned char *)puzzle_bytes, puzzle_length });
     if (!v->pf) {
-        v->error = "invalid puzzle file";
+        v->error.description = "invalid puzzle file";
         return v;
     }
     v->sf = parse_solution_byte_string((struct byte_string){ (unsigned char *)solution_bytes, solution_length });
     if (!v->sf) {
-        v->error = "invalid solution file";
+        v->error.description = "invalid solution file";
         return v;
     }
     return v;
@@ -132,34 +137,31 @@ void *verifier_create_from_bytes_without_copying(const char *puzzle_bytes, int p
 const char *verifier_error(void *verifier)
 {
     struct verifier *v = verifier;
-    return v->error;
+    return v->error.description;
 }
 
 int verifier_error_cycle(void *verifier)
 {
     struct verifier *v = verifier;
-    return v->error_cycle;
+    return v->error.cycle;
 }
 
 int verifier_error_location_u(void *verifier)
 {
     struct verifier *v = verifier;
-    return v->error_location_u;
+    return v->error.location_u;
 }
 
 int verifier_error_location_v(void *verifier)
 {
     struct verifier *v = verifier;
-    return v->error_location_v;
+    return v->error.location_v;
 }
 
 void verifier_error_clear(void *verifier)
 {
     struct verifier *v = verifier;
-    v->error = 0;
-    v->error_cycle = 0;
-    v->error_location_u = 0;
-    v->error_location_v = 0;
+    v->error = (struct error){ 0 };
 }
 
 void verifier_destroy(void *verifier)
@@ -346,7 +348,7 @@ static void mark_output_interval_cycle(struct verifier *v, int cycle)
 {
     if (v->number_of_output_intervals >= v->output_intervals_capacity) {
         if (v->output_intervals_capacity > 9999999) {
-            v->error = "too many outputs while computing output intervals";
+            v->error.description = "too many outputs while computing output intervals";
             return;
         }
         v->output_intervals_capacity = (v->output_intervals_capacity + 16) * 2;
@@ -386,7 +388,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
             max_v = p.v;
     }
     if (max_u < min_u || max_v < min_v) {
-        v->error = "no parts in solution";
+        m.error.description = "no parts in solution";
         return m;
     }
     max_u += v->throughput_margin;
@@ -394,7 +396,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     max_v += v->throughput_margin;
     min_v -= v->throughput_margin;
 
-    if (!decode_solution(&solution, v->pf, v->sf, &v->error))
+    if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
         return m;
     initial_setup(&solution, &board, v->sf->area);
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
@@ -503,7 +505,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
             if (s->done)
                 continue;
             if (board.used - s->board.used > 50000) {
-                v->error = "throughput measurement halted due to excessive area increase without infinite product satisfaction";
+                m.error.description = "throughput measurement halted due to excessive area increase without infinite product satisfaction";
                 goto error;
             }
             if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)
@@ -584,22 +586,22 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
                 }
             }
             uint32_t reps = io->number_of_repetitions + REPEATING_OUTPUT_REPETITIONS;
-            if (!repeat_molecule(io, reps, &v->error))
+            if (!repeat_molecule(io, reps, &m.error.description))
                 goto error;
         }
         cycle(&solution, &board);
     }
     if (board.collision) {
         v->output_intervals_repeat_after = -1;
-        v->error = board.collision_reason;
-        v->error_cycle = (int)board.cycle;
-        v->error_location_u = (int)board.collision_location.u;
-        v->error_location_v = (int)board.collision_location.v;
+        m.error.description = board.collision_reason;
+        m.error.cycle = (int)board.cycle;
+        m.error.location_u = (int)board.collision_location.u;
+        m.error.location_v = (int)board.collision_location.v;
         goto error;
     }
     if (throughputs_remaining > 0) {
         v->output_intervals_repeat_after = -1;
-        v->error = "solution did not converge on a throughput";
+        m.error.description = "solution did not converge on a throughput";
         goto error;
     }
     m.throughput_cycles = snapshot.throughput_cycles;
@@ -636,31 +638,17 @@ static void ensure_output_intervals(struct verifier *v, int which_output)
     if (v->output_to_measure_intervals_for == which_output)
         return;
 
-    const char *saved_error = v->error;
-    int saved_error_cycle = v->error_cycle;
-    int saved_error_location_u = v->error_location_u;
-    int saved_error_location_v = v->error_location_v;
-
-    v->error = 0;
-
     v->output_to_measure_intervals_for = which_output;
     v->number_of_output_intervals = 0;
     v->output_intervals_repeat_after = -1;
 
     struct throughput_measurements m = measure_throughput(v, true);
-    if (!v->error) {
+    if (!m.error.description) {
         // only set throughput values if there wasn't an error.  we don't want
         // to later measure throughput only to "successfully" return an
         // erroneous value.
         v->throughput_measurements = m;
     }
-
-    // it's fine if there's an error -- that just stops the list short.  restore
-    // the existing error in case an earlier call had one.
-    v->error = saved_error;
-    v->error_cycle = saved_error_cycle;
-    v->error_location_u = saved_error_location_u;
-    v->error_location_v = saved_error_location_v;
 
     // during measurement, the intervals are actually absolute cycles.  fix that
     // up here as a post-processing pass.
@@ -788,11 +776,11 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         char *endptr = 0;
         product_count = strtol(metric, &endptr, 10);
         if (product_count < 0 || endptr == metric) {
-            v->error = "invalid product count";
+            v->error.description = "invalid product count";
             return -1;
         }
         if (*endptr != ' ') {
-            v->error = "product count must be followed by a metric";
+            v->error.description = "product count must be followed by a metric";
             return -1;
         }
         metric = (const char *)(endptr + 1);
@@ -806,7 +794,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         if (!v->throughput_measurements.valid)
             return -1;
         if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
-            v->error = "metric doesn't reach a steady state";
+            v->error.description = "metric doesn't reach a steady state";
             return -1;
         }
     }
@@ -846,7 +834,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             uint32_t index = v->sf->parts[i].which_input_or_output;
             if (index >= n) {
                 duplicates = -1;
-                v->error = "solution refers to a reagent or product that doesn't exist in the puzzle";
+                v->error.description = "solution refers to a reagent or product that doesn't exist in the puzzle";
                 break;
             }
             if (seen[index])
@@ -871,36 +859,43 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return gap2 > INT_MAX ? INT_MAX : (int)gap2;
     }
     if (!v->pf) {
-        v->error = "invalid puzzle file";
+        v->error.description = "invalid puzzle file";
         return -1;
     }
     if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v, true);
+        v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v, true);
+        v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_outputs;
     } else if (!strcmp(metric, "throughput waste")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v, true);
+        v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_waste;
     } else if (!strcmp(metric, "throughput cycles (unrestricted)")) {
         if (!v->throughput_measurements_without_poison.valid)
             v->throughput_measurements_without_poison = measure_throughput(v, false);
+        v->error = v->throughput_measurements_without_poison.error;
         return v->throughput_measurements_without_poison.throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs (unrestricted)")) {
         if (!v->throughput_measurements_without_poison.valid)
             v->throughput_measurements_without_poison = measure_throughput(v, false);
+        v->error = v->throughput_measurements_without_poison.error;
         return v->throughput_measurements_without_poison.throughput_outputs;
     } else if (!strcmp(metric, "visual loop start cycle")) {
         if (!v->throughput_measurements_without_poison.valid)
             v->throughput_measurements_without_poison = measure_throughput(v, false);
+        v->error = v->throughput_measurements_without_poison.error;
         return v->throughput_measurements_without_poison.steady_state_start_cycle;
     } else if (!strcmp(metric, "visual loop end cycle")) {
         if (!v->throughput_measurements_without_poison.valid)
             v->throughput_measurements_without_poison = measure_throughput(v, false);
+        v->error = v->throughput_measurements_without_poison.error;
         int start = v->throughput_measurements_without_poison.steady_state_start_cycle;
         int end = v->throughput_measurements_without_poison.steady_state_end_cycle;
         if (v->throughput_measurements_without_poison.pivot_parity)
@@ -910,7 +905,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
-    if (!decode_solution(&solution, v->pf, v->sf, &v->error))
+    if (!decode_solution(&solution, v->pf, v->sf, &v->error.description))
         return -1;
     if (!strcmp(metric, "instructions")) {
         int instructions = solution_instructions(&solution);
@@ -921,7 +916,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         int value = 0;
         if (!*metric) {
             value = -1;
-            v->error = "no hotkeys specified in 'instructions with hotkey' metric";
+            v->error.description = "no hotkeys specified in 'instructions with hotkey' metric";
         }
         for (; *metric; ++metric) {
             switch (tolower(*metric)) {
@@ -937,7 +932,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             case 'w':
                 break;
             default:
-                v->error = "invalid instruction hotkey in 'instructions with hotkey' metric";
+                v->error.description = "invalid instruction hotkey in 'instructions with hotkey' metric";
                 destroy(&solution, &board);
                 return -1;
             }
@@ -986,12 +981,12 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     int value = -1;
     if (board.collision) {
-        v->error = board.collision_reason;
-        v->error_cycle = (int)board.cycle;
-        v->error_location_u = (int)board.collision_location.u;
-        v->error_location_v = (int)board.collision_location.v;
+        v->error.description = board.collision_reason;
+        v->error.cycle = (int)board.cycle;
+        v->error.location_u = (int)board.collision_location.u;
+        v->error.location_v = (int)board.collision_location.v;
     } else if (!board.complete && !steady_state)
-        v->error = "solution did not complete within cycle limit";
+        v->error.description = "solution did not complete within cycle limit";
     else {
         if (metric == original_metric) {
             v->cycles = board.cycle;
@@ -1014,10 +1009,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         else {
             value = evaluate_arealike_metric(v, &board, metric);
             if (value < 0)
-                v->error = "unknown metric";
+                v->error.description = "unknown metric";
         }
         if (steady_state_start_value >= 0 && value != steady_state_start_value) {
-            v->error = "metric doesn't reach a steady state";
+            v->error.description = "metric doesn't reach a steady state";
             value = -1;
         }
     }
