@@ -972,10 +972,13 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     int steady_state_start_value = -1;
     if (steady_state) {
-        while (board.cycle < v->throughput_measurements.steady_state_start_cycle && !board.collision)
+        // measure one period later so all swings in the period are accounted for.
+        int start_cycle = v->throughput_measurements.steady_state_end_cycle;
+        int period = v->throughput_measurements.steady_state_end_cycle - v->throughput_measurements.steady_state_start_cycle;
+        while (board.cycle < start_cycle && !board.collision)
             cycle(&solution, &board);
         steady_state_start_value = evaluate_arealike_metric(v, &board, metric);
-        while (board.cycle < v->throughput_measurements.steady_state_end_cycle && !board.collision)
+        while (board.cycle < start_cycle + period && !board.collision)
             cycle(&solution, &board);
     } else {
         while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
