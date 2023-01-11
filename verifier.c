@@ -380,16 +380,19 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     };
     struct solution solution = { 0 };
     struct board board = { 0 };
+    if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
+        return m;
+    initial_setup(&solution, &board, v->sf->area);
     // compute a bounding box for the solution
     int32_t max_u = INT32_MIN;
     int32_t min_u = INT32_MAX;
     int32_t max_v = INT32_MIN;
     int32_t min_v = INT32_MAX;
-    for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
-        struct vector p = {
-            v->sf->parts[i].position[0],
-            v->sf->parts[i].position[1],
-        };
+    for (uint32_t i = 0; i < board.capacity; ++i) {
+        atom a = board.atoms_at_positions[i].atom;
+        if (!(a & VALID))
+            continue;
+        struct vector p = board.atoms_at_positions[i].position;
         if (p.u < min_u)
             min_u = p.u;
         if (p.u > max_u)
@@ -401,16 +404,13 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     }
     if (max_u < min_u || max_v < min_v) {
         m.error.description = "no parts in solution";
+        destroy(&solution, &board);
         return m;
     }
     max_u += v->throughput_margin;
     min_u -= v->throughput_margin;
     max_v += v->throughput_margin;
     min_v -= v->throughput_margin;
-
-    if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
-        return m;
-    initial_setup(&solution, &board, v->sf->area);
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.ignore_swing_area = true;
     board.uses_poison = use_poison;
