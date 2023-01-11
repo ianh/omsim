@@ -40,6 +40,19 @@ struct throughput_measurements {
     bool valid;
 };
 
+struct per_cycle_measurements {
+    int cycles;
+    int area;
+    int height;
+    int width2;
+    int omniheight;
+    int omniwidth2;
+    int executed_instructions;
+    int maximum_absolute_arm_rotation;
+    struct error error;
+    bool valid;
+};
+
 struct verifier {
     struct puzzle_file *pf;
     struct solution_file *sf;
@@ -56,8 +69,9 @@ struct verifier {
     struct vector wrong_output_basis_u;
     struct vector wrong_output_basis_v;
 
-    int cycles;
-    int area;
+    struct per_cycle_measurements completion;
+    struct per_cycle_measurements steady_state_start;
+    struct per_cycle_measurements steady_state_end;
 
     int output_to_measure_intervals_for;
     int *output_intervals;
@@ -75,8 +89,6 @@ static void *verifier_create_empty(void)
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 100000;
     v->wrong_output_index = -1;
-    v->cycles = -1;
-    v->area = -1;
     v->output_to_measure_intervals_for = -1;
     v->throughput_margin = 100;
     return v;
@@ -704,94 +716,131 @@ int verifier_output_intervals_repeat_after(void *verifier, int which_output)
     return v->output_intervals_repeat_after;
 }
 
-static void measure_dimension(struct board *board, int32_t u, int32_t v, int *dimension, int hex_width, int sortorder)
+struct area_dimension {
+    int32_t u;
+    int32_t v;
+    int32_t max;
+    int32_t min;
+};
+
+static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v, struct solution *solution, struct board *board, bool check_completion)
 {
-    int32_t max = INT32_MIN;
-    int32_t min = INT32_MAX;
+    struct per_cycle_measurements error_measurements = {
+        .cycles = -1,
+        .area = -1,
+        .height = -1,
+        .width2 = -1,
+        .omniheight = -1,
+        .omniwidth2 = -1,
+        .executed_instructions = -1,
+        .maximum_absolute_arm_rotation = -1,
+        .valid = true,
+    };
+    if (board->collision) {
+        error_measurements.error.description = board->collision_reason;
+        error_measurements.error.cycle = (int)board->cycle;
+        error_measurements.error.location_u = (int)board->collision_location.u;
+        error_measurements.error.location_v = (int)board->collision_location.v;
+        return error_measurements;
+    } else if (!board->complete && check_completion) {
+        error_measurements.error.description = "solution did not complete within cycle limit";
+        return error_measurements;
+    }
+    struct area_dimension dimensions[] = {
+        // height
+        { -1, 0, INT32_MIN, INT32_MAX },
+        { 0, 1, INT32_MIN, INT32_MAX },
+        { -1, 1, INT32_MIN, INT32_MAX },
+
+        // width
+        { -1, 2, INT32_MIN, INT32_MAX },
+        { -2, 1, INT32_MIN, INT32_MAX },
+        { 1, 1, INT32_MIN, INT32_MAX },
+    };
+    bool has_atoms = false;
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
+        has_atoms = true;
         struct vector p = board->atoms_at_positions[i].position;
-        int32_t value = u * p.u - v * p.v;
-        if (value > max)
-            max = value;
-        if (value < min)
-            min = value;
+        for (int j = 0; j < sizeof(dimensions)/sizeof(dimensions[0]); ++j) {
+            int32_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
+            if (value < dimensions[j].min)
+                dimensions[j].min = value;
+            if (value > dimensions[j].max)
+                dimensions[j].max = value;
+        }
     }
-    if (max < min)
-        *dimension = 0;
-    else if (sortorder * (max - min + hex_width) < sortorder * *dimension)
-        *dimension = max - min + hex_width;
+    struct per_cycle_measurements m = {
+        .cycles = (int)board->cycle,
+        .area = used_area(board),
+        .height = has_atoms ? INT_MAX : 0,
+        .width2 = has_atoms ? INT_MAX : 0,
+        .omniheight = 0,
+        .omniwidth2 = 0,
+        .executed_instructions = 0,
+        .maximum_absolute_arm_rotation = solution->maximum_absolute_arm_rotation,
+        .valid = true,
+    };
+    if (has_atoms) {
+        for (int i = 0; i < 3; ++i) {
+            int32_t value = dimensions[i].max - dimensions[i].min + 1;
+            if (value < m.height)
+                m.height = value;
+            if (value > m.omniheight)
+                m.omniheight = value;
+        }
+        for (int i = 3; i < 6; ++i) {
+            int32_t value = dimensions[i].max - dimensions[i].min + 2;
+            if (value < m.width2)
+                m.width2 = value;
+            if (value > m.omniwidth2)
+                m.omniwidth2 = value;
+        }
+    }
+    for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+        if (board->cycle < solution->arm_tape_start_cycle[i])
+            continue;
+        for (size_t j = 0; j < solution->arm_tape_length[i] && j < board->cycle - solution->arm_tape_start_cycle[i]; ++j) {
+            if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0')
+                m.executed_instructions++;
+        }
+    }
+    return m;
 }
 
-static int evaluate_arealike_metric(struct verifier *v, struct board *board, const char *metric)
+static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, const char *metric, struct error *error)
 {
-    int value = -1;
-    if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
-        value = used_area(board);
-    else if (!strcmp(metric, "height")) {
-        value = INT_MAX;
-        measure_dimension(board, -1, 0, &value, 1, 1);
-        measure_dimension(board, 0, 1, &value, 1, 1);
-        measure_dimension(board, -1, 1, &value, 1, 1);
-    } else if (!strcmp(metric, "width*2")) {
-        value = INT_MAX;
-        measure_dimension(board, -1, 2, &value, 2, 1);
-        measure_dimension(board, -2, 1, &value, 2, 1);
-        measure_dimension(board, 1, 1, &value, 2, 1);
-    } else if (!strcmp(metric, "omniheight")) {
-        value = -INT_MAX;
-        measure_dimension(board, -1, 0, &value, 1, -1);
-        measure_dimension(board, 0, 1, &value, 1, -1);
-        measure_dimension(board, -1, 1, &value, 1, -1);
-    } else if (!strcmp(metric, "omniwidth*2")) {
-        value = -INT_MAX;
-        measure_dimension(board, -1, 2, &value, 2, -1);
-        measure_dimension(board, -2, 1, &value, 2, -1);
-        measure_dimension(board, 1, 1, &value, 2, -1);
+    if (!measurements->valid)
+        return -1;
+    if (!strcmp(metric, "cycles"))
+        return measurements->cycles;
+    else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
+        return measurements->area;
+    else if (!strcmp(metric, "height"))
+        return measurements->height;
+    else if (!strcmp(metric, "width*2"))
+        return measurements->width2;
+    else if (!strcmp(metric, "omniheight"))
+        return measurements->omniheight;
+    else if (!strcmp(metric, "omniwidth*2"))
+        return measurements->omniwidth2;
+    else if (!strcmp(metric, "executed instructions"))
+        return measurements->executed_instructions;
+    else if (!strcmp(metric, "maximum absolute arm rotation"))
+        return measurements->maximum_absolute_arm_rotation;
+    else {
+        *error = (struct error){ .description = "unknown metric" };
+        return -1;
     }
-    return value;
 }
 
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
-    const char *original_metric = metric;
     struct verifier *v = verifier;
     if (!v->sf)
         return -1;
-    if (!strcmp(metric, "cycles") && v->cycles >= 0)
-        return v->cycles;
-    if (!strcmp(metric, "area (approximate)") && v->area >= 0)
-        return v->area;
-    long product_count = -1;
-    if (!strncmp("product ", metric, strlen("product "))) {
-        metric += strlen("product ");
-        char *endptr = 0;
-        product_count = strtol(metric, &endptr, 10);
-        if (product_count < 0 || endptr == metric) {
-            v->error.description = "invalid product count";
-            return -1;
-        }
-        if (*endptr != ' ') {
-            v->error.description = "product count must be followed by a metric";
-            return -1;
-        }
-        metric = (const char *)(endptr + 1);
-    }
-    bool steady_state = false;
-    if (!strncmp("steady state ", metric, strlen("steady state "))) {
-        steady_state = true;
-        metric += strlen("steady state ");
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v, true);
-        if (!v->throughput_measurements.valid)
-            return -1;
-        if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
-            v->error.description = "metric doesn't reach a steady state";
-            return -1;
-        }
-    }
     if (!strcmp(metric, "parsed cycles"))
         return v->sf->cycles;
     else if (!strcmp(metric, "parsed cost"))
@@ -948,8 +997,6 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         destroy(&solution, &board);
         return arms;
     }
-    if (product_count >= 0)
-        solution.target_number_of_outputs = product_count;
     initial_setup(&solution, &board, v->sf->area);
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     if (!strcmp(metric, "overlap")) {
@@ -959,57 +1006,79 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         destroy(&solution, &board);
         return overlap;
     }
-    int steady_state_start_value = -1;
-    if (steady_state) {
-        // measure one period later so all swings in the period are accounted for.
-        int start_cycle = v->throughput_measurements.steady_state_end_cycle;
-        int period = v->throughput_measurements.steady_state_end_cycle - v->throughput_measurements.steady_state_start_cycle;
-        while (board.cycle < start_cycle && !board.collision)
-            cycle(&solution, &board);
-        steady_state_start_value = evaluate_arealike_metric(v, &board, metric);
-        while (board.cycle < start_cycle + period && !board.collision)
-            cycle(&solution, &board);
-    } else {
+    if (!strncmp("product ", metric, strlen("product "))) {
+        metric += strlen("product ");
+        char *endptr = 0;
+        long product_count = strtol(metric, &endptr, 10);
+        if (product_count < 0 || endptr == metric) {
+            v->error.description = "invalid product count";
+            destroy(&solution, &board);
+            return -1;
+        }
+        if (*endptr != ' ') {
+            v->error.description = "product count must be followed by a metric";
+            destroy(&solution, &board);
+            return -1;
+        }
+        metric = (const char *)(endptr + 1);
+        solution.target_number_of_outputs = product_count;
         while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
             cycle(&solution, &board);
-    }
-    int value = -1;
-    if (board.collision) {
-        v->error.description = board.collision_reason;
-        v->error.cycle = (int)board.cycle;
-        v->error.location_u = (int)board.collision_location.u;
-        v->error.location_v = (int)board.collision_location.v;
-    } else if (!board.complete && !steady_state)
-        v->error.description = "solution did not complete within cycle limit";
-    else {
-        if (metric == original_metric) {
-            v->cycles = board.cycle;
-            v->area = used_area(&board);
-        }
-        if (!strcmp(metric, "cycles"))
-            value = board.cycle;
-        else if (!strcmp(metric, "executed instructions")) {
-            value = 0;
-            for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
-                if (board.cycle < solution.arm_tape_start_cycle[i])
-                    continue;
-                for (size_t j = 0; j < solution.arm_tape_length[i] && j < board.cycle - solution.arm_tape_start_cycle[i]; ++j) {
-                    if (solution.arm_tape[i][j] != ' ' && solution.arm_tape[i][j] != '\0')
-                        value++;
-                }
+        struct per_cycle_measurements m = measure_at_current_cycle(v, &solution, &board, true);
+        check_wrong_output_and_destroy(v, &solution, &board);
+        v->error = m.error;
+        return lookup_per_cycle_metric(&m, metric, &v->error);
+    } else if (!strncmp("steady state ", metric, strlen("steady state "))) {
+        metric += strlen("steady state ");
+        if (!v->steady_state_start.valid || !v->steady_state_end.valid) {
+            if (!v->throughput_measurements.valid)
+                v->throughput_measurements = measure_throughput(v, true);
+            if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
+                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+                destroy(&solution, &board);
+                return -1;
             }
-        } else if (!strcmp(metric, "maximum absolute arm rotation"))
-            value = solution.maximum_absolute_arm_rotation;
-        else {
-            value = evaluate_arealike_metric(v, &board, metric);
-            if (value < 0)
-                v->error.description = "unknown metric";
+            if (v->throughput_measurements.throughput_cycles < 0) {
+                v->error = v->throughput_measurements.error;
+                destroy(&solution, &board);
+                return -1;
+            }
+            // measure one period later so all swings in the period are accounted for.
+            int start_cycle = v->throughput_measurements.steady_state_end_cycle;
+            int period = v->throughput_measurements.steady_state_end_cycle - v->throughput_measurements.steady_state_start_cycle;
+            while (board.cycle < start_cycle && !board.collision)
+                cycle(&solution, &board);
+            v->steady_state_start = measure_at_current_cycle(v, &solution, &board, false);
+            while (board.cycle < start_cycle + period && !board.collision)
+                cycle(&solution, &board);
+            v->steady_state_end = measure_at_current_cycle(v, &solution, &board, false);
         }
-        if (steady_state_start_value >= 0 && value != steady_state_start_value) {
-            v->error.description = "metric doesn't reach a steady state";
-            value = -1;
+        check_wrong_output_and_destroy(v, &solution, &board);
+        if (v->steady_state_start.error.description) {
+            v->error = v->steady_state_start.error;
+            return -1;
         }
+        if (v->steady_state_end.error.description) {
+            v->error = v->steady_state_end.error;
+            return -1;
+        }
+        int start_value = lookup_per_cycle_metric(&v->steady_state_start, metric, &v->error);
+        int end_value = lookup_per_cycle_metric(&v->steady_state_end, metric, &v->error);
+        if (start_value < 0 || end_value < 0)
+            return -1;
+        if (start_value != end_value) {
+            v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+            return -1;
+        }
+        return start_value;
+    } else {
+        if (!v->completion.valid) {
+            while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
+                cycle(&solution, &board);
+            v->completion = measure_at_current_cycle(v, &solution, &board, true);
+        }
+        check_wrong_output_and_destroy(v, &solution, &board);
+        v->error = v->completion.error;
+        return lookup_per_cycle_metric(&v->completion, metric, &v->error);
     }
-    check_wrong_output_and_destroy(v, &solution, &board);
-    return value;
 }
