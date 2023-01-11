@@ -642,13 +642,7 @@ static void ensure_output_intervals(struct verifier *v, int which_output)
     v->number_of_output_intervals = 0;
     v->output_intervals_repeat_after = -1;
 
-    struct throughput_measurements m = measure_throughput(v, true);
-    if (!m.error.description) {
-        // only set throughput values if there wasn't an error.  we don't want
-        // to later measure throughput only to "successfully" return an
-        // erroneous value.
-        v->throughput_measurements = m;
-    }
+    v->throughput_measurements = measure_throughput(v, true);
 
     // during measurement, the intervals are actually absolute cycles.  fix that
     // up here as a post-processing pass.
