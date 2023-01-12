@@ -29,17 +29,6 @@ struct error {
     int location_v;
 };
 
-struct throughput_measurements {
-    int64_t throughput_cycles;
-    int64_t throughput_outputs;
-    int throughput_waste;
-    int steady_state_start_cycle;
-    int steady_state_end_cycle;
-    int pivot_parity;
-    struct error error;
-    bool valid;
-};
-
 struct per_cycle_measurements {
     int cycles;
     int area;
@@ -49,6 +38,19 @@ struct per_cycle_measurements {
     int omniwidth2;
     int executed_instructions;
     int maximum_absolute_arm_rotation;
+    struct error error;
+    bool valid;
+};
+
+struct throughput_measurements {
+    int64_t throughput_cycles;
+    int64_t throughput_outputs;
+    int throughput_waste;
+    int steady_state_start_cycle;
+    int steady_state_end_cycle;
+    struct per_cycle_measurements steady_state_start;
+    struct per_cycle_measurements steady_state_end;
+    int pivot_parity;
     struct error error;
     bool valid;
 };
@@ -251,6 +253,129 @@ void verifier_set_throughput_margin(void *verifier, int margin)
     v->throughput_measurements_without_poison = (struct throughput_measurements){ 0 };
     v->steady_state_start = (struct per_cycle_measurements){ 0 };
     v->steady_state_end = (struct per_cycle_measurements){ 0 };
+}
+
+struct area_dimension {
+    int32_t u;
+    int32_t v;
+    int32_t max;
+    int32_t min;
+};
+
+static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v, struct solution *solution, struct board *board, bool check_completion)
+{
+    struct per_cycle_measurements error_measurements = {
+        .cycles = -1,
+        .area = -1,
+        .height = -1,
+        .width2 = -1,
+        .omniheight = -1,
+        .omniwidth2 = -1,
+        .executed_instructions = -1,
+        .maximum_absolute_arm_rotation = -1,
+        .valid = true,
+    };
+    if (board->collision) {
+        error_measurements.error.description = board->collision_reason;
+        error_measurements.error.cycle = (int)board->cycle;
+        error_measurements.error.location_u = (int)board->collision_location.u;
+        error_measurements.error.location_v = (int)board->collision_location.v;
+        return error_measurements;
+    } else if (!board->complete && check_completion) {
+        error_measurements.error.description = "solution did not complete within cycle limit";
+        return error_measurements;
+    }
+    struct area_dimension dimensions[] = {
+        // height
+        { -1, 0, INT32_MIN, INT32_MAX },
+        { 0, 1, INT32_MIN, INT32_MAX },
+        { -1, 1, INT32_MIN, INT32_MAX },
+
+        // width
+        { -1, 2, INT32_MIN, INT32_MAX },
+        { -2, 1, INT32_MIN, INT32_MAX },
+        { 1, 1, INT32_MIN, INT32_MAX },
+    };
+    bool has_atoms = false;
+    for (uint32_t i = 0; i < board->capacity; ++i) {
+        atom a = board->atoms_at_positions[i].atom;
+        if (!(a & VALID))
+            continue;
+        has_atoms = true;
+        struct vector p = board->atoms_at_positions[i].position;
+        for (int j = 0; j < sizeof(dimensions)/sizeof(dimensions[0]); ++j) {
+            int32_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
+            if (value < dimensions[j].min)
+                dimensions[j].min = value;
+            if (value > dimensions[j].max)
+                dimensions[j].max = value;
+        }
+    }
+    struct per_cycle_measurements m = {
+        .cycles = (int)board->cycle,
+        .area = used_area(board),
+        .height = has_atoms ? INT_MAX : 0,
+        .width2 = has_atoms ? INT_MAX : 0,
+        .omniheight = 0,
+        .omniwidth2 = 0,
+        .executed_instructions = 0,
+        .maximum_absolute_arm_rotation = solution ? solution->maximum_absolute_arm_rotation : -1,
+        .valid = true,
+    };
+    if (has_atoms) {
+        for (int i = 0; i < 3; ++i) {
+            int32_t value = dimensions[i].max - dimensions[i].min + 1;
+            if (value < m.height)
+                m.height = value;
+            if (value > m.omniheight)
+                m.omniheight = value;
+        }
+        for (int i = 3; i < 6; ++i) {
+            int32_t value = dimensions[i].max - dimensions[i].min + 2;
+            if (value < m.width2)
+                m.width2 = value;
+            if (value > m.omniwidth2)
+                m.omniwidth2 = value;
+        }
+    }
+    if (solution) {
+        for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+            if (board->cycle < solution->arm_tape_start_cycle[i])
+                continue;
+            for (size_t j = 0; j < solution->arm_tape_length[i] && j < board->cycle - solution->arm_tape_start_cycle[i]; ++j) {
+                if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0')
+                    m.executed_instructions++;
+            }
+        }
+    } else
+        m.executed_instructions = -1;
+    return m;
+}
+
+static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, const char *metric, struct error *error)
+{
+    if (!measurements->valid)
+        return -1;
+    if (!strcmp(metric, "cycles"))
+        return measurements->cycles;
+    else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
+        return measurements->area;
+    else if (!strcmp(metric, "height"))
+        return measurements->height;
+    else if (!strcmp(metric, "width*2"))
+        return measurements->width2;
+    else if (!strcmp(metric, "omniheight"))
+        return measurements->omniheight;
+    else if (!strcmp(metric, "omniwidth*2"))
+        return measurements->omniwidth2;
+    else if (!strcmp(metric, "executed instructions"))
+        return measurements->executed_instructions;
+    else if (!strcmp(metric, "maximum absolute arm rotation"))
+        return measurements->maximum_absolute_arm_rotation;
+    else {
+        *error = (struct error){ .description = "unknown metric" };
+        return -1;
+    }
 }
 
 struct snapshot {
@@ -502,6 +627,8 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
                 }
                 m.steady_state_start_cycle = snapshot.board.cycle;
                 m.steady_state_end_cycle = board.cycle;
+                m.steady_state_start = measure_at_current_cycle(v, 0, &snapshot.board, false);
+                m.steady_state_end = measure_at_current_cycle(v, &solution, &board, false);
                 for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
                     struct mechanism a = snapshot.arms[i];
                     struct mechanism b = solution.arms[i];
@@ -726,126 +853,6 @@ int verifier_output_intervals_repeat_after(void *verifier, int which_output)
     return v->output_intervals_repeat_after;
 }
 
-struct area_dimension {
-    int32_t u;
-    int32_t v;
-    int32_t max;
-    int32_t min;
-};
-
-static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v, struct solution *solution, struct board *board, bool check_completion)
-{
-    struct per_cycle_measurements error_measurements = {
-        .cycles = -1,
-        .area = -1,
-        .height = -1,
-        .width2 = -1,
-        .omniheight = -1,
-        .omniwidth2 = -1,
-        .executed_instructions = -1,
-        .maximum_absolute_arm_rotation = -1,
-        .valid = true,
-    };
-    if (board->collision) {
-        error_measurements.error.description = board->collision_reason;
-        error_measurements.error.cycle = (int)board->cycle;
-        error_measurements.error.location_u = (int)board->collision_location.u;
-        error_measurements.error.location_v = (int)board->collision_location.v;
-        return error_measurements;
-    } else if (!board->complete && check_completion) {
-        error_measurements.error.description = "solution did not complete within cycle limit";
-        return error_measurements;
-    }
-    struct area_dimension dimensions[] = {
-        // height
-        { -1, 0, INT32_MIN, INT32_MAX },
-        { 0, 1, INT32_MIN, INT32_MAX },
-        { -1, 1, INT32_MIN, INT32_MAX },
-
-        // width
-        { -1, 2, INT32_MIN, INT32_MAX },
-        { -2, 1, INT32_MIN, INT32_MAX },
-        { 1, 1, INT32_MIN, INT32_MAX },
-    };
-    bool has_atoms = false;
-    for (uint32_t i = 0; i < board->capacity; ++i) {
-        atom a = board->atoms_at_positions[i].atom;
-        if (!(a & VALID))
-            continue;
-        has_atoms = true;
-        struct vector p = board->atoms_at_positions[i].position;
-        for (int j = 0; j < sizeof(dimensions)/sizeof(dimensions[0]); ++j) {
-            int32_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
-            if (value < dimensions[j].min)
-                dimensions[j].min = value;
-            if (value > dimensions[j].max)
-                dimensions[j].max = value;
-        }
-    }
-    struct per_cycle_measurements m = {
-        .cycles = (int)board->cycle,
-        .area = used_area(board),
-        .height = has_atoms ? INT_MAX : 0,
-        .width2 = has_atoms ? INT_MAX : 0,
-        .omniheight = 0,
-        .omniwidth2 = 0,
-        .executed_instructions = 0,
-        .maximum_absolute_arm_rotation = solution->maximum_absolute_arm_rotation,
-        .valid = true,
-    };
-    if (has_atoms) {
-        for (int i = 0; i < 3; ++i) {
-            int32_t value = dimensions[i].max - dimensions[i].min + 1;
-            if (value < m.height)
-                m.height = value;
-            if (value > m.omniheight)
-                m.omniheight = value;
-        }
-        for (int i = 3; i < 6; ++i) {
-            int32_t value = dimensions[i].max - dimensions[i].min + 2;
-            if (value < m.width2)
-                m.width2 = value;
-            if (value > m.omniwidth2)
-                m.omniwidth2 = value;
-        }
-    }
-    for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
-        if (board->cycle < solution->arm_tape_start_cycle[i])
-            continue;
-        for (size_t j = 0; j < solution->arm_tape_length[i] && j < board->cycle - solution->arm_tape_start_cycle[i]; ++j) {
-            if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0')
-                m.executed_instructions++;
-        }
-    }
-    return m;
-}
-
-static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, const char *metric, struct error *error)
-{
-    if (!measurements->valid)
-        return -1;
-    if (!strcmp(metric, "cycles"))
-        return measurements->cycles;
-    else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
-        return measurements->area;
-    else if (!strcmp(metric, "height"))
-        return measurements->height;
-    else if (!strcmp(metric, "width*2"))
-        return measurements->width2;
-    else if (!strcmp(metric, "omniheight"))
-        return measurements->omniheight;
-    else if (!strcmp(metric, "omniwidth*2"))
-        return measurements->omniwidth2;
-    else if (!strcmp(metric, "executed instructions"))
-        return measurements->executed_instructions;
-    else if (!strcmp(metric, "maximum absolute arm rotation"))
-        return measurements->maximum_absolute_arm_rotation;
-    else {
-        *error = (struct error){ .description = "unknown metric" };
-        return -1;
-    }
-}
-
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
     struct verifier *v = verifier;
@@ -1050,6 +1057,11 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             }
             if (v->throughput_measurements.throughput_cycles < 0) {
                 v->error = v->throughput_measurements.error;
+                destroy(&solution, &board);
+                return -1;
+            }
+            if (lookup_per_cycle_metric(&v->throughput_measurements.steady_state_start, metric, &v->error) != lookup_per_cycle_metric(&v->throughput_measurements.steady_state_end, metric, &v->error)) {
+                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
                 destroy(&solution, &board);
                 return -1;
             }
