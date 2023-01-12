@@ -272,6 +272,7 @@ struct snapshot {
     uint32_t satisfactions_until_snapshot;
     uint32_t next_satisfactions_until_snapshot;
     uint32_t number_of_repetitions;
+    uint64_t last_satisfaction_cycle;
 };
 
 static void take_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
@@ -520,9 +521,16 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
                 m.error.description = "throughput measurement halted due to excessive area increase without infinite product satisfaction";
                 goto error;
             }
-            if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition)
+            if (io->number_of_outputs != io->number_of_repetitions * io->outputs_per_repetition) {
+                // the output wasn't satisfied; periodically check whether we're spinning our wheels.
+                if (steady_state && board.cycle > s->last_satisfaction_cycle + m.steady_state_end_cycle) {
+                    m.error = (struct error){ .description = "throughput measurement halted due to lack of infinite product match" };
+                    goto error;
+                }
                 continue;
+            }
             // the output is satisfied.
+            s->last_satisfaction_cycle = board.cycle;
             if (steady_state && !--s->satisfactions_until_snapshot) {
                 take_snapshot(&solution, &board, s);
                 s->number_of_repetitions = io->number_of_repetitions;
