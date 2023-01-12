@@ -382,6 +382,7 @@ struct snapshot {
     struct mechanism *arms;
     struct board board;
     uint32_t board_in_range;
+    uint32_t empty_in_range;
     uint64_t *output_count;
 
     int32_t max_u;
@@ -412,19 +413,25 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
     memcpy(a, board->atoms_at_positions, sizeof(struct atom_at_position) * board->capacity);
     snapshot->board.atoms_at_positions = a;
     snapshot->board_in_range = 0;
+    snapshot->empty_in_range = 0;
     snapshot->throughput_waste = 0;
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
-        if (!(a & VALID) || (a & REMOVED))
+        if (!(a & VALID))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
         if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
-            if (board->uses_poison)
-                board->atoms_at_positions[i].atom |= POISON;
-            snapshot->throughput_waste = 1;
+            if (!(a & REMOVED)) {
+                if (board->uses_poison)
+                    board->atoms_at_positions[i].atom |= POISON;
+                snapshot->throughput_waste = 1;
+            }
             continue;
         }
-        snapshot->board_in_range++;
+        if (a & REMOVED)
+            snapshot->empty_in_range++;
+        else
+            snapshot->board_in_range++;
     }
     snapshot->output_count = realloc(snapshot->output_count, sizeof(uint64_t) * solution->number_of_inputs_and_outputs);
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
@@ -457,9 +464,10 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
             return false;
     }
     uint32_t board_in_range = 0;
+    uint32_t empty_in_range = 0;
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
-        if (!(a & VALID) || (a & REMOVED))
+        if (!(a & VALID))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
         bool in_range = true;
@@ -468,6 +476,11 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
                 in_range = false;
             else
                 continue;
+        }
+        if (a & REMOVED) {
+            if (in_range)
+                empty_in_range++;
+            continue;
         }
         if (a & POISON)
             return false;
@@ -480,6 +493,8 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
             board_in_range++;
     }
     if (board_in_range != snapshot->board_in_range)
+        return false;
+    if (empty_in_range != snapshot->empty_in_range)
         return false;
     return true;
 }
