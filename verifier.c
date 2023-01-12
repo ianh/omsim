@@ -415,15 +415,13 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
     snapshot->throughput_waste = 0;
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
-        if (!(a & VALID))
+        if (!(a & VALID) || (a & REMOVED))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
         if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
-            if (!(a & REMOVED)) {
-                if (board->uses_poison)
-                    board->atoms_at_positions[i].atom |= POISON;
-                snapshot->throughput_waste = 1;
-            }
+            if (board->uses_poison)
+                board->atoms_at_positions[i].atom |= POISON;
+            snapshot->throughput_waste = 1;
             continue;
         }
         snapshot->board_in_range++;
@@ -461,7 +459,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     uint32_t board_in_range = 0;
     for (uint32_t i = 0; i < board->capacity; ++i) {
         atom a = board->atoms_at_positions[i].atom;
-        if (!(a & VALID))
+        if (!(a & VALID) || (a & REMOVED))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
         bool in_range = true;
@@ -470,11 +468,6 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
                 in_range = false;
             else
                 continue;
-        }
-        if (a & REMOVED) {
-            if (in_range)
-                board_in_range++;
-            continue;
         }
         if (a & POISON)
             return false;
