@@ -249,6 +249,8 @@ void verifier_set_throughput_margin(void *verifier, int margin)
     // reset throughput metrics so they're measured again if necessary.
     v->throughput_measurements = (struct throughput_measurements){ 0 };
     v->throughput_measurements_without_poison = (struct throughput_measurements){ 0 };
+    v->steady_state_start = (struct per_cycle_measurements){ 0 };
+    v->steady_state_end = (struct per_cycle_measurements){ 0 };
 }
 
 struct snapshot {
