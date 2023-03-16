@@ -1607,7 +1607,7 @@ void destroy(struct solution *solution, struct board *board)
 
 uint32_t used_area(struct board *board)
 {
-    return board->used;
+    return board->area;
 }
 
 // appendix A -- hash table functions.
@@ -1645,13 +1645,18 @@ bool lookup_track(struct solution *solution, struct vector query, uint32_t *inde
     }
 }
 
-static struct atom_at_position *lookup_atom_at_position(struct board *board, struct vector query)
+static struct atom_at_position *lookup_atom_at_position_in_array(struct board *board, struct vector query)
+{
+    return &board->atoms_at_positions[(query.u - BOARD_ARRAY_MIN) * (BOARD_ARRAY_MAX - BOARD_ARRAY_MIN) + query.v - BOARD_ARRAY_MIN];
+}
+
+static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct board *board, struct vector query)
 {
     uint32_t hash = fnv(&query, sizeof(query));
-    uint32_t mask = board->capacity - 1;
+    uint32_t mask = board->hash_capacity - 1;
     uint32_t index = hash & mask;
     while (true) {
-        struct atom_at_position *a = &board->atoms_at_positions[index];
+        struct atom_at_position *a = &board->atoms_at_positions[BOARD_ARRAY_PREFIX + index];
         if (!(a->atom & VALID))
             return a;
         if (vectors_equal(a->position, query))
@@ -1660,6 +1665,14 @@ static struct atom_at_position *lookup_atom_at_position(struct board *board, str
         if (index == (hash & mask))
             abort();
     }
+}
+
+static struct atom_at_position *lookup_atom_at_position(struct board *board, struct vector query)
+{
+    if (query.u >= BOARD_ARRAY_MIN && query.u < BOARD_ARRAY_MAX && query.v >= BOARD_ARRAY_MIN && query.v < BOARD_ARRAY_MAX)
+        return lookup_atom_at_position_in_array(board, query);
+    else
+        return lookup_atom_at_position_in_hashtable(board, query);
 }
 
 atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query)
@@ -1678,7 +1691,7 @@ atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
     }
     a->position = point;
     a->atom = VALID | REMOVED;
-    board->used++;
+    board->area++;
     return a->atom;
 }
 
@@ -1688,33 +1701,46 @@ atom *insert_atom(struct board *board, struct vector query, const char *collisio
     if ((a->atom & VALID) && !(a->atom & REMOVED))
         report_collision(board, query, collision_reason);
     a->position = query;
-    if (!(a->atom & REMOVED))
-        board->used++;
+    if (!(a->atom & REMOVED)) {
+        board->area++;
+        if (a - board->atoms_at_positions >= BOARD_ARRAY_MAX)
+            board->hash_used++;
+    }
     return &a->atom;
 }
 
 static void ensure_capacity(struct board *board, uint32_t potential_insertions)
 {
-    uint32_t n = board->capacity;
+    uint32_t n = board->hash_capacity;
     if (n == 0)
         n = 16;
-    while (2 * n <= 7 * (board->used + potential_insertions))
+    while (2 * n <= 7 * (board->hash_used + potential_insertions))
         n *= 2;
-    if (n == board->capacity)
+    if (n == board->hash_capacity)
         return;
     struct board old = *board;
-    board->atoms_at_positions = calloc(n, sizeof(*board->atoms_at_positions));
-    board->capacity = n;
-    board->used = 0;
+    board->atoms_at_positions = calloc(BOARD_ARRAY_PREFIX + n, sizeof(*board->atoms_at_positions));
+    board->hash_capacity = n;
+    board->hash_used = 0;
     board->flag_reset_length = 0;
-    for (uint32_t i = 0; i < old.capacity; ++i) {
-        atom a = old.atoms_at_positions[i].atom;
-        if (!(a & VALID))
+    if (!old.atoms_at_positions)
+        return;
+    for (uint32_t i = 0; i < BOARD_ARRAY_PREFIX; ++i) {
+        struct atom_at_position a = old.atoms_at_positions[i];
+        if (!(a.atom & VALID))
             continue;
-        struct vector position = old.atoms_at_positions[i].position;
-        atom *b = insert_atom(board, position, "reinserting colliding atoms");
+        struct atom_at_position *b = lookup_atom_at_position_in_array(board, a.position);
         *b = a;
-        schedule_flag_reset_if_needed(board, b);
+        schedule_flag_reset_if_needed(board, &b->atom);
+    }
+    for (uint32_t i = 0; i < old.hash_capacity; ++i) {
+        struct atom_at_position a = old.atoms_at_positions[BOARD_ARRAY_PREFIX + i];
+        if (!(a.atom & VALID))
+            continue;
+        struct atom_at_position *b = lookup_atom_at_position_in_hashtable(board, a.position);
+        *b = a;
+        board->hash_used++;
+        schedule_flag_reset_if_needed(board, &b->atom);
     }
     free(old.atoms_at_positions);
 }

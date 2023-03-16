@@ -348,11 +348,15 @@ struct marked_positions {
     size_t capacity;
     size_t length;
 };
+#define BOARD_ARRAY_MIN (-32)
+#define BOARD_ARRAY_MAX 32
+#define BOARD_ARRAY_PREFIX ((BOARD_ARRAY_MAX-BOARD_ARRAY_MIN)*(BOARD_ARRAY_MAX-BOARD_ARRAY_MIN))
 struct board {
     struct atom_at_position *atoms_at_positions;
 
-    uint32_t capacity;
-    uint32_t used;
+    uint32_t hash_capacity;
+    uint32_t hash_used;
+    uint32_t area;
 
     // atoms that need their flags reset.
     atom **flag_reset;
