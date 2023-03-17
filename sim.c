@@ -31,7 +31,7 @@ static double xy_len2(struct xy_vector xy)
 }
 
 // hash table functions -- see appendix.
-static void ensure_capacity(struct board *board, uint32_t potential_insertions);
+static void rehash(struct board *board, uint32_t size);
 static void schedule_flag_reset_if_needed(struct board *board, atom *a);
 
 struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w)
@@ -226,7 +226,6 @@ struct vector v_offset_for_direction(int direction)
 static void apply_conduit(struct solution *solution, struct board *board, struct mechanism m)
 {
     struct conduit *conduit = &solution->conduits[m.conduit_index];
-    ensure_capacity(board, conduit->number_of_positions);
     struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
     int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
     uint32_t base = 0;
@@ -280,7 +279,6 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 continue;
             }
         }
-        ensure_capacity(board, length);
         for (uint32_t k = 0; k < length; ++k) {
             atom a = conduit->atoms[base + k].atom;
             struct vector delta = conduit->atoms[base + k].position;
@@ -307,9 +305,6 @@ static void apply_glyphs(struct solution *solution, struct board *board)
 {
     size_t n = solution->number_of_glyphs;
     for (size_t i = 0; i < n; ++i) {
-        // at most 4 new atoms can be inserted by a single glyph (dispersion).
-        // ensure there's enough space in the hash table for these new atoms.
-        ensure_capacity(board, 4);
         struct mechanism m = solution->glyphs[i];
         switch (m.type & ANY_GLYPH) {
         case CALCIFICATION: {
@@ -925,7 +920,6 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (collision(solution, board, (float)collision_increment, &collision_location))
                 report_collision(board, collision_location, "collision during motion phase");
         }
-        ensure_capacity(board, board->moving_atoms.length);
         atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement m = board->movements.movements[i];
@@ -1081,7 +1075,6 @@ static void spawn_inputs(struct solution *solution, struct board *board)
             return;
         }
         uint32_t n = io->number_of_atoms;
-        ensure_capacity(board, n);
         for (uint32_t j = 0; j < n; ++j) {
             atom input = io->atoms[j].atom;
             struct vector p = io->atoms[j].position;
@@ -1488,7 +1481,6 @@ struct footprint footprints[] = {
 
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
 {
-    ensure_capacity(board, 1);
     struct vector p = mechanism_relative_position(m, du, dv, 1);
     atom *a = insert_atom(board, p, "van berlo overlap");
     *a = VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element;
@@ -1500,13 +1492,15 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     board->half_cycle = 1;
     board->active_input_or_output = UINT32_MAX;
     board->wrong_output_index = SIZE_MAX;
-    // in order for lookups to work, the hash table has to be allocated using
-    // ensure_capacity().
-    if (initial_board_size < 1)
-        initial_board_size = 1;
-    if (initial_board_size > 999999)
-        initial_board_size = 999999;
-    ensure_capacity(board, initial_board_size);
+    // initialize the board array / hash table.
+    // this division is just to keep the hash table size from starting too big
+    // and ruining memory locality.
+    uint32_t initial_hashtable_size = initial_board_size / 8;
+    if (initial_hashtable_size < 1)
+        initial_hashtable_size = 1;
+    if (initial_hashtable_size > 99999)
+        initial_hashtable_size = 99999;
+    rehash(board, initial_hashtable_size);
     // place cabinet walls first; wall-wall overlap isn't counted.
     for (uint32_t i = 0; i < solution->number_of_cabinet_walls; ++i)
         mark_used_area(board, solution->cabinet_walls[i], 0);
@@ -1650,20 +1644,28 @@ static struct atom_at_position *lookup_atom_at_position_in_array(struct board *b
     return &board->atoms_at_positions[(query.u - BOARD_ARRAY_MIN) * (BOARD_ARRAY_MAX - BOARD_ARRAY_MIN) + query.v - BOARD_ARRAY_MIN];
 }
 
+__attribute__((noinline))
 static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct board *board, struct vector query)
 {
     uint32_t hash = fnv(&query, sizeof(query));
-    uint32_t mask = board->hash_capacity - 1;
-    uint32_t index = hash & mask;
     while (true) {
-        struct atom_at_position *a = &board->atoms_at_positions[BOARD_ARRAY_PREFIX + index];
-        if (!(a->atom & VALID))
-            return a;
-        if (vectors_equal(a->position, query))
-            return a;
-        index = (index + 1) & mask;
-        if (index == (hash & mask))
-            abort();
+        uint32_t mask = board->hash_capacity - 1;
+        uint32_t index = hash & mask;
+        uint32_t misses = 0;
+        while (true) {
+            struct atom_at_position *a = &board->atoms_at_positions[BOARD_ARRAY_PREFIX + index];
+            if (!(a->atom & VALID))
+                return a;
+            if (vectors_equal(a->position, query))
+                return a;
+            if (++misses == 3) {
+                rehash(board, board->hash_capacity * 2);
+                break;
+            }
+            index = (index + 1) & mask;
+        }
+        // if execution reaches this point, the board was just rehashed, so we
+        // have to retry the lookup.
     }
 }
 
@@ -1682,7 +1684,6 @@ atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector
 
 atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
 {
-    ensure_capacity(board, 1);
     struct atom_at_position *a = lookup_atom_at_position(board, point);
     if (a->atom & VALID) {
         if (overlap && !(a->atom & VISITED))
@@ -1701,27 +1702,24 @@ atom *insert_atom(struct board *board, struct vector query, const char *collisio
     if ((a->atom & VALID) && !(a->atom & REMOVED))
         report_collision(board, query, collision_reason);
     a->position = query;
-    if (!(a->atom & REMOVED)) {
+    if (!(a->atom & REMOVED))
         board->area++;
-        if (a - board->atoms_at_positions >= BOARD_ARRAY_MAX)
-            board->hash_used++;
-    }
     return &a->atom;
 }
 
-static void ensure_capacity(struct board *board, uint32_t potential_insertions)
+__attribute__((noinline))
+static void rehash(struct board *board, uint32_t size)
 {
     uint32_t n = board->hash_capacity;
-    if (n == 0)
+    if (n < 16)
         n = 16;
-    while (2 * n <= 7 * (board->hash_used + potential_insertions))
+    while (n < size)
         n *= 2;
     if (n == board->hash_capacity)
         return;
     struct board old = *board;
     board->atoms_at_positions = calloc(BOARD_ARRAY_PREFIX + n, sizeof(*board->atoms_at_positions));
     board->hash_capacity = n;
-    board->hash_used = 0;
     board->flag_reset_length = 0;
     if (!old.atoms_at_positions)
         return;
@@ -1739,7 +1737,6 @@ static void ensure_capacity(struct board *board, uint32_t potential_insertions)
             continue;
         struct atom_at_position *b = lookup_atom_at_position_in_hashtable(board, a.position);
         *b = a;
-        board->hash_used++;
         schedule_flag_reset_if_needed(board, &b->atom);
     }
     free(old.atoms_at_positions);
