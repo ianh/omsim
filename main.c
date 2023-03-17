@@ -89,7 +89,7 @@ static void print_board(struct board *board)
 {
     int32_t maxu = -10000, minu = 10000;
     int32_t maxv = -10000, minv = 10000;
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
@@ -106,7 +106,7 @@ static void print_board(struct board *board)
         return;
     int stride = (maxu - minu + 1);
     atom *points = calloc(sizeof(atom), stride * (maxv - minv + 1));
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
         if (!(board->atoms_at_positions[i].atom & REMOVED)) {
@@ -184,7 +184,7 @@ int main(int argc, char *argv[])
     // run the solution.
     printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);
     while (board.cycle < 10000 && !board.complete) {
-        printf("-- %llu %u %u\n", board.cycle, board.capacity, board.used);
+        printf("-- %llu %u %u\n", board.cycle, BOARD_CAPACITY(&board), board.area);
         print_board(&board);
         cycle(&solution, &board);
         if (board.collision) {
