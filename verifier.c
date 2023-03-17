@@ -297,7 +297,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         { 1, 1, INT32_MIN, INT32_MAX },
     };
     bool has_atoms = false;
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
@@ -409,13 +409,13 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
     memcpy(snapshot->arms, solution->arms, sizeof(struct mechanism) * solution->number_of_arms);
     struct atom_at_position *a = snapshot->board.atoms_at_positions;
     snapshot->board = *board;
-    a = realloc(a, sizeof(struct atom_at_position) * board->capacity);
-    memcpy(a, board->atoms_at_positions, sizeof(struct atom_at_position) * board->capacity);
+    a = realloc(a, sizeof(struct atom_at_position) * BOARD_CAPACITY(board));
+    memcpy(a, board->atoms_at_positions, sizeof(struct atom_at_position) * BOARD_CAPACITY(board));
     snapshot->board.atoms_at_positions = a;
     snapshot->board_in_range = 0;
     snapshot->empty_in_range = 0;
     snapshot->throughput_waste = 0;
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
@@ -465,7 +465,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     }
     uint32_t board_in_range = 0;
     uint32_t empty_in_range = 0;
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
@@ -531,7 +531,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     int32_t min_u = INT32_MAX;
     int32_t max_v = INT32_MIN;
     int32_t min_v = INT32_MAX;
-    for (uint32_t i = 0; i < board.capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(&board); ++i) {
         atom a = board.atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
@@ -661,7 +661,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
             struct snapshot *s = &repeating_output_snapshots[i];
             if (s->done)
                 continue;
-            if (board.used - s->board.used > 50000) {
+            if (board.area - s->board.area > 50000) {
                 m.error.description = "throughput measurement halted due to excessive area increase without infinite product satisfaction";
                 goto error;
             }
@@ -683,8 +683,8 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
             } else if (steady_state && s->board.cycle % check_period == board.cycle % check_period) {
                 struct atom_at_position *a = shifted_board.atoms_at_positions;
                 shifted_board = board;
-                a = realloc(a, sizeof(struct atom_at_position) * board.capacity);
-                memcpy(a, board.atoms_at_positions, sizeof(struct atom_at_position) * board.capacity);
+                a = realloc(a, sizeof(struct atom_at_position) * BOARD_CAPACITY(&board));
+                memcpy(a, board.atoms_at_positions, sizeof(struct atom_at_position) * BOARD_CAPACITY(&board));
                 shifted_board.atoms_at_positions = a;
 
                 // clear a gap corresponding to the number of repeating units added since the snapshot.
@@ -701,7 +701,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
                     }
                 }
                 // shift the remaining atoms to fill the gap.
-                shifted_atoms = realloc(shifted_atoms, sizeof(struct atom_at_position) * board.capacity);
+                shifted_atoms = realloc(shifted_atoms, sizeof(struct atom_at_position) * BOARD_CAPACITY(&board));
                 uint32_t number_of_shifted_atoms = 0;
                 uint32_t shifted_atoms_cursor = 0;
                 shifted_atoms[0].position = (struct vector){

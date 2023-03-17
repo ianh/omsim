@@ -351,6 +351,7 @@ struct marked_positions {
 #define BOARD_ARRAY_MIN (-32)
 #define BOARD_ARRAY_MAX 32
 #define BOARD_ARRAY_PREFIX ((BOARD_ARRAY_MAX-BOARD_ARRAY_MIN)*(BOARD_ARRAY_MAX-BOARD_ARRAY_MIN))
+#define BOARD_CAPACITY(board) (BOARD_ARRAY_PREFIX + (board)->hash_capacity)
 struct board {
     struct atom_at_position *atoms_at_positions;
 
