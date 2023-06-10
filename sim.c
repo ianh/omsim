@@ -331,7 +331,13 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             atom *q = get_atom(board, m, 0, 0);
             atom *a = get_atom(board, m, 1, 0);
             atom metal = *a & ANY_METAL & ~GOLD;
-            if (metal && !(*q & ALL_BONDS) && !(*q & GRABBED) && (*q & QUICKSILVER)) {
+            if (!metal)
+                break;
+            if (*q & OVERLAPPED_QUICKSILVER) {
+                *q &= ~OVERLAPPED_QUICKSILVER;
+                board->overlapped_inputs--;
+                transform_atom(a, metal >> 1);
+            } else if (!(*q & ALL_BONDS) && !(*q & GRABBED) && (*q & QUICKSILVER)) {
                 remove_atom(board, q);
                 transform_atom(a, metal >> 1);
             }
@@ -1062,6 +1068,8 @@ static void flag_blocked_inputs(struct solution *solution, struct board *board)
     }
 }
 
+static struct atom_at_position *lookup_atom_at_position(struct board *board, struct vector query);
+
 static void spawn_inputs(struct solution *solution, struct board *board)
 {
     size_t active = board->active_input_or_output;
@@ -1078,7 +1086,20 @@ static void spawn_inputs(struct solution *solution, struct board *board)
         for (uint32_t j = 0; j < n; ++j) {
             atom input = io->atoms[j].atom;
             struct vector p = io->atoms[j].position;
-            *insert_atom(board, p, "overlapped inputs") = VALID | input;
+            struct atom_at_position *a = lookup_atom_at_position(board, p);
+            if ((a->atom & VALID) && !(a->atom & REMOVED)) {
+                if (!(a->atom & ALL_BONDS) && !(a->atom & GRABBED) && (a->atom & QUICKSILVER)) {
+                    // special handling for overlapped atomic quicksilver
+                    a->atom = VALID | input | OVERLAPPED_QUICKSILVER;
+                    board->overlapped_inputs++;
+                    continue;
+                }
+                report_collision(board, p, "overlapped inputs");
+            }
+            a->position = p;
+            if (!(a->atom & REMOVED))
+                board->area++;
+            a->atom = VALID | input;
         }
     }
     board->active_input_or_output = UINT32_MAX;
@@ -1263,6 +1284,8 @@ continue_with_inputs:
         reset_temporary_flags(board);
         apply_glyphs(solution, board);
 continue_with_outputs:
+        if (board->overlapped_inputs)
+            report_collision(board, (struct vector) { 0, 0 }, "overlapped inputs");
         consume_outputs(solution, board);
         if (board->active_input_or_output != UINT32_MAX)
             return INPUT_OUTPUT;

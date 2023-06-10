@@ -60,6 +60,9 @@ typedef uint64_t atom;
 #define TRIPLEX_BOND_Y 47
 #define TRIPLEX_BOND_K 53
 
+// is there a separate quicksilver atom on top of this atom?
+#define OVERLAPPED_QUICKSILVER (1ULL << 54)
+
 // rotating can touch the 5 bits after the bonds (59-63), so make sure the
 // following flags are clear before rotating a molecule.
 
@@ -392,6 +395,9 @@ struct board {
 
     // how many hexes overlap one another (other than arms and track)?
     uint64_t overlap;
+
+    // how many hexes contain multiple atoms?
+    uint64_t overlapped_inputs;
 
     bool complete;
 };
