@@ -556,6 +556,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     min_v -= v->throughput_margin;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.ignore_swing_area = true;
+    board.disable_overlapped_atoms = true;
     board.uses_poison = use_poison;
     board.poison_message = "solution behavior is too complex for throughput measurement";
     uint64_t check_period = solution.tape_period;
@@ -737,7 +738,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
                     p.u -= (io->number_of_repetitions - s->number_of_repetitions) * offset.u;
                     p.v -= (io->number_of_repetitions - s->number_of_repetitions) * offset.v;
                     // the VISITED flag tells check_snapshot not to skip over this atom, even if it's outside the bounding box.
-                    *insert_atom(&shifted_board, p, "collision during shift") = (shifted_atoms[i].atom & ~POISON) | VISITED;
+                    insert_atom(&shifted_board, p, (shifted_atoms[i].atom & ~POISON) | VISITED, "collision during shift");
                 }
                 // compare the snapshot with the result of this gap-clearing and
                 // shifting process.  if it matches, the machine is in a steady

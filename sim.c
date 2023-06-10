@@ -30,6 +30,11 @@ static double xy_len2(struct xy_vector xy)
     return xy.x * xy.x + xy.y * xy.y;
 }
 
+struct atom_ref_at_position {
+    atom *atom;
+    struct vector position;
+};
+
 // hash table functions -- see appendix.
 static void rehash(struct board *board, uint32_t size);
 static void schedule_flag_reset_if_needed(struct board *board, atom *a);
@@ -90,31 +95,47 @@ static void produce_atom(struct board *board, struct mechanism m, int32_t du, in
 {
     assert(m.type & CONVERSION_GLYPH);
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    *insert_atom(board, pos, "conversion glyph output") = VALID | BEING_PRODUCED | a;
+    insert_atom(board, pos, VALID | BEING_PRODUCED | a, "conversion glyph output");
 }
 
-static atom *get_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv)
+static struct atom_ref_at_position get_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv)
 {
     static const atom empty;
+    struct vector pos = mechanism_relative_position(m, du, dv, 1);
     // conversion glyphs don't consume any inputs in the second half-cycle.
     if ((m.type & CONVERSION_GLYPH) && board->half_cycle == 2)
-        return (atom *)&empty;
-    struct vector pos = mechanism_relative_position(m, du, dv, 1);
+        return (struct atom_ref_at_position){ (atom *)&empty, pos };
     atom *a = lookup_atom(board, pos);
-    if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
-        return (atom *)&empty;
+    if (!(*a & VALID) || (*a & REMOVED) || ((*a & BEING_PRODUCED) && !(m.type & UNBONDING)))
+        return (struct atom_ref_at_position){ (atom *)&empty, pos };
     // only duplication glyphs can see the van berlo's wheel.
     if (!(m.type & (DUPLICATION | VAN_BERLO)) && (*a & VAN_BERLO_ATOM))
-        return (atom *)&empty;
+        return (struct atom_ref_at_position){ (atom *)&empty, pos };
     // conversion glyphs can't see bonded or grabbed inputs.
     if ((m.type & CONVERSION_GLYPH) && ((*a & ALL_BONDS) || (*a & GRABBED)))
-        return (atom *)&empty;
-    return a;
+        return (struct atom_ref_at_position){ (atom *)&empty, pos };
+    return (struct atom_ref_at_position){ a, pos };
 }
 
-static inline void remove_atom(struct board *board, atom *a)
+__attribute__((noinline))
+static void remove_overlapping_atom(struct board *board, struct atom_ref_at_position a)
 {
-    *a |= REMOVED;
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; --i) {
+        if (vectors_equal(board->overlapped_atoms[i].position, a.position)) {
+            *a.atom = board->overlapped_atoms[i].atom;
+            memmove(board->overlapped_atoms + i, board->overlapped_atoms + i + 1, board->number_of_overlapped_atoms - i - 1);
+            board->number_of_overlapped_atoms--;
+            return;
+        }
+    }
+}
+
+static inline void remove_atom(struct board *board, struct atom_ref_at_position a)
+{
+    if (*a.atom & OVERLAPS_ATOMS)
+        remove_overlapping_atom(board, a);
+    else
+        *a.atom |= REMOVED;
 }
 
 static inline void transform_atom(atom *a, atom new_type)
@@ -283,10 +304,11 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
             atom a = conduit->atoms[base + k].atom;
             struct vector delta = conduit->atoms[base + k].position;
             if (board->half_cycle == 1) {
-                atom *b = lookup_atom(board, mechanism_relative_position(m, delta.u, delta.v, 1));
+                struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
+                atom *b = lookup_atom(board, p);
                 if (consume) {
                     conduit->atoms[base + k].atom = *b;
-                    remove_atom(board, b);
+                    remove_atom(board, (struct atom_ref_at_position){ b, p });
                 } else {
                     // bonds are consumed even if the atoms aren't.
                     *b &= ~(ALL_BONDS & ~RECENT_BONDS & a);
@@ -294,10 +316,32 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
             } else {
                 struct vector p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
                 rotate_bonds(&a, rotation);
-                *insert_atom(board, p, "conduit output") = a;
+                insert_atom(board, p, a, "conduit output");
             }
         }
         base += length;
+    }
+}
+
+__attribute__((noinline))
+static void unbond_overlapping_atoms(struct board *board, struct atom_ref_at_position a, struct atom_ref_at_position b, atom ab, atom ba)
+{
+    // this isn't actually correct, but just remove all relevant bonds from all overlapping atoms.
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
+        struct atom_at_position overlap = board->overlapped_atoms[i];
+        if (vectors_equal(overlap.position, a.position) && (overlap.atom & ab)) {
+            board->overlapped_atoms[i].atom &= ~ab;
+            board->overlapped_atoms[i].atom |= ab & RECENT_BONDS;
+            // flags will be reset for overlapped atoms automatically, but in
+            // case the original atom gets removed, schedule a flag reset for
+            // where this atom may end up.
+            schedule_flag_reset_if_needed(board, a.atom);
+        }
+        if (vectors_equal(overlap.position, b.position) && (overlap.atom & ba)) {
+            board->overlapped_atoms[i].atom &= ~ba;
+            board->overlapped_atoms[i].atom |= ba & RECENT_BONDS;
+            schedule_flag_reset_if_needed(board, b.atom);
+        }
     }
 }
 
@@ -308,15 +352,15 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         struct mechanism m = solution->glyphs[i];
         switch (m.type & ANY_GLYPH) {
         case CALCIFICATION: {
-            atom *a = get_atom(board, m, 0, 0);
-            if (*a & ANY_ELEMENTAL)
-                transform_atom(a, SALT);
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            if (*a.atom & ANY_ELEMENTAL)
+                transform_atom(a.atom, SALT);
             break;
         }
         case ANIMISMUS: {
-            atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 1, 0);
-            bool active = *a & *b & SALT;
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
+            bool active = *a.atom & *b.atom & SALT;
             bool c = conversion_output(board, active, m, 0, 1);
             bool d = conversion_output(board, active, m, 1, -1);
             if (c && d && active) {
@@ -328,18 +372,18 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case PROJECTION: {
-            atom *q = get_atom(board, m, 0, 0);
-            atom *a = get_atom(board, m, 1, 0);
-            atom metal = *a & ANY_METAL & ~GOLD;
-            if (metal && !(*q & ALL_BONDS) && !(*q & GRABBED) && (*q & QUICKSILVER)) {
+            struct atom_ref_at_position q = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position a = get_atom(board, m, 1, 0);
+            atom metal = *a.atom & ANY_METAL & ~GOLD;
+            if (metal && !(*q.atom & ALL_BONDS) && !(*q.atom & GRABBED) && (*q.atom & QUICKSILVER)) {
                 remove_atom(board, q);
-                transform_atom(a, metal >> 1);
+                transform_atom(a.atom, metal >> 1);
             }
             break;
         }
         case DISPERSION: {
-            atom *a = get_atom(board, m, 0, 0);
-            bool active = *a & QUINTESSENCE;
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            bool active = *a.atom & QUINTESSENCE;
             bool b = conversion_output(board, active, m, 1, 0);
             bool c = conversion_output(board, active, m, 1, -1);
             bool d = conversion_output(board, active, m, 0, -1);
@@ -354,9 +398,9 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case PURIFICATION: {
-            atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 1, 0);
-            atom metal = *a & *b & ANY_METAL & ~GOLD;
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
+            atom metal = *a.atom & *b.atom & ANY_METAL & ~GOLD;
             bool c = conversion_output(board, metal, m, 0, 1);
             if (c && metal) {
                 remove_atom(board, a);
@@ -366,19 +410,19 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case DUPLICATION: {
-            atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 1, 0);
-            atom elemental = *a & ANY_ELEMENTAL;
-            if (elemental && (*b & SALT) && !(*b & VAN_BERLO_ATOM))
-                transform_atom(b, elemental);
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
+            atom elemental = *a.atom & ANY_ELEMENTAL;
+            if (elemental && (*b.atom & SALT) && !(*b.atom & VAN_BERLO_ATOM))
+                transform_atom(b.atom, elemental);
             break;
         }
         case UNIFICATION: {
-            atom *a = get_atom(board, m, 0, 1);
-            atom *b = get_atom(board, m, -1, 1);
-            atom *c = get_atom(board, m, 0, -1);
-            atom *d = get_atom(board, m, 1, -1);
-            bool active = ((*a | *b | *c | *d) & ANY_ELEMENTAL) == ANY_ELEMENTAL;
+            struct atom_ref_at_position a = get_atom(board, m, 0, 1);
+            struct atom_ref_at_position b = get_atom(board, m, -1, 1);
+            struct atom_ref_at_position c = get_atom(board, m, 0, -1);
+            struct atom_ref_at_position d = get_atom(board, m, 1, -1);
+            bool active = ((*a.atom | *b.atom | *c.atom | *d.atom) & ANY_ELEMENTAL) == ANY_ELEMENTAL;
             bool e = conversion_output(board, active, m, 0, 0);
             if (e && active) {
                 remove_atom(board, a);
@@ -390,61 +434,63 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case BONDING: {
-            atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 1, 0);
-            if (*a && *b)
-                add_bond(m, a, b, 1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
+            if (*a.atom && *b.atom)
+                add_bond(m, a.atom, b.atom, 1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
             break;
         }
         case UNBONDING: {
-            atom *a = get_atom(board, m, 0, 0);
-            atom *b = get_atom(board, m, 1, 0);
-            if (*a && *b) {
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
+            if (*a.atom && *b.atom) {
                 atom ab = bond_direction(m, 1, 0);
                 atom ba = bond_direction(m, -1, 0);
                 // record the bond in the RECENT_BONDS bitfield to prevent the
                 // atoms from being consumed during this half-cycle.
-                if (*a & ab) {
-                    *a &= ~ab;
-                    *a |= ab & RECENT_BONDS;
-                    schedule_flag_reset_if_needed(board, a);
+                if (*a.atom & ab) {
+                    *a.atom &= ~ab;
+                    *a.atom |= ab & RECENT_BONDS;
+                    schedule_flag_reset_if_needed(board, a.atom);
                 }
-                if (*b & ba) {
-                    *b &= ~ba;
-                    *b |= ba & RECENT_BONDS;
-                    schedule_flag_reset_if_needed(board, b);
+                if (*b.atom & ba) {
+                    *b.atom &= ~ba;
+                    *b.atom |= ba & RECENT_BONDS;
+                    schedule_flag_reset_if_needed(board, b.atom);
                 }
+                if ((*a.atom & OVERLAPS_ATOMS) || (*b.atom & OVERLAPS_ATOMS))
+                    unbond_overlapping_atoms(board, a, b, ab, ba);
             }
             break;
         }
         case TRIPLEX_BONDING: {
-            atom *ky = get_atom(board, m, 0, 0);
-            atom *yr = get_atom(board, m, 0, 1);
-            atom *rk = get_atom(board, m, 1, 0);
-            if (*ky && *yr && (*ky & *yr & FIRE))
-                add_bond(m, ky, yr, 0, 1, TRIPLEX_Y_BONDS, NORMAL_BONDS);
-            if (*yr && *rk && (*yr & *rk & FIRE))
-                add_bond(m, yr, rk, 1, -1, TRIPLEX_R_BONDS, NORMAL_BONDS);
-            if (*rk && *ky && (*rk & *ky & FIRE))
-                add_bond(m, rk, ky, -1, 0, TRIPLEX_K_BONDS, NORMAL_BONDS);
+            struct atom_ref_at_position ky = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position yr = get_atom(board, m, 0, 1);
+            struct atom_ref_at_position rk = get_atom(board, m, 1, 0);
+            if (*ky.atom && *yr.atom && (*ky.atom & *yr.atom & FIRE))
+                add_bond(m, ky.atom, yr.atom, 0, 1, TRIPLEX_Y_BONDS, NORMAL_BONDS);
+            if (*yr.atom && *rk.atom && (*yr.atom & *rk.atom & FIRE))
+                add_bond(m, yr.atom, rk.atom, 1, -1, TRIPLEX_R_BONDS, NORMAL_BONDS);
+            if (*rk.atom && *ky.atom && (*rk.atom & *ky.atom & FIRE))
+                add_bond(m, rk.atom, ky.atom, -1, 0, TRIPLEX_K_BONDS, NORMAL_BONDS);
             break;
         }
         case MULTI_BONDING: {
-            atom *center = get_atom(board, m, 0, 0);
-            atom *a = get_atom(board, m, 1, 0);
-            atom *b = get_atom(board, m, 0, -1);
-            atom *c = get_atom(board, m, -1, 1);
-            if (*center && *a)
-                add_bond(m, a, center, -1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
-            if (*center && *b)
-                add_bond(m, b, center, 0, 1, NORMAL_BONDS, TRIPLEX_BONDS);
-            if (*center && *c)
-                add_bond(m, c, center, 1, -1, NORMAL_BONDS, TRIPLEX_BONDS);
+            struct atom_ref_at_position center = get_atom(board, m, 0, 0);
+            struct atom_ref_at_position a = get_atom(board, m, 1, 0);
+            struct atom_ref_at_position b = get_atom(board, m, 0, -1);
+            struct atom_ref_at_position c = get_atom(board, m, -1, 1);
+            if (*center.atom && *a.atom)
+                add_bond(m, a.atom, center.atom, -1, 0, NORMAL_BONDS, TRIPLEX_BONDS);
+            if (*center.atom && *b.atom)
+                add_bond(m, b.atom, center.atom, 0, 1, NORMAL_BONDS, TRIPLEX_BONDS);
+            if (*center.atom && *c.atom)
+                add_bond(m, c.atom, center.atom, 1, -1, NORMAL_BONDS, TRIPLEX_BONDS);
             break;
         }
         case DISPOSAL: {
-            atom *a = get_atom(board, m, 0, 0);
-            if (*a && !(*a & ALL_BONDS) && !(*a & GRABBED))
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            if (*a.atom && !(*a.atom & ALL_BONDS) && !(*a.atom & GRABBED))
                 remove_atom(board, a);
             break;
         }
@@ -590,7 +636,7 @@ static void move_atom(struct board *board, atom *a, struct vector position)
         .atom = *a,
         .position = position,
     };
-    remove_atom(board, a);
+    remove_atom(board, (struct atom_ref_at_position){ a, position });
 }
 
 static void move_atoms(struct board *board, atom *a, struct movement movement)
@@ -716,34 +762,33 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             }
             m->direction_u = saved_u;
             m->direction_v = saved_v;
-            atom *a = get_atom(board, *m, offset.u, offset.v);
-            if (!*a)
+            struct atom_ref_at_position a = get_atom(board, *m, offset.u, offset.v);
+            if (!*a.atom)
                 continue;
             if (inst == 'r') {
-                atom grabs = (*a & GRABBED) / GRABBED_ONCE;
-                *a &= ~GRABBED;
-                *a |= (grabs + 1) * GRABBED_ONCE;
+                atom grabs = (*a.atom & GRABBED) / GRABBED_ONCE;
+                *a.atom &= ~GRABBED;
+                *a.atom |= (grabs + 1) * GRABBED_ONCE;
                 m->type |= GRABBING_LOW_BIT << direction;
                 continue;
             }
-            if (!(m->type & (GRABBING_LOW_BIT << direction)) || !(*a & GRABBED))
+            if (!(m->type & (GRABBING_LOW_BIT << direction)) || !(*a.atom & GRABBED))
                 continue;
             if (inst == 'f') {
-                atom grabs = (*a & GRABBED) / GRABBED_ONCE;
-                *a &= ~GRABBED;
-                *a |= (grabs - 1) * GRABBED_ONCE;
+                atom grabs = (*a.atom & GRABBED) / GRABBED_ONCE;
+                *a.atom &= ~GRABBED;
+                *a.atom |= (grabs - 1) * GRABBED_ONCE;
                 // allow conduits to transport this atom (and any atoms bonded to it).
-                *a |= BEING_DROPPED;
-                schedule_flag_reset_if_needed(board, a);
+                *a.atom |= BEING_DROPPED;
+                schedule_flag_reset_if_needed(board, a.atom);
                 continue;
             }
-            struct vector atom_pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
             struct movement movement = {
                 .type = (m->type & PISTON) ? IS_PISTON : 0,
                 .base = m->position,
                 .base_rotation = m->arm_rotation,
                 .grabber_offset = offset,
-                .absolute_grab_position = atom_pos,
+                .absolute_grab_position = a.position,
             };
             movement.grabber_offset.u *= length;
             movement.grabber_offset.v *= length;
@@ -751,28 +796,28 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             case 'q': // pivot ccw
                 movement.type |= PIVOT_MOVEMENT;
                 movement.rotation = 1;
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             case 'e': // pivot cw
                 movement.type |= PIVOT_MOVEMENT;
                 movement.rotation = -1;
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             case 'a': // rotate ccw
                 movement.type |= SWING_MOVEMENT;
                 movement.rotation = 1;
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             case 'd': // rotate cw
                 movement.type |= SWING_MOVEMENT;
                 movement.rotation = -1;
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             case 'w': // extend piston
                 movement.type |= PISTON_MOVEMENT;
                 movement.piston_extension = 1;
                 movement.translation = normalize_axis(m->direction_u);
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             case 's': // retract piston
                 movement.type |= PISTON_MOVEMENT;
@@ -780,13 +825,13 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 movement.translation = normalize_axis(m->direction_u);
                 movement.translation.u = -movement.translation.u;
                 movement.translation.v = -movement.translation.v;
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             case 't': // move along track, - direction
             case 'g': // move along track, + direction
                 movement.type |= TRACK_MOVEMENT;
                 movement.translation = track_motion;
-                move_atoms(board, a, movement);
+                move_atoms(board, a.atom, movement);
                 break;
             default:
                 break;
@@ -925,7 +970,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct movement m = board->movements.movements[i];
             for (size_t j = 0; j < m.number_of_atoms; ++j) {
                 struct atom_at_position ap = board->moving_atoms.atoms_at_positions[atom_index++];
-                *insert_atom(board, ap.position, "atom moved on top of another atom") = VALID | ap.atom;
+                insert_atom(board, ap.position, VALID | ap.atom, "atom moved on top of another atom");
             }
         }
     }
@@ -1078,7 +1123,7 @@ static void spawn_inputs(struct solution *solution, struct board *board)
         for (uint32_t j = 0; j < n; ++j) {
             atom input = io->atoms[j].atom;
             struct vector p = io->atoms[j].position;
-            *insert_atom(board, p, "overlapped inputs") = VALID | input;
+            insert_atom(board, p, VALID | input, "overlapped inputs");
         }
     }
     board->active_input_or_output = UINT32_MAX;
@@ -1211,7 +1256,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 io->number_of_outputs = io->number_of_repetitions * io->outputs_per_repetition;
             else {
                 for (uint32_t j = 0; j < io->number_of_atoms; ++j)
-                    remove_atom(board, lookup_atom(board, io->atoms[j].position));
+                    remove_atom(board, (struct atom_ref_at_position){ lookup_atom(board, io->atoms[j].position), io->atoms[j].position });
                 io->number_of_outputs++;
             }
         } else if (fails_on_wrong_output && wrong_output) {
@@ -1227,6 +1272,8 @@ static void reset_temporary_flags(struct board *board)
     for (uint32_t i = 0; i < board->flag_reset_length; ++i)
         *board->flag_reset[i] &= ~TEMPORARY_FLAGS;
     board->flag_reset_length = 0;
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i)
+        board->overlapped_atoms[i].atom &= ~TEMPORARY_FLAGS;
 }
 
 static bool check_completion(struct solution *solution)
@@ -1482,8 +1529,7 @@ struct footprint footprints[] = {
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
 {
     struct vector p = mechanism_relative_position(m, du, dv, 1);
-    atom *a = insert_atom(board, p, "van berlo overlap");
-    *a = VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element;
+    insert_atom(board, p, VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element, "van berlo overlap");
 }
 
 void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)
@@ -1595,6 +1641,7 @@ void destroy(struct solution *solution, struct board *board)
         free(board->movements.movements);
         free(board->moving_atoms.atoms_at_positions);
         free(board->marked.positions);
+        free(board->overlapped_atoms);
         memset(board, 0, sizeof(*board));
     }
 }
@@ -1696,15 +1743,39 @@ atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
     return a->atom;
 }
 
-atom *insert_atom(struct board *board, struct vector query, const char *collision_reason)
+__attribute__((noinline))
+static void insert_overlapped_atom(struct board *board, struct atom_at_position *existing_atom, atom atom, const char *collision_reason)
+{
+    if (board->disable_overlapped_atoms) {
+        report_collision(board, existing_atom->position, collision_reason);
+        return;
+    }
+    size_t capacity = board->overlapped_atoms_capacity;
+    while (board->number_of_overlapped_atoms >= capacity)
+        capacity = 4 * (capacity + 12) / 3;
+    if (capacity != board->number_of_overlapped_atoms) {
+        struct atom_at_position *atoms_at_positions = realloc(board->overlapped_atoms,
+         sizeof(struct atom_at_position) * capacity);
+        if (!atoms_at_positions)
+            abort();
+        board->overlapped_atoms = atoms_at_positions;
+        board->overlapped_atoms_capacity = capacity;
+    }
+    board->overlapped_atoms[board->number_of_overlapped_atoms++] = (struct atom_at_position){ .atom = atom, .position = existing_atom->position };
+    existing_atom->atom |= OVERLAPS_ATOMS;
+}
+
+void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason)
 {
     struct atom_at_position *a = lookup_atom_at_position(board, query);
     if ((a->atom & VALID) && !(a->atom & REMOVED))
-        report_collision(board, query, collision_reason);
-    a->position = query;
-    if (!(a->atom & REMOVED))
-        board->area++;
-    return &a->atom;
+        insert_overlapped_atom(board, a, atom, collision_reason);
+    else {
+        a->position = query;
+        if (!(a->atom & REMOVED))
+            board->area++;
+        a->atom = atom;
+    }
 }
 
 __attribute__((noinline))

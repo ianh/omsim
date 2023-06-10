@@ -62,8 +62,8 @@ static void print_atom(atom a)
         printf(" repetition-placeholder");
     if (a & QUINTESSENCE)
         printf(" quintessence");
-    if (a & VARIABLE_OUTPUT)
-        printf(" variable-output");
+    if (a & OVERLAPS_ATOMS)
+        printf(" overlaps");
     if (a & BEING_PRODUCED)
         printf(" produced");
     if (a & BEING_DROPPED)

@@ -29,6 +29,11 @@ typedef uint64_t atom;
 // computation puzzles.
 #define VARIABLE_OUTPUT (1ULL << 17)
 
+// when removing this atom, replace it with one of the atoms in
+// board->overlapped_atoms.  we can reuse the bit for VARIABLE_OUTPUT because
+// that's only set on output atoms, whereas this bit never is.
+#define OVERLAPS_ATOMS (1ULL << 17)
+
 // conversion glyphs like animismus put this flag on their outputs until the
 // second half-cycle.  it stops their outputs from being seen by other glyphs.
 #define BEING_PRODUCED (1ULL << 18)
@@ -373,10 +378,16 @@ struct board {
     struct movement_list movements;
     struct moving_atoms moving_atoms;
 
+    struct atom_at_position *overlapped_atoms;
+    uint32_t number_of_overlapped_atoms;
+    uint32_t overlapped_atoms_capacity;
+    const char *overlapped_reason;
+
     // used for checking infinite products.
     struct marked_positions marked;
 
     bool ignore_swing_area;
+    bool disable_overlapped_atoms;
     bool uses_poison;
     const char *poison_message;
 
@@ -417,7 +428,7 @@ static inline void cycle(struct solution *solution, struct board *board)
 // free memory associated with the solution and board.
 void destroy(struct solution *solution, struct board *board);
 
-atom *insert_atom(struct board *board, struct vector query, const char *collision_reason);
+void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
 atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query);
 
