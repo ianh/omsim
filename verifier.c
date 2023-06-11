@@ -556,7 +556,6 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     min_v -= v->throughput_margin;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.ignore_swing_area = true;
-    board.disable_overlapped_atoms = true;
     board.uses_poison = use_poison;
     board.poison_message = "solution behavior is too complex for throughput measurement";
     uint64_t check_period = solution.tape_period;

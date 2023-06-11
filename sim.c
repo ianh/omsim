@@ -1299,7 +1299,11 @@ enum run_result run(struct solution *solution, struct board *board)
             else
                 goto continue_with_outputs;
         }
+        if (board->half_cycle == 2 && board->number_of_overlapped_atoms > 0)
+            report_collision(board, board->overlapped_atoms[0].position, "overlapping atoms before motion phase");
         perform_arm_instructions(solution, board);
+        if (board->half_cycle == 2 && board->number_of_overlapped_atoms > 0)
+            report_collision(board, board->overlapped_atoms[0].position, "overlapping atoms after motion phase");
         mark_arm_area(solution, board);
         fill_conduits(solution, board);
         flag_blocked_inputs(solution, board);
