@@ -123,6 +123,7 @@ static void remove_overlapping_atom(struct board *board, struct atom_ref_at_posi
     for (uint32_t i = 0; i < board->number_of_overlapped_atoms; --i) {
         if (vectors_equal(board->overlapped_atoms[i].position, a.position)) {
             *a.atom = board->overlapped_atoms[i].atom;
+            schedule_flag_reset_if_needed(board, a.atom);
             memmove(board->overlapped_atoms + i, board->overlapped_atoms + i + 1, board->number_of_overlapped_atoms - i - 1);
             board->number_of_overlapped_atoms--;
             return;
@@ -332,15 +333,10 @@ static void unbond_overlapping_atoms(struct board *board, struct atom_ref_at_pos
         if (vectors_equal(overlap.position, a.position) && (overlap.atom & ab)) {
             board->overlapped_atoms[i].atom &= ~ab;
             board->overlapped_atoms[i].atom |= ab & RECENT_BONDS;
-            // flags will be reset for overlapped atoms automatically, but in
-            // case the original atom gets removed, schedule a flag reset for
-            // where this atom may end up.
-            schedule_flag_reset_if_needed(board, a.atom);
         }
         if (vectors_equal(overlap.position, b.position) && (overlap.atom & ba)) {
             board->overlapped_atoms[i].atom &= ~ba;
             board->overlapped_atoms[i].atom |= ba & RECENT_BONDS;
-            schedule_flag_reset_if_needed(board, b.atom);
         }
     }
 }
