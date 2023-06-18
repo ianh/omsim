@@ -134,7 +134,9 @@ static void add_collider(struct collider_list *list, struct board *board, struct
 
 bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
 {
-    size_t number_of_colliders = solution->number_of_arms + board->moving_atoms.length;
+    size_t number_of_colliders = solution->number_of_arms;
+    if (!board->ignore_swing_area)
+        number_of_colliders += board->moving_atoms.length;
     struct collider_list list = {
         .colliders = calloc(number_of_colliders, sizeof(struct collider)),
         .collision_location = collision_location,
@@ -167,6 +169,10 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             });
             list.cursor = list.length;
         }
+        // xx rate should still check swing collision/area, but in a different
+        // way that isn't so slow...
+        if (board->ignore_swing_area)
+            continue;
         size_t atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement m = board->movements.movements[i];
