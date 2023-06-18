@@ -19,7 +19,7 @@ libverify.wasm: verifier.c verifier.h parse.c sim.c decode.c collision.c parse.h
 	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS=$(EMEXPORTS1),$(EMEXPORTS2),$(EMEXPORTS3),$(EMEXPORTS4) -o $@ verifier.c sim.c parse.c decode.c collision.c
 
 run-tests: run-tests.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
-	$(CC) $(CFLAGS) -g -o $@ run-tests.c parse.c sim.c decode.c collision.c $(LDLIBS)
+	$(CC) $(CFLAGS) -g -D_DEFAULT_SOURCE -o $@ run-tests.c parse.c sim.c decode.c collision.c $(LDLIBS)
 
 llvm-fuzz: llvm-fuzz.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
 	$(LLVMCC) $(CFLAGS) -fsanitize=fuzzer,address -o $@ llvm-fuzz.c parse.c sim.c decode.c collision.c $(LDLIBS)
