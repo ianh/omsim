@@ -29,6 +29,45 @@ struct error {
     int location_v;
 };
 
+#define INSTRUCTION_D 0
+#define INSTRUCTION_A 1
+#define INSTRUCTION_W 2
+#define INSTRUCTION_S 3
+#define INSTRUCTION_R 4
+#define INSTRUCTION_F 5
+#define INSTRUCTION_E 6
+#define INSTRUCTION_Q 7
+#define INSTRUCTION_G 8
+#define INSTRUCTION_T 9
+#define NUMBER_OF_INSTRUCTIONS 10
+static int instruction_index(char instruction)
+{
+    switch (instruction) {
+    case 'a':
+        return INSTRUCTION_A;
+    case 'd':
+        return INSTRUCTION_D;
+    case 'e':
+        return INSTRUCTION_E;
+    case 'f':
+        return INSTRUCTION_F;
+    case 'g':
+        return INSTRUCTION_G;
+    case 'q':
+        return INSTRUCTION_Q;
+    case 'r':
+        return INSTRUCTION_R;
+    case 's':
+        return INSTRUCTION_S;
+    case 't':
+        return INSTRUCTION_T;
+    case 'w':
+        return INSTRUCTION_W;
+    default:
+        return -1;
+    }
+}
+
 struct per_cycle_measurements {
     int cycles;
     int area;
@@ -37,6 +76,7 @@ struct per_cycle_measurements {
     int omniheight;
     int omniwidth2;
     int executed_instructions;
+    int instruction_executions[NUMBER_OF_INSTRUCTIONS];
     int maximum_absolute_arm_rotation;
     struct error error;
     bool valid;
@@ -272,6 +312,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         .omniheight = -1,
         .omniwidth2 = -1,
         .executed_instructions = -1,
+        .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .maximum_absolute_arm_rotation = -1,
         .valid = true,
     };
@@ -342,9 +383,14 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
             if (board->cycle < solution->arm_tape_start_cycle[i])
                 continue;
-            for (size_t j = 0; j < solution->arm_tape_length[i] && j < board->cycle - solution->arm_tape_start_cycle[i]; ++j) {
-                if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0')
+            int number_of_times_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) / solution->arm_tape_length[i];
+            int progress_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) % solution->arm_tape_length[i];
+            for (size_t j = 0; j < solution->arm_tape_length[i]; ++j) {
+                if (solution->arm_tape[i][j] == ' ' || solution->arm_tape[i][j] == '\0')
+                    continue;
+                if (j < board->cycle - solution->arm_tape_start_cycle[i])
                     m.executed_instructions++;
+                m.instruction_executions[instruction_index(solution->arm_tape[i][j])] += j < progress_through_tape ? number_of_times_through_tape + 1 : number_of_times_through_tape;
             }
         }
     } else
@@ -372,7 +418,29 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         return measurements->executed_instructions;
     else if (!strcmp(metric, "maximum absolute arm rotation"))
         return measurements->maximum_absolute_arm_rotation;
-    else {
+    else if (!strcmp(metric, "instruction executions")) {
+        int value = 0;
+        for (int i = 0; i < NUMBER_OF_INSTRUCTIONS; ++i)
+            value += measurements->instruction_executions[i];
+        return value;
+    } else if (!strncmp("instruction executions with hotkey ", metric, strlen("instruction executions with hotkey "))) {
+        metric += strlen("instruction executions with hotkey ");
+        if (!*metric) {
+            *error = (struct error){ .description = "no hotkeys specified in 'instruction executions with hotkey' metric" };
+            return -1;
+        }
+        int value = 0;
+        for (; *metric; ++metric) {
+            int idx = instruction_index(tolower(*metric));
+            if (idx >= 0)
+                value += measurements->instruction_executions[idx];
+            else {
+                *error = (struct error){ .description = "invalid instruction hotkey in 'instruction executions with hotkey' metric" };
+                return -1;
+            }
+        }
+        return value;
+    } else {
         *error = (struct error){ .description = "unknown metric" };
         return -1;
     }
