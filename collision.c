@@ -71,11 +71,11 @@ static struct xy_vector xy_sub(struct xy_vector a, struct xy_vector b)
 }
 static float xy_len(struct xy_vector xy)
 {
-    return (float)sqrt(xy_len2(xy));
+    return hypotf(xy.x, xy.y);
 }
-static float xy_dist(struct xy_vector a, struct xy_vector b)
+static float xy_dist2(struct xy_vector a, struct xy_vector b)
 {
-    return xy_len(xy_sub(a, b));
+    return xy_len2(xy_sub(a, b));
 }
 static float to_radians(int32_t r)
 {
@@ -86,8 +86,9 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
 {
     struct vector p = { u, v };
     struct xy_vector center = to_xy(p);
-    float dist = xy_dist(collider.center, center);
-    if (!(dist < collider.radius + atomRadius))
+    float dist2 = xy_dist2(collider.center, center);
+    float targetDist = collider.radius + atomRadius;
+    if (!(dist2 < targetDist * targetDist))
         return;
     // mark area.  also, this *could* be a collision.
     atom a = mark_used_area(board, p, 0);
@@ -95,7 +96,8 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
         return;
     if (a & BEING_PRODUCED) {
         // atoms have a somewhat smaller collision radius as they emerge from a glyph.
-        if (!(dist < collider.radius + producedAtomRadius))
+        float targetDist = collider.radius + producedAtomRadius;
+        if (!(dist2 < targetDist * targetDist))
             return;
     }
     list->collision = true;
@@ -107,6 +109,7 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
 static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
     struct vector p = from_xy(collider.center);
+    // mark your home hex and the 6 neighbouring ones
     mark_area_and_check_board(list, board, collider, p.u, p.v);
     mark_area_and_check_board(list, board, collider, p.u + 1, p.v);
     mark_area_and_check_board(list, board, collider, p.u, p.v + 1);
@@ -120,7 +123,8 @@ static void add_collider(struct collider_list *list, struct board *board, struct
     }
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
-        if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
+        float targetDist = other.radius + collider.radius;
+        if (!(xy_dist2(other.center, collider.center) < targetDist * targetDist))
             continue;
         // printf("%f %f %f x %f %f %f\n", collider.radius, collider.center.x, collider.center.y, other.radius, other.center.x, other.center.y);
         list->collision = true;
