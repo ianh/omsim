@@ -202,12 +202,12 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 g.y = newlen / len * g.y;
             }
             float grabberRotation = baseRotation - armRotation * (1.f - progress);
-            float grx = (float)cos(grabberRotation);
-            float gry = (float)sin(grabberRotation);
+            float grx = cosf(grabberRotation);
+            float gry = sinf(grabberRotation);
             v.x += g.x * grx - g.y * gry;
             v.y += g.x * gry + g.y * grx;
-            float rx = (float)cos(r);
-            float ry = (float)sin(r);
+            float rx = cosf(r);
+            float ry = sinf(r);
             for (size_t j = 0; j < m.number_of_atoms; ++j) {
                 struct vector p = board->moving_atoms.atoms_at_positions[atom_index++].position;
                 p.u -= m.absolute_grab_position.u;
