@@ -130,7 +130,7 @@ int main()
         destroy(&solution, &board);
         free_solution_file(sf);
     }
-    pclose(puzzle_list);
+    pclose(solution_list);
 
     fprintf(stderr, "%d / %d solutions validated!\n", validated_solutions, total_solutions);
 
