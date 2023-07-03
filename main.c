@@ -110,7 +110,7 @@ static void print_board(struct board *board)
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
         if (!(board->atoms_at_positions[i].atom & REMOVED)) {
-            printf("%d %d %llx", board->atoms_at_positions[i].position.u, board->atoms_at_positions[i].position.v, board->atoms_at_positions[i].atom);
+            printf("%d %d %"PRIx64, board->atoms_at_positions[i].position.u, board->atoms_at_positions[i].position.v, board->atoms_at_positions[i].atom);
             print_atom(board->atoms_at_positions[i].atom);
             printf("\n");
         }
@@ -184,7 +184,7 @@ int main(int argc, char *argv[])
     // run the solution.
     printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);
     while (board.cycle < 10000 && !board.complete) {
-        printf("-- %llu %u %u\n", board.cycle, BOARD_CAPACITY(&board), board.area);
+        printf("-- %"PRIu64" %u %u\n", board.cycle, BOARD_CAPACITY(&board), board.area);
         print_board(&board);
         cycle(&solution, &board);
         if (board.collision) {
@@ -215,4 +215,3 @@ int main(int argc, char *argv[])
     free_solution_file(sf);
     return 0;
 }
-
