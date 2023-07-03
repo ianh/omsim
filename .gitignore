@@ -1,0 +1,9 @@
+# IDE
+.vscode
+
+# Build products
+omsim
+run-tests
+
+# Profiling
+callgrind.out*
