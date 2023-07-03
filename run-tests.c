@@ -11,8 +11,6 @@ struct puzzle {
     struct puzzle_file *pf;
 };
 
-#define AREA_TOLERANCE 0.008
-
 int main()
 {
     size_t n = 64;
