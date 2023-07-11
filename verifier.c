@@ -71,10 +71,12 @@ static int instruction_index(char instruction)
 struct per_cycle_measurements {
     int cycles;
     int area;
-    int height;
-    int width2;
-    int omniheight;
-    int omniwidth2;
+    int height_0;
+    int height_60;
+    int height_120;
+    int width2_0;
+    int width2_60;
+    int width2_120;
     int executed_instructions;
     int instruction_executions[NUMBER_OF_INSTRUCTIONS];
     int maximum_absolute_arm_rotation;
@@ -307,10 +309,12 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     struct per_cycle_measurements error_measurements = {
         .cycles = -1,
         .area = -1,
-        .height = -1,
-        .width2 = -1,
-        .omniheight = -1,
-        .omniwidth2 = -1,
+        .height_0 = -1,
+        .height_60 = -1,
+        .height_120 = -1,
+        .width2_0 = -1,
+        .width2_60 = -1,
+        .width2_120 = -1,
         .executed_instructions = -1,
         .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .maximum_absolute_arm_rotation = -1,
@@ -355,29 +359,17 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     struct per_cycle_measurements m = {
         .cycles = (int)board->cycle,
         .area = used_area(board),
-        .height = has_atoms ? INT_MAX : 0,
-        .width2 = has_atoms ? INT_MAX : 0,
-        .omniheight = 0,
-        .omniwidth2 = 0,
         .executed_instructions = 0,
         .maximum_absolute_arm_rotation = solution ? solution->maximum_absolute_arm_rotation : -1,
         .valid = true,
     };
     if (has_atoms) {
-        for (int i = 0; i < 3; ++i) {
-            int32_t value = dimensions[i].max - dimensions[i].min + 1;
-            if (value < m.height)
-                m.height = value;
-            if (value > m.omniheight)
-                m.omniheight = value;
-        }
-        for (int i = 3; i < 6; ++i) {
-            int32_t value = dimensions[i].max - dimensions[i].min + 2;
-            if (value < m.width2)
-                m.width2 = value;
-            if (value > m.omniwidth2)
-                m.omniwidth2 = value;
-        }
+        m.height_0 = dimensions[0].max - dimensions[0].min + 1;
+        m.height_60 = dimensions[1].max - dimensions[1].min + 1;
+        m.height_120 = dimensions[2].max - dimensions[2].min + 1;
+        m.width2_0 = dimensions[3].max - dimensions[3].min + 2;
+        m.width2_60 = dimensions[4].max - dimensions[4].min + 2;
+        m.width2_120 = dimensions[5].max - dimensions[5].min + 2;
     }
     if (solution) {
         for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
@@ -408,15 +400,33 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         return measurements->cycles;
     else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
         return measurements->area;
-    else if (!strcmp(metric, "height"))
-        return measurements->height;
-    else if (!strcmp(metric, "width*2"))
-        return measurements->width2;
-    else if (!strcmp(metric, "omniheight"))
-        return measurements->omniheight;
-    else if (!strcmp(metric, "omniwidth*2"))
-        return measurements->omniwidth2;
-    else if (!strcmp(metric, "executed instructions"))
+    else if (!strcmp(metric, "height at 0 degrees"))
+        return measurements->height_0;
+    else if (!strcmp(metric, "height at 60 degrees"))
+        return measurements->height_60;
+    else if (!strcmp(metric, "height at 120 degrees"))
+        return measurements->height_120;
+    else if (!strcmp(metric, "width*2 at 0 degrees"))
+        return measurements->width2_0;
+    else if (!strcmp(metric, "width*2 at 60 degrees"))
+        return measurements->width2_60;
+    else if (!strcmp(metric, "width*2 at 120 degrees"))
+        return measurements->width2_120;
+    else if (!strcmp(metric, "height")) {
+        int height = measurements->height_0;
+        if (measurements->height_60 < height)
+            height = measurements->height_60;
+        if (measurements->height_120 < height)
+            height = measurements->height_120;
+        return height;
+    } else if (!strcmp(metric, "width*2")) {
+        int width2 = measurements->width2_0;
+        if (measurements->width2_60 < width2)
+            width2 = measurements->width2_60;
+        if (measurements->width2_120 < width2)
+            width2 = measurements->width2_120;
+        return width2;
+    } else if (!strcmp(metric, "executed instructions"))
         return measurements->executed_instructions;
     else if (!strcmp(metric, "maximum absolute arm rotation"))
         return measurements->maximum_absolute_arm_rotation;
