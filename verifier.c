@@ -630,6 +630,16 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
         destroy(&solution, &board);
         return m;
     }
+    // try to roughly equalize the axes of the box
+    if (max_u - min_u < max_v - min_v) {
+        int32_t delta = max_v - min_v - (max_u - min_u);
+        min_u -= delta / 2;
+        max_u += delta / 2;
+    } else {
+        int32_t delta = max_u - min_u - (max_v - min_v);
+        min_v -= delta / 2;
+        max_v += delta / 2;
+    }
     max_u += v->throughput_margin;
     min_u -= v->throughput_margin;
     max_v += v->throughput_margin;
