@@ -762,6 +762,12 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (!*a.atom)
                 continue;
             if (inst == 'r') {
+                for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i) {
+                    if (*a.atom & ATOM_OF_TYPE(i)) {
+                        board->atom_grabs[i]++;
+                        break;
+                    }
+                }
                 atom grabs = (*a.atom & GRABBED) / GRABBED_ONCE;
                 *a.atom &= ~GRABBED;
                 *a.atom |= (grabs + 1) * GRABBED_ONCE;

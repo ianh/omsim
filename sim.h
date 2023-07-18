@@ -7,6 +7,9 @@
 
 typedef uint64_t atom;
 
+#define NUMBER_OF_ATOM_TYPES 16
+#define ATOM_OF_TYPE(type) (1ULL << ((type) + 1))
+
 // these shift amounts must match the atom bytes in the puzzle file format.
 #define SALT (1ULL << 1)
 #define AIR (1ULL << 2)
@@ -394,6 +397,8 @@ struct board {
     bool collision;
     struct vector collision_location;
     const char *collision_reason;
+
+    uint32_t atom_grabs[NUMBER_OF_ATOM_TYPES];
 
     // a bitmask of which output indexes cause the solution to fail if a wrong
     // output of the correct shape is dropped onto them.

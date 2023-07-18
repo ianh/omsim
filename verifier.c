@@ -79,6 +79,7 @@ struct per_cycle_measurements {
     int width2_120;
     int executed_instructions;
     int instruction_executions[NUMBER_OF_INSTRUCTIONS];
+    int atom_grabs[NUMBER_OF_ATOM_TYPES];
     int maximum_absolute_arm_rotation;
     struct error error;
     bool valid;
@@ -317,6 +318,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         .width2_120 = -1,
         .executed_instructions = -1,
         .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+        .atom_grabs = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .maximum_absolute_arm_rotation = -1,
         .valid = true,
     };
@@ -363,6 +365,8 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         .maximum_absolute_arm_rotation = solution ? solution->maximum_absolute_arm_rotation : -1,
         .valid = true,
     };
+    for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
+        m.atom_grabs[i] = (int)board->atom_grabs[i];
     if (has_atoms) {
         m.height_0 = dimensions[0].max - dimensions[0].min + 1;
         m.height_60 = dimensions[1].max - dimensions[1].min + 1;
@@ -390,6 +394,46 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     } else
         m.executed_instructions = -1;
     return m;
+}
+
+static const char *name_for_atom_type(int atom_type)
+{
+    switch (atom_type) {
+    case 0:
+        return "salt";
+    case 1:
+        return "air";
+    case 2:
+        return "earth";
+    case 3:
+        return "fire";
+    case 4:
+        return "water";
+    case 5:
+        return "quicksilver";
+    case 6:
+        return "gold";
+    case 7:
+        return "silver";
+    case 8:
+        return "copper";
+    case 9:
+        return "iron";
+    case 10:
+        return "tin";
+    case 11:
+        return "lead";
+    case 12:
+        return "vitae";
+    case 13:
+        return "mors";
+    case 14:
+        return 0; // ???
+    case 15:
+        return "quintessence";
+    default:
+        return 0;
+    }
 }
 
 static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, const char *metric, struct error *error)
@@ -452,6 +496,20 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
             }
         }
         return value;
+    } else if (!strcmp(metric, "atoms grabbed")) {
+        int value = 0;
+        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
+            value += measurements->atom_grabs[i];
+        return value;
+    } else if (!strncmp("atoms grabbed of type ", metric, strlen("atoms grabbed of type "))) {
+        metric += strlen("atoms grabbed of type ");
+        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i) {
+            const char *name = name_for_atom_type(i);
+            if (name && !strcmp(metric, name))
+                return measurements->atom_grabs[i];
+        }
+        *error = (struct error){ .description = "unknown atom type" };
+        return -1;
     } else {
         *error = (struct error){ .description = "unknown metric" };
         return -1;
