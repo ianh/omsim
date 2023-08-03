@@ -403,6 +403,9 @@ struct board {
     // a bitmask of which output indexes cause the solution to fail if a wrong
     // output of the correct shape is dropped onto them.
     uint64_t fails_on_wrong_output_mask;
+    // a bitmask of which output indexes cause the solution to fail if a an
+    // output of the correct footprint but with wrong bonds is dropped onto them.
+    uint64_t fails_on_wrong_output_bonds_mask;
     // the index of the wrong output in the solution file (or SIZE_MAX).
     size_t wrong_output_index;
 

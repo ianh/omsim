@@ -36,6 +36,9 @@ void verifier_set_cycle_limit(void *verifier, int cycle_limit);
 // set whether the verifier fails if an output of the correct shape but with the
 // wrong atoms is dropped on the output with puzzle file index output_index.
 void verifier_set_fails_on_wrong_output(void *verifier, int output_index, int fails_on_wrong_output);
+// set whether the verifier fails if an output of the correct footprint but with
+// the wrong bonds is dropped on the output with puzzle file index output_index.
+void verifier_set_fails_on_wrong_output_bonds(void *verifier, int output_index, int fails_on_wrong_output_bonds);
 // get the puzzle file index of the current wrong output or -1 if no wrong
 // outputs were detected.
 int verifier_wrong_output_index(void *verifier);

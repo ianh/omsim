@@ -108,6 +108,7 @@ struct verifier {
     uint64_t cycle_limit;
 
     uint64_t fails_on_wrong_output_mask;
+    uint64_t fails_on_wrong_output_bonds_mask;
     int wrong_output_index;
     struct board wrong_output_board;
     struct vector wrong_output_origin;
@@ -244,6 +245,12 @@ void verifier_set_fails_on_wrong_output(void *verifier, int output_index, int fa
     struct verifier *v = verifier;
     v->fails_on_wrong_output_mask &= ~(1ULL << (uint64_t)output_index);
     v->fails_on_wrong_output_mask |= fails_on_wrong_output ? (1ULL << (uint64_t)output_index) : 0;
+}
+void verifier_set_fails_on_wrong_output_bonds(void *verifier, int output_index, int fails_on_wrong_output_bonds)
+{
+    struct verifier *v = verifier;
+    v->fails_on_wrong_output_bonds_mask &= ~(1ULL << (uint64_t)output_index);
+    v->fails_on_wrong_output_bonds_mask |= fails_on_wrong_output_bonds ? (1ULL << (uint64_t)output_index) : 0;
 }
 int verifier_wrong_output_index(void *verifier)
 {
@@ -703,6 +710,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     max_v += v->throughput_margin;
     min_v -= v->throughput_margin;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
+    board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
     board.ignore_swing_area = true;
     board.uses_poison = use_poison;
     board.poison_message = "solution behavior is too complex for throughput measurement";
@@ -1179,6 +1187,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     initial_setup(&solution, &board, v->sf->area);
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
+    board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
     if (!strcmp(metric, "overlap")) {
         int overlap = INT_MAX;
         if (board.overlap < INT_MAX)
