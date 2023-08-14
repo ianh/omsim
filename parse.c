@@ -176,6 +176,8 @@ struct puzzle_file *parse_puzzle_file(const char *path)
 
 void free_puzzle_file(struct puzzle_file *puzzle)
 {
+    if (!puzzle)
+        return;
     for (uint32_t i = 0; i < puzzle->number_of_inputs; ++i) {
         free(puzzle->inputs[i].atoms);
         free(puzzle->inputs[i].bonds);
@@ -298,6 +300,8 @@ struct solution_file *parse_solution_file(const char *path)
 
 void free_solution_file(struct solution_file *solution)
 {
+    if (!solution)
+        return;
     for (uint32_t i = 0; i < solution->number_of_parts; ++i) {
         free(solution->parts[i].instructions);
         free(solution->parts[i].track_hexes);
