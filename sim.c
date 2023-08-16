@@ -630,7 +630,7 @@ static void move_atom(struct board *board, atom *a, struct vector position, stru
 {
     if (*a & BEING_MOVED) {
         size_t index = *a & MOVEMENT_INDEX;
-        if (index > board->movements.length)
+        if (index >= board->movements.length)
             report_collision(board, position, "this should never happen");
         else if (!movements_equal(movement, &board->movements.movements[index]))
             report_collision(board, position, "trying to move an atom in two different directions at once");
