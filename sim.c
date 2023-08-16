@@ -929,6 +929,31 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
     }
     // carry out deferred movements.
     if (board->half_cycle == 2) {
+        // report a collision if any static arm is grabbing a moving atom
+        for (uint32_t i = 0; i < n; ++i) {
+            struct mechanism *m = &solution->arms[i];
+            if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
+                continue;
+            size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
+            index %= solution->tape_period;
+            if (index >= solution->arm_tape_length[i])
+                continue;
+            char inst = solution->arm_tape[i][index];
+            // check whether the arm isn't moving on this cycle.
+            if (inst != ' ' && inst != '\0' && inst != 'r')
+                continue;
+            int step = angular_distance_between_grabbers(m->type);
+            for (int direction = 0; direction < 6; direction += step) {
+                if (!(m->type & (GRABBING_LOW_BIT << direction)))
+                    continue;
+                struct vector offset = u_offset_for_direction(direction);
+                struct vector pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
+                atom *a = lookup_atom(board, pos);
+                if ((*a & VALID) && (*a & REMOVED) && (*a & MOVED))
+                    report_collision(board, pos, "atom moved while being held stationary by another arm");
+            }
+        }
+
         int32_t maximum_rotation_distance = 1;
         // this is kind of terrible.  we have to fix up the movement structs to
         // look like the game is expecting (instead of the initial state, before
