@@ -52,7 +52,7 @@ int main()
 
     int total_solutions = 0;
     int validated_solutions = 0;
-    FILE *solution_list = popen("find test/solution -type f -name *.solution", "r");
+    FILE *solution_list = popen("find test/solution -type f -name '*.solution'", "r");
     while ((line = getline(&buf, &n, solution_list)) >= 0) {
         if (line > 0 && buf[line - 1] == '\n')
             buf[line - 1] = '\0';
