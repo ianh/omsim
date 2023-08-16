@@ -81,8 +81,10 @@ int main()
         }
         total_solutions++;
 
+        bool expect_collision = sf->cost == 0 && sf->instructions == 0;
+
         uint64_t cost = solution_file_cost(sf);
-        if (sf->cost != cost) {
+        if (sf->cost != cost && !expect_collision) {
             fprintf(stderr, "cost mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says cost is: %" PRIu32 "\n", sf->cost);
             fprintf(stderr, "adding up its parts, the cost is: %" PRIu64 "\n", cost);
@@ -90,7 +92,7 @@ int main()
         }
 
         uint64_t instructions = solution_instructions(&solution);
-        if (sf->instructions != instructions) {
+        if (sf->instructions != instructions && !expect_collision) {
             fprintf(stderr, "instructions mismatch for '%s'\n", buf);
             fprintf(stderr, "solution file says instruction count is: %" PRIu32 "\n", sf->instructions);
             fprintf(stderr, "counting instructions says instruction count is: %" PRIu64 "\n", instructions);
@@ -104,6 +106,8 @@ int main()
         while (board.cycle < 200000 && !board.complete) {
             cycle(&solution, &board);
             if (board.collision) {
+                if (expect_collision)
+                    goto success;
                 fprintf(stderr, "collision in '%s' at %" PRId32 ", %" PRId32 ": %s\n", buf,
                  board.collision_location.u, board.collision_location.v,
                  board.collision_reason);
@@ -123,6 +127,7 @@ int main()
             fprintf(stderr, "simulation says area is: %" PRIu32 "\n", area);
             goto fail;
         }
+    success:
         validated_solutions++;
     fail:
         destroy(&solution, &board);
