@@ -670,15 +670,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
     board->movements.length = 0;
     board->movements.cursor = 0;
     uint32_t n = solution->number_of_arms;
-    // this `ii` thing is a kind of cheesy way to do two passes; one pass for
-    // drops and one for grabs (so handoffs work).
-    for (uint32_t ii = 0; ii < 2*n; ++ii) {
-        uint32_t i = ii;
-        if (i >= n)
-            i -= n;
+    for (uint32_t i = 0; i < n; ++i) {
         struct mechanism *m = &solution->arms[i];
-        if (ii == i)
-            m->movement = zero_vector;
+        m->movement = zero_vector;
         if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
             continue;
         size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
@@ -691,9 +685,6 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         // on half-cycle 1, grab and drop.
         // on half-cycle 2, perform the rest of the instructions.
         if ((board->half_cycle == 1) != (inst == 'r' || inst == 'f'))
-            continue;
-        // perform grabs after drops so handoffs work.
-        if ((ii != i) != (inst == 'r'))
             continue;
         struct vector track_motion = {0, 0};
         // first, validate the instruction.
