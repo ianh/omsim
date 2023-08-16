@@ -615,8 +615,28 @@ static void enqueue_movement(struct board *board, struct movement m)
     board->movements.movements[board->movements.length++] = m;
 }
 
-static void move_atom(struct board *board, atom *a, struct vector position)
+static bool movements_equal(struct movement *a, struct movement *b)
 {
+    if (a->rotation == 0 && b->rotation == 0)
+        return vectors_equal(a->translation, b->translation);
+    if (a->rotation != b->rotation)
+        return false;
+    struct vector a_center = a->type == SWING_MOVEMENT ? a->base : a->absolute_grab_position;
+    struct vector b_center = b->type == SWING_MOVEMENT ? b->base : b->absolute_grab_position;
+    return vectors_equal(a_center, b_center);
+}
+
+static void move_atom(struct board *board, atom *a, struct vector position, struct movement *movement)
+{
+    if (*a & BEING_MOVED) {
+        size_t index = *a & MOVEMENT_INDEX;
+        if (index > board->movements.length)
+            report_collision(board, position, "this should never happen");
+        else if (!movements_equal(movement, &board->movements.movements[index]))
+            report_collision(board, position, "trying to move an atom in two different directions at once");
+        return;
+    }
+
     size_t capacity = board->moving_atoms.capacity;
     while (board->moving_atoms.length >= capacity)
         capacity = 4 * (capacity + 12) / 3;
@@ -633,12 +653,14 @@ static void move_atom(struct board *board, atom *a, struct vector position)
         .position = position,
     };
     remove_atom(board, (struct atom_ref_at_position){ a, position });
+    *a = (*a & ~MOVEMENT_INDEX) | (board->movements.length & MOVEMENT_INDEX) | BEING_MOVED;
 }
 
 static void move_atoms(struct board *board, atom *a, struct movement movement)
 {
     size_t start = board->moving_atoms.cursor;
-    move_atom(board, a, movement.absolute_grab_position);
+    move_atom(board, a, movement.absolute_grab_position, &movement);
+
     // do a breadth-first search over the molecule, removing each atom from the
     // board as it's discovered.
     while (board->moving_atoms.cursor < board->moving_atoms.length) {
@@ -651,9 +673,8 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
             p.u += d.u;
             p.v += d.v;
             atom *b = lookup_atom_without_checking_for_poison(board, p);
-            if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
-                continue;
-            move_atom(board, b, p);
+            if ((*b & VALID) && !(*b & BEING_PRODUCED) && !(*b & REMOVED))
+                move_atom(board, b, p, &movement);
         }
         board->moving_atoms.cursor++;
     }
@@ -899,8 +920,33 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         else if (m->arm_rotation < 0 && (uint32_t)-(int64_t)m->arm_rotation > solution->maximum_absolute_arm_rotation)
             solution->maximum_absolute_arm_rotation = (uint32_t)-(int64_t)m->arm_rotation;
     }
+
     // carry out deferred movements.
     if (board->half_cycle == 2) {
+        // report a collision if any static arm is grabbing a moving atom
+        for (uint32_t i = 0; i < n; ++i) {
+            struct mechanism *m = &solution->arms[i];
+            if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
+                continue;
+            size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
+            index %= solution->tape_period;
+            if (index >= solution->arm_tape_length[i])
+                continue;
+            char inst = solution->arm_tape[i][index];
+            if (inst != ' ' && inst != '\0' && inst != 'r')
+                continue;
+            int step = angular_distance_between_grabbers(m->type);
+            for (int direction = 0; direction < 6; direction += step) {
+                if (!(m->type & (GRABBING_LOW_BIT << direction)))
+                    continue;
+                struct vector offset = u_offset_for_direction(direction);
+                struct vector pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
+                atom *a = lookup_atom(board, pos);
+                if (*a & BEING_MOVED)
+                    report_collision(board, pos, "trying to move and grab an atom at the same time");
+            }
+        }
+
         int32_t maximum_rotation_distance = 1;
         // this is kind of terrible.  we have to fix up the movement structs to
         // look like the game is expecting (instead of the initial state, before

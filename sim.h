@@ -77,6 +77,12 @@ typedef uint64_t atom;
 // used for molecule flood fills.
 #define VISITED (1ULL << 60)
 
+// used for checking against multiple moves on the same atom.
+#define BEING_MOVED (1ULL << 61)
+
+// while BEING_MOVED is set, the 24 low bits store a movement index instead of their usual meaning.
+#define MOVEMENT_INDEX 0xFFFFFFULL
+
 #define BOND_LOW_BITS ((1ULL << RECENT_BOND) | (1ULL << NORMAL_BOND) | \
  (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) | (1ULL << TRIPLEX_BOND_K))
 
