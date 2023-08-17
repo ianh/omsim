@@ -35,7 +35,7 @@ static void print_board(struct board *board)
 {
     int32_t maxu = -10000, minu = 10000;
     int32_t maxv = -10000, minv = 10000;
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
         struct vector p = board->atoms_at_positions[i].position;
@@ -52,7 +52,7 @@ static void print_board(struct board *board)
         return;
     int stride = (maxv - minv + 1);
     atom *points = calloc(sizeof(atom), stride * (maxu - minu + 1));
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         if (!(board->atoms_at_positions[i].atom & VALID))
             continue;
         points[(board->atoms_at_positions[i].position.v - minv) + stride * (board->atoms_at_positions[i].position.u - minu)] = board->atoms_at_positions[i].atom;
@@ -80,7 +80,7 @@ static void print_board(struct board *board)
     free(points);
 
 #if 0
-    for (uint32_t i = 0; i < board->capacity; ++i) {
+    for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         atom a = board->atoms_at_positions[i].atom;
         if (!(a & VALID) || (a & REMOVED))
             continue;
