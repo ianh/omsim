@@ -329,7 +329,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             solution->glyphs[glyph_index--] = m;
         else if (byte_string_is(part.name, "track")) {
             struct vector last_position = m.position;
-            for (uint32_t j = 0; j < part.number_of_track_hexes + 1; ++j) {
+            for (uint32_t j = 0; part.number_of_track_hexes > 0 && j < part.number_of_track_hexes + 1; ++j) {
                 struct solution_hex_offset hex;
                 if (j < part.number_of_track_hexes)
                     hex = part.track_hexes[j];
