@@ -306,10 +306,10 @@ void verifier_set_throughput_margin(void *verifier, int margin)
 }
 
 struct area_dimension {
-    int32_t u;
-    int32_t v;
-    int32_t max;
-    int32_t min;
+    int64_t u;
+    int64_t v;
+    int64_t max;
+    int64_t min;
 };
 
 static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v, struct solution *solution, struct board *board, bool check_completion)
@@ -358,11 +358,15 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         has_atoms = true;
         struct vector p = board->atoms_at_positions[i].position;
         for (int j = 0; j < sizeof(dimensions)/sizeof(dimensions[0]); ++j) {
-            int32_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
+            int64_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
             if (value < dimensions[j].min)
                 dimensions[j].min = value;
             if (value > dimensions[j].max)
                 dimensions[j].max = value;
+            if (dimensions[j].max - dimensions[j].min + 2 > INT_MAX) {
+                error_measurements.error.description = "solution bounding box is too large to compute width and height";
+                return error_measurements;
+            }
         }
     }
     struct per_cycle_measurements m = {
