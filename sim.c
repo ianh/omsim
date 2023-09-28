@@ -1620,8 +1620,9 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
             mark_used_area(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
         }
     }
-    for (size_t i = 0; i < solution->number_of_arms; ++i) {
+    for (size_t i = 0; i < solution->number_of_arms; ++i)
         mark_used_area(board, solution->arms[i].position, &board->overlap);
+    for (size_t i = 0; i < solution->number_of_arms; ++i) {
         // use the VISITED flag to mark arm base positions that track is allowed to occupy.
         *lookup_atom(board, solution->arms[i].position) |= VISITED;
     }
