@@ -148,6 +148,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             .center = to_xy(solution->arms[i].position),
             .radius = armBaseRadius,
         });
+        list.cursor = list.length;
     }
     list.cursor = list.length;
     size_t fixed_colliders = list.length;
