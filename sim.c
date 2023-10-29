@@ -106,7 +106,12 @@ static struct atom_ref_at_position get_atom(struct board *board, struct mechanis
     if ((m.type & CONVERSION_GLYPH) && board->half_cycle == 2)
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
     atom *a = lookup_atom(board, pos);
-    if (!(*a & VALID) || (*a & REMOVED) || ((*a & BEING_PRODUCED) && !(m.type & UNBONDING)))
+    if (!(*a & VALID))
+        return (struct atom_ref_at_position){ (atom *)&empty, pos };
+    // arms need to see removed-but-moving atoms to perform simultaneous motion checks.
+    if ((m.type & ANY_ARM) && (*a & REMOVED) && (*a & MOVED))
+        return (struct atom_ref_at_position){ a, pos };
+    if ((*a & REMOVED) || ((*a & BEING_PRODUCED) && !(m.type & UNBONDING)))
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
     // only duplication glyphs can see the van berlo's wheel.
     if (!(m.type & (DUPLICATION | VAN_BERLO)) && (*a & VAN_BERLO_ATOM))
@@ -131,12 +136,15 @@ static void remove_overlapping_atom(struct board *board, struct atom_ref_at_posi
     }
 }
 
-static inline void remove_atom(struct board *board, struct atom_ref_at_position a)
+static inline bool remove_atom(struct board *board, struct atom_ref_at_position a)
 {
-    if (*a.atom & OVERLAPS_ATOMS)
+    if (*a.atom & OVERLAPS_ATOMS) {
         remove_overlapping_atom(board, a);
-    else
-        *a.atom |= REMOVED;
+        return false;
+    } else {
+        *a.atom = VALID | REMOVED;
+        return true;
+    }
 }
 
 static inline void transform_atom(atom *a, atom new_type)
@@ -599,8 +607,10 @@ static void record_swing_area(struct board *board, struct vector position, struc
     }
 }
 
-static void enqueue_movement(struct board *board, struct movement m)
+static size_t reserve_movement_index(struct board *board)
 {
+    if (board->movements.length >= MAX_MOVEMENTS)
+        abort();
     size_t capacity = board->movements.capacity;
     while (board->movements.length >= capacity)
         capacity = 4 * (capacity + 12) / 3;
@@ -612,10 +622,21 @@ static void enqueue_movement(struct board *board, struct movement m)
         board->movements.movements = elems;
         board->movements.capacity = capacity;
     }
-    board->movements.movements[board->movements.length++] = m;
+    return board->movements.length++;
 }
 
-static void move_atom(struct board *board, atom *a, struct vector position)
+static bool movements_equal(struct movement a, struct movement b)
+{
+    if (a.rotation == 0 && b.rotation == 0)
+        return vectors_equal(a.translation, b.translation);
+    if (a.rotation != b.rotation)
+        return false;
+    struct vector a_center = a.type == SWING_MOVEMENT ? a.base : a.absolute_grab_position;
+    struct vector b_center = b.type == SWING_MOVEMENT ? b.base : b.absolute_grab_position;
+    return vectors_equal(a_center, b_center);
+}
+
+static void move_atom(struct board *board, atom *a, struct vector position, size_t movement_index)
 {
     size_t capacity = board->moving_atoms.capacity;
     while (board->moving_atoms.length >= capacity)
@@ -632,13 +653,20 @@ static void move_atom(struct board *board, atom *a, struct vector position)
         .atom = *a,
         .position = position,
     };
-    remove_atom(board, (struct atom_ref_at_position){ a, position });
+    if (remove_atom(board, (struct atom_ref_at_position){ a, position }))
+        *a |= MOVED | MOVEMENT_INDEX(movement_index);
 }
 
 static void move_atoms(struct board *board, atom *a, struct movement movement)
 {
+    if ((*a & VALID) && (*a & REMOVED) && (*a & MOVED)) {
+        if (!movements_equal(movement, board->movements.movements[GET_MOVEMENT_INDEX(*a)]))
+            report_collision(board, movement.absolute_grab_position, "atom moved in two directions simultaneously");
+        return;
+    }
+    size_t movement_index = reserve_movement_index(board);
     size_t start = board->moving_atoms.cursor;
-    move_atom(board, a, movement.absolute_grab_position);
+    move_atom(board, a, movement.absolute_grab_position, movement_index);
     // do a breadth-first search over the molecule, removing each atom from the
     // board as it's discovered.
     while (board->moving_atoms.cursor < board->moving_atoms.length) {
@@ -653,12 +681,12 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
             atom *b = lookup_atom_without_checking_for_poison(board, p);
             if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
                 continue;
-            move_atom(board, b, p);
+            move_atom(board, b, p, movement_index);
         }
         board->moving_atoms.cursor++;
     }
     movement.number_of_atoms = board->moving_atoms.cursor - start;
-    enqueue_movement(board, movement);
+    board->movements.movements[movement_index] = movement;
 }
 
 static void perform_arm_instructions(struct solution *solution, struct board *board)
@@ -752,7 +780,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct atom_ref_at_position a = get_atom(board, *m, offset.u, offset.v);
             if (!*a.atom)
                 continue;
-            if (inst == 'r') {
+            if (inst == 'r' && !(*a.atom & REMOVED)) {
                 for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i) {
                     if (*a.atom & ATOM_OF_TYPE(i)) {
                         board->atom_grabs[i]++;
@@ -765,9 +793,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 m->type |= GRABBING_LOW_BIT << direction;
                 continue;
             }
-            if (!(m->type & (GRABBING_LOW_BIT << direction)) || !(*a.atom & GRABBED))
+            if (!(m->type & (GRABBING_LOW_BIT << direction)) || (!(*a.atom & REMOVED) && !(*a.atom & GRABBED)))
                 continue;
-            if (inst == 'f') {
+            if (inst == 'f' && !(*a.atom & REMOVED) && (*a.atom & GRABBED)) {
                 atom grabs = (*a.atom & GRABBED) / GRABBED_ONCE;
                 *a.atom &= ~GRABBED;
                 *a.atom |= (grabs - 1) * GRABBED_ONCE;

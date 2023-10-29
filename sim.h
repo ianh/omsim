@@ -60,6 +60,12 @@ typedef uint64_t atom;
 
 #define VALID (1ULL << 27)
 #define REMOVED (1ULL << 28)
+// removed atoms can be marked with their movement index to detect movement in
+// different directions.  these flags are only valid for removed atoms.
+#define MOVED (1ULL << 26)
+#define MOVEMENT_INDEX(movement_index) ((atom)(movement_index) << 29)
+#define GET_MOVEMENT_INDEX(atom) ((atom) >> 29)
+#define MAX_MOVEMENTS ((-1ULL) >> 29)
 
 // offsets for the bits that indicate bonds.
 #define RECENT_BOND 29 // also used to mark neighboring atoms in infinite products.
