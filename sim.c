@@ -11,25 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const double ATOM_RADIUS = 29./82;
-static const double SQRT3_2 = 0.8660254037844386;
-
-struct xy_vector {
-    double x;
-    double y;
-};
-static struct xy_vector to_xy(struct vector p)
-{
-    return (struct xy_vector){
-        p.u + p.v * 0.5,
-        p.v * SQRT3_2,
-    };
-}
-static double xy_len2(struct xy_vector xy)
-{
-    return xy.x * xy.x + xy.y * xy.y;
-}
-
 struct atom_ref_at_position {
     atom *atom;
     struct vector position;
@@ -533,77 +514,28 @@ static struct vector normalize_axis(struct vector p)
     return p;
 }
 
-static bool swing_intersection(double swing_radius_squared, struct xy_vector center, struct xy_vector *hit)
+static void record_swing_area(struct board *board, struct vector base, struct vector position, int rotation)
 {
-    double r2 = swing_radius_squared;
-    double d2 = xy_len2(center);
-    double x = d2 - 4 * ATOM_RADIUS * ATOM_RADIUS + r2;
-    if (x * x > 4 * r2 * d2)
-        return false;
-    double y = sqrt(4 * r2 * d2 - x * x);
-    // note that, if there are two intersection points, this chooses the point
-    // where the arc *leaves* the circle (the most counterclockwise of the two),
-    // which guarantees forward progress.
-    hit->x = (x * center.x - y * center.y) / (2 * d2);
-    hit->y = (x * center.y + y * center.x) / (2 * d2);
-    return true;
-}
-
-// returns a positive number if a -> b is a counter-clockwise rotation,
-// a negative number if a -> b is a clockwise rotation, and zero if the rotation
-// direction is indeterminate (if the points are either equal or antipodal).
-static double ccw(struct xy_vector a, struct xy_vector b)
-{
-    return a.x * b.y - a.y * b.x;
-}
-
-static void record_swing_area(struct board *board, struct vector position, struct vector base, int rotation)
-{
-    if (board->ignore_swing_area)
-        return;
-    struct vector p = position;
-    p.u -= base.u;
-    p.v -= base.v;
+    struct vector offset = { position.u - base.u, position.v - base.v };
     if (rotation == -1)
-        p = (struct vector){ p.u + p.v, -p.u };
-    struct xy_vector current = to_xy(p);
-    struct xy_vector end = to_xy((struct vector){ -p.v, p.u + p.v });
-    double r2 = xy_len2(current);
-    if (r2 < 1)
+        offset = (struct vector){ offset.u + offset.v, -offset.u };
+    int32_t arm_length = abs(offset.u) | abs(offset.v);
+    offset = normalize_axis(offset);
+    switch (arm_length) {
+    case 3:
+        mark_used_area(board, (struct vector){ base.u + 3 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 4 * offset.v }, 0);
+        mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v }, 0);
+        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 3 * offset.v, base.v + 3 * offset.u + 4 * offset.v }, 0);
+        // fall through
+    case 2:
+        mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 3 * offset.v }, 0);
+        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 2 * offset.v }, 0);
+        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 3 * offset.v }, 0);
+        // fall through
+    case 1:
         return;
-    while (true) {
-        // convert back to grid coordinates.
-        int32_t cell_u = (int32_t)floor(current.x - 0.5 * current.y / SQRT3_2);
-        int32_t cell_v = (int32_t)floor(current.y / SQRT3_2);
-        struct xy_vector min = { 0 };
-        struct vector min_cell = { 0 };
-        // find the intersection point for the hex at each neighboring grid
-        // cell, using the ccw() function to determine which hex the swing arc
-        // will encounter next.
-        for (int32_t u = cell_u - 1; u <= cell_u + 2; ++u) {
-            for (int32_t v = cell_v - 1; v <= cell_v + 2; ++v) {
-                struct xy_vector center = to_xy((struct vector){ u, v });
-                struct xy_vector hit;
-                if (!swing_intersection(r2, center, &hit))
-                    continue;
-                if (ccw(current, hit) <= 0)
-                    continue;
-                if ((min.x != 0 || min.y != 0) && ccw(hit, min) <= 0)
-                    continue;
-                min = hit;
-                min_cell.u = u;
-                min_cell.v = v;
-            }
-        }
-        assert(min.x != 0 || min.y != 0);
-        if (ccw(min, end) <= 0)
-            break;
-        mark_used_area(board, (struct vector){
-            base.u + min_cell.u,
-            base.v + min_cell.v,
-        }, 0);
-        // advance the current point to the point of encounter.
-        current = min;
+    default:
+        abort();
     }
 }
 
@@ -715,6 +647,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         if ((board->half_cycle == 1) != (inst == 'r' || inst == 'f'))
             continue;
         struct vector track_motion = {0, 0};
+        // kind of cheesy but it works!
+        int32_t arm_length = abs(m->direction_u.u) | abs(m->direction_u.v);
         // first, validate the instruction.
         if (inst == 'r') {
             // if the arm is already grabbing, grabbing again does nothing.
@@ -731,13 +665,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             continue;
         } else if (inst == 'w') {
             // don't extend pistons past 3 hexes of length.
-            if (m->direction_v.u == 3 || m->direction_v.u == -3 ||
-             m->direction_v.v == 3 || m->direction_v.v == -3)
+            if (arm_length == 3)
                 continue;
         } else if (inst == 's') {
             // don't retract pistons below 1 hex of length.
-            if (m->direction_v.u == 1 || m->direction_v.u == -1 ||
-             m->direction_v.v == 1 || m->direction_v.v == -1)
+            if (arm_length == 1)
                 continue;
         } else if (inst == 't' || inst == 'g') {
             uint32_t index;
@@ -758,25 +690,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
             struct vector offset = u_offset_for_direction(direction);
-            struct vector saved_u = m->direction_u;
-            struct vector saved_v = m->direction_v;
-            int length = 0;
-            while (true) {
-                // xx do area somewhere else?
-                struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
-                mark_used_area(board, p, 0);
-                if (inst == 'a')
-                    record_swing_area(board, p, m->position, 1);
-                if (inst == 'd')
-                    record_swing_area(board, p, m->position, -1);
-                if (vectors_equal(m->direction_u, zero_vector))
-                    break;
-                adjust_axis_magnitude(&m->direction_u, -1);
-                adjust_axis_magnitude(&m->direction_v, -1);
-                length++;
-            }
-            m->direction_u = saved_u;
-            m->direction_v = saved_v;
+            struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
+            if (inst == 'a')
+                record_swing_area(board, m->position, p, 1);
+            if (inst == 'd')
+                record_swing_area(board, m->position, p, -1);
             struct atom_ref_at_position a = get_atom(board, *m, offset.u, offset.v);
             if (!*a.atom)
                 continue;
@@ -811,8 +729,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 .grabber_offset = offset,
                 .absolute_grab_position = a.position,
             };
-            movement.grabber_offset.u *= length;
-            movement.grabber_offset.v *= length;
+            movement.grabber_offset.u *= arm_length;
+            movement.grabber_offset.v *= arm_length;
             switch (inst) {
             case 'q': // pivot ccw
                 movement.type |= PIVOT_MOVEMENT;
