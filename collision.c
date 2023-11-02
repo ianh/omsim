@@ -140,6 +140,17 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         .colliders = calloc(number_of_colliders, sizeof(struct collider)),
         .collision_location = collision_location,
     };
+    size_t atom_index = 0;
+    struct xy_vector *moving_atom_offsets = calloc(board->moving_atoms.length, sizeof(struct xy_vector));
+    for (size_t i = 0; i < board->movements.length; ++i) {
+        struct movement m = board->movements.movements[i];
+        for (size_t j = 0; j < m.number_of_atoms; ++j) {
+            struct vector p = board->moving_atoms.atoms_at_positions[atom_index].position;
+            p.u -= m.absolute_grab_position.u;
+            p.v -= m.absolute_grab_position.v;
+            moving_atom_offsets[atom_index++] = to_xy(p);
+        }
+    }
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         if (!vectors_equal(solution->arms[i].movement, zero_vector))
             continue;
@@ -207,10 +218,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             float rx = (float)cos(r);
             float ry = (float)sin(r);
             for (size_t j = 0; j < m.number_of_atoms; ++j) {
-                struct vector p = board->moving_atoms.atoms_at_positions[atom_index++].position;
-                p.u -= m.absolute_grab_position.u;
-                p.v -= m.absolute_grab_position.v;
-                struct xy_vector xy = to_xy(p);
+                struct xy_vector xy = moving_atom_offsets[atom_index++];
                 add_collider_inline(&list, board, (struct collider){
                     .center = {
                         v.x + (xy.x * rx - xy.y * ry),
@@ -231,6 +239,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         // printf("],");
     }
 
+    free(moving_atom_offsets);
     free(list.colliders);
     return list.collision;
 }
