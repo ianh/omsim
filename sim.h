@@ -447,7 +447,7 @@ atom *lookup_atom(struct board *board, struct vector query);
 atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query);
 
 // returns the atom value at the point (for collision detection).
-atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap);
+atom mark_used_area(struct board *board, struct vector point);
 
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
 

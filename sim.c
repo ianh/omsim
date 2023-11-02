@@ -20,6 +20,8 @@ struct atom_ref_at_position {
 static void rehash(struct board *board, uint32_t size);
 static void schedule_flag_reset_if_needed(struct board *board, atom *a);
 
+static atom mark_used_area_with_overlap(struct board *board, struct vector point, uint64_t *overlap);
+
 struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w)
 {
     return (struct vector){
@@ -523,14 +525,14 @@ static void record_swing_area(struct board *board, struct vector base, struct ve
     offset = normalize_axis(offset);
     switch (arm_length) {
     case 3:
-        mark_used_area(board, (struct vector){ base.u + 3 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 4 * offset.v }, 0);
-        mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v }, 0);
-        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 3 * offset.v, base.v + 3 * offset.u + 4 * offset.v }, 0);
+        mark_used_area(board, (struct vector){ base.u + 3 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 4 * offset.v });
+        mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v });
+        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 3 * offset.v, base.v + 3 * offset.u + 4 * offset.v });
         // fall through
     case 2:
-        mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 3 * offset.v }, 0);
-        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 2 * offset.v }, 0);
-        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 3 * offset.v }, 0);
+        mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 3 * offset.v });
+        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 2 * offset.v });
+        mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 3 * offset.v });
         // fall through
     case 1:
         return;
@@ -948,7 +950,7 @@ static void mark_arm_area(struct solution *solution, struct board *board)
             struct vector saved_v = m->direction_v;
             while (true) {
                 struct vector p = mechanism_relative_position(*m, offset.u, offset.v, 1);
-                mark_used_area(board, p, 0);
+                mark_used_area(board, p);
                 if (vectors_equal(m->direction_u, zero_vector))
                     break;
                 adjust_axis_magnitude(&m->direction_u, -1);
@@ -1555,11 +1557,11 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     rehash(board, initial_hashtable_size);
     // place cabinet walls first; wall-wall overlap isn't counted.
     for (uint32_t i = 0; i < solution->number_of_cabinet_walls; ++i)
-        mark_used_area(board, solution->cabinet_walls[i], 0);
+        mark_used_area(board, solution->cabinet_walls[i]);
     for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         for (uint32_t j = 0; j < io->number_of_atoms; ++j)
-            mark_used_area(board, io->atoms[j].position, &board->overlap);
+            mark_used_area_with_overlap(board, io->atoms[j].position, &board->overlap);
     }
     for (uint32_t i = 0; i < solution->number_of_glyphs; ++i) {
         struct mechanism m = solution->glyphs[i];
@@ -1568,7 +1570,7 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
                 continue;
             for (int k = 0; ; ++k) {
                 struct vector p = footprints[j].hexes[k];
-                mark_used_area(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
+                mark_used_area_with_overlap(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
                 if (vectors_equal(p, zero_vector))
                     break;
             }
@@ -1579,11 +1581,11 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         struct mechanism m = solution->glyphs[conduit->glyph_index];
         for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
             struct vector p = conduit->positions[j];
-            mark_used_area(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
+            mark_used_area_with_overlap(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
         }
     }
     for (size_t i = 0; i < solution->number_of_arms; ++i)
-        mark_used_area(board, solution->arms[i].position, &board->overlap);
+        mark_used_area_with_overlap(board, solution->arms[i].position, &board->overlap);
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
         // use the VISITED flag to mark arm base positions that track is allowed to occupy.
         *lookup_atom(board, solution->arms[i].position) |= VISITED;
@@ -1592,7 +1594,7 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         struct vector p = solution->track_positions[i];
         if (p.u == INT32_MIN && p.v == INT32_MIN)
             continue;
-        mark_used_area(board, p, &board->overlap);
+        mark_used_area_with_overlap(board, p, &board->overlap);
     }
     for (size_t i = 0; i < solution->number_of_arms; ++i)
         *lookup_atom(board, solution->arms[i].position) &= ~VISITED;
@@ -1737,7 +1739,7 @@ atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector
     return &lookup_atom_at_position(board, query)->atom;
 }
 
-atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
+static atom mark_used_area_with_overlap(struct board *board, struct vector point, uint64_t *overlap)
 {
     struct atom_at_position *a = lookup_atom_at_position(board, point);
     if (a->atom & VALID) {
@@ -1749,6 +1751,11 @@ atom mark_used_area(struct board *board, struct vector point, uint64_t *overlap)
     a->atom = VALID | REMOVED;
     board->area++;
     return a->atom;
+}
+
+atom mark_used_area(struct board *board, struct vector point)
+{
+    return mark_used_area_with_overlap(board, point, 0);
 }
 
 __attribute__((noinline))

@@ -90,7 +90,7 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
     if (!(dist < collider.radius + atomRadius))
         return;
     // mark area.  also, this *could* be a collision.
-    atom a = mark_used_area(board, p, 0);
+    atom a = mark_used_area(board, p);
     if (a & REMOVED)
         return;
     if (a & BEING_PRODUCED) {
