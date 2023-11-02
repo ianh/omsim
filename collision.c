@@ -101,7 +101,6 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
     list->collision = true;
     if (list->collision_location)
         *list->collision_location = p;
-    return;
 }
 
 __attribute__((always_inline))
@@ -115,22 +114,16 @@ static void add_collider_inline(struct collider_list *list, struct board *board,
     mark_area_and_check_board(list, board, collider, p.u - 1, p.v);
     mark_area_and_check_board(list, board, collider, p.u, p.v - 1);
     mark_area_and_check_board(list, board, collider, p.u + 1, p.v - 1);
-    if (list->collision) {
-        list->colliders[list->length++] = collider;
-        return;
-    }
+    list->colliders[list->length++] = collider;
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
         if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
             continue;
-        // printf("%f %f %f x %f %f %f\n", collider.radius, collider.center.x, collider.center.y, other.radius, other.center.x, other.center.y);
         list->collision = true;
         if (list->collision_location)
             *list->collision_location = p;
-        list->colliders[list->length++] = collider;
-        return;
+        break;
     }
-    list->colliders[list->length++] = collider;
 }
 
 static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
