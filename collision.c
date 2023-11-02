@@ -159,8 +159,6 @@ bool collision(struct solution *solution, struct board *board, float increment, 
     list.cursor = list.length;
     size_t fixed_colliders = list.length;
     for (float progress = increment; progress < 1.f; progress += increment) {
-        if (list.collision)
-            break;
         list.cursor = fixed_colliders;
         list.length = fixed_colliders;
         for (size_t i = 0; i < solution->number_of_arms; ++i) {
