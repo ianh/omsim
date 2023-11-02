@@ -104,7 +104,8 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
     return;
 }
 
-static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
+__attribute__((always_inline))
+static void add_collider_inline(struct collider_list *list, struct board *board, struct collider collider)
 {
     struct vector p = from_xy(collider.center);
     mark_area_and_check_board(list, board, collider, p.u, p.v);
@@ -130,6 +131,11 @@ static void add_collider(struct collider_list *list, struct board *board, struct
         return;
     }
     list->colliders[list->length++] = collider;
+}
+
+static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
+{
+    add_collider_inline(list, board, collider);
 }
 
 bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
@@ -214,7 +220,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 p.u -= m.absolute_grab_position.u;
                 p.v -= m.absolute_grab_position.v;
                 struct xy_vector xy = to_xy(p);
-                add_collider(&list, board, (struct collider){
+                add_collider_inline(&list, board, (struct collider){
                     .center = {
                         v.x + (xy.x * rx - xy.y * ry),
                         v.y + (xy.x * ry + xy.y * rx),
