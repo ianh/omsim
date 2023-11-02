@@ -12,6 +12,14 @@ struct xy_vector {
     float y;
 };
 
+struct xy_rect {
+    float min_x;
+    float max_x;
+    float min_y;
+    float max_y;
+};
+static const struct xy_rect empty_rect = { INFINITY, -INFINITY, INFINITY, -INFINITY };
+
 struct collider {
     struct xy_vector center;
     float radius;
@@ -21,6 +29,9 @@ struct collider_list {
     struct collider *colliders;
     size_t cursor;
     size_t length;
+
+    struct xy_rect bounding_box;
+    struct xy_rect bounding_box_up_to_cursor;
 
     bool collision;
     struct vector *collision_location;
@@ -82,6 +93,31 @@ static float to_radians(int32_t r)
     return (float)(r * 60) * ((float)M_PI / 180.f);
 }
 
+static struct xy_rect xy_rect_add_collider(struct xy_rect rect, struct collider collider)
+{
+    if (collider.center.x - collider.radius < rect.min_x)
+        rect.min_x = collider.center.x - collider.radius;
+    if (collider.center.x + collider.radius > rect.max_x)
+        rect.max_x = collider.center.x + collider.radius;
+    if (collider.center.y - collider.radius < rect.min_y)
+        rect.min_y = collider.center.y - collider.radius;
+    if (collider.center.y + collider.radius > rect.max_y)
+        rect.max_y = collider.center.y + collider.radius;
+    return rect;
+}
+static bool xy_rect_contains_collider(struct xy_rect rect, struct collider collider)
+{
+    if (collider.center.x - collider.radius < rect.min_x)
+        return false;
+    if (collider.center.x + collider.radius > rect.max_x)
+        return false;
+    if (collider.center.y - collider.radius < rect.min_y)
+        return false;
+    if (collider.center.y + collider.radius > rect.max_y)
+        return false;
+    return true;
+}
+
 static void mark_area_and_check_board(struct collider_list *list, struct board *board, struct collider collider, int32_t u, int32_t v)
 {
     struct vector p = { u, v };
@@ -115,6 +151,9 @@ static void add_collider(struct collider_list *list, struct board *board, struct
     mark_area_and_check_board(list, board, collider, p.u, p.v - 1);
     mark_area_and_check_board(list, board, collider, p.u + 1, p.v - 1);
     list->colliders[list->length++] = collider;
+    list->bounding_box = xy_rect_add_collider(list->bounding_box, collider);
+    if (!xy_rect_contains_collider(list->bounding_box_up_to_cursor, collider))
+        return;
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
         if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
@@ -133,6 +172,8 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         number_of_colliders += board->moving_atoms.length;
     struct collider_list list = {
         .colliders = calloc(number_of_colliders, sizeof(struct collider)),
+        .bounding_box = empty_rect,
+        .bounding_box_up_to_cursor = empty_rect,
         .collision_location = collision_location,
     };
     size_t atom_index = 0;
@@ -154,12 +195,15 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             .radius = armBaseRadius,
         });
         list.cursor = list.length;
+        list.bounding_box_up_to_cursor = list.bounding_box;
     }
-    list.cursor = list.length;
     size_t fixed_colliders = list.length;
+    struct xy_rect fixed_bounding_box = list.bounding_box;
     for (float progress = increment; progress < 1.f; progress += increment) {
         list.cursor = fixed_colliders;
         list.length = fixed_colliders;
+        list.bounding_box = fixed_bounding_box;
+        list.bounding_box_up_to_cursor = fixed_bounding_box;
         for (size_t i = 0; i < solution->number_of_arms; ++i) {
             if (vectors_equal(solution->arms[i].movement, zero_vector))
                 continue;
@@ -223,6 +267,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 });
             }
             list.cursor = list.length;
+            list.bounding_box_up_to_cursor = list.bounding_box;
         }
 
         // printf("[");
