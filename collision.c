@@ -104,7 +104,7 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
 }
 
 __attribute__((always_inline))
-static void add_collider_inline(struct collider_list *list, struct board *board, struct collider collider)
+static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
     struct vector p = from_xy(collider.center);
     mark_area_and_check_board(list, board, collider, p.u, p.v);
@@ -124,11 +124,6 @@ static void add_collider_inline(struct collider_list *list, struct board *board,
             *list->collision_location = p;
         break;
     }
-}
-
-static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
-{
-    add_collider_inline(list, board, collider);
 }
 
 bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
@@ -219,7 +214,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             float ry = (float)sin(r);
             for (size_t j = 0; j < m.number_of_atoms; ++j) {
                 struct xy_vector xy = moving_atom_offsets[atom_index++];
-                add_collider_inline(&list, board, (struct collider){
+                add_collider(&list, board, (struct collider){
                     .center = {
                         v.x + (xy.x * rx - xy.y * ry),
                         v.y + (xy.x * ry + xy.y * rx),
