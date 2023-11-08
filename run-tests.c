@@ -5,6 +5,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define MEASURE_TIMES 0
+
+#if MEASURE_TIMES
+#include <time.h>
+#endif
+
 struct puzzle {
     struct puzzle *next;
     char *filename;
@@ -54,6 +60,12 @@ int main()
     int validated_solutions = 0;
     FILE *solution_list = popen("find test/solution -type f -name '*.solution'", "r");
     while ((line = getline(&buf, &n, solution_list)) >= 0) {
+#if MEASURE_TIMES
+        struct timespec tstart = {0};
+        struct timespec tend = {0};
+        clock_gettime(CLOCK_MONOTONIC, &tstart);
+#endif
+
         if (line > 0 && buf[line - 1] == '\n')
             buf[line - 1] = '\0';
         struct solution_file *sf = parse_solution_file(buf);
@@ -128,6 +140,15 @@ int main()
             goto fail;
         }
     success:
+#if MEASURE_TIMES
+        clock_gettime(CLOCK_MONOTONIC, &tend);
+        printf("%.5f C=%" PRIu64 " A=%" PRIu32 " %s\n",
+               ((double)tend.tv_sec + 1.0e-9*tend.tv_nsec) -
+               ((double)tstart.tv_sec + 1.0e-9*tstart.tv_nsec),
+               board.cycle,
+               used_area(&board),
+               buf);
+#endif
         validated_solutions++;
     fail:
         destroy(&solution, &board);
