@@ -1260,15 +1260,41 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             v->error = v->steady_state_end.error;
             return -1;
         }
-        int start_value = lookup_per_cycle_metric(&v->steady_state_start, metric, &v->error);
-        int end_value = lookup_per_cycle_metric(&v->steady_state_end, metric, &v->error);
-        if (start_value < 0 || end_value < 0)
-            return -1;
-        if (start_value != end_value) {
-            v->error = (struct error){ .description = "metric doesn't reach a steady state" };
-            return -1;
+        if (!strcmp(metric, "height")) {
+            int value = INT_MAX;
+            if (v->steady_state_start.height_0 == v->steady_state_end.height_0 && v->steady_state_start.height_0 < value)
+                value = v->steady_state_start.height_0;
+            if (v->steady_state_start.height_60 == v->steady_state_end.height_60 && v->steady_state_start.height_60 < value)
+                value = v->steady_state_start.height_60;
+            if (v->steady_state_start.height_120 == v->steady_state_end.height_120 && v->steady_state_start.height_120 < value)
+                value = v->steady_state_start.height_120;
+            if (value == INT_MAX) {
+                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+                return -1;
+            }
+            return value;
+        } else if (!strcmp(metric, "width*2")) {
+            int value = INT_MAX;
+            if (v->steady_state_start.width2_0 == v->steady_state_end.width2_0 && v->steady_state_start.width2_0 < value)
+                value = v->steady_state_start.width2_0;
+            if (v->steady_state_start.width2_60 == v->steady_state_end.width2_60 && v->steady_state_start.width2_60 < value)
+                value = v->steady_state_start.width2_60;
+            if (v->steady_state_start.width2_120 == v->steady_state_end.width2_120 && v->steady_state_start.width2_120 < value)
+                value = v->steady_state_start.width2_120;
+            if (value == INT_MAX) {
+                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+                return -1;
+            }
+            return value;
+        } else {
+            int start_value = lookup_per_cycle_metric(&v->steady_state_start, metric, &v->error);
+            int end_value = lookup_per_cycle_metric(&v->steady_state_end, metric, &v->error);
+            if (start_value != end_value) {
+                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+                return -1;
+            }
+            return start_value;
         }
-        return start_value;
     } else {
         if (!v->completion.valid) {
             while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
