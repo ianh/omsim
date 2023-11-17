@@ -1,6 +1,7 @@
 #include "decode.h"
 #include "parse.h"
 #include "sim.h"
+#include "verifier.h"
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -153,19 +154,61 @@ static void print_board(struct board *board)
 
 int main(int argc, char *argv[])
 {
+    const char *puzzle_path = 0;
+    const char *solution_path = 0;
+    const char *requested_metrics[64];
+    int number_of_requested_metrics = 0;
+    bool awaiting_metric = false;
+    for (int i = 1; i < argc; ++i) {
+        if (awaiting_metric) {
+            if (number_of_requested_metrics >= sizeof(requested_metrics) / sizeof(requested_metrics[0])) {
+                fprintf(stderr, "too many metrics\n");
+                return -1;
+            }
+            requested_metrics[number_of_requested_metrics++] = argv[i];
+            awaiting_metric = false;
+        } else if (strcmp(argv[i], "--metric") == 0)
+            awaiting_metric = true;
+        else if (!puzzle_path)
+            puzzle_path = argv[i];
+        else if (!solution_path)
+            solution_path = argv[i];
+        else {
+            puzzle_path = 0;
+            solution_path = 0;
+            break;
+        }
+    }
+    if (awaiting_metric || !puzzle_path || !solution_path) {
+        fprintf(stderr, "usage: omsim [--metric <metric name>]* puzzle solution\n");
+        return -1;
+    }
+    if (number_of_requested_metrics > 0) {
+        void *verifier = verifier_create(puzzle_path, solution_path);
+        if (verifier_error(verifier)) {
+            puts(verifier_error(verifier));
+            return -1;
+        }
+        for (int i = 0; i < number_of_requested_metrics; ++i) {
+            int value = verifier_evaluate_metric(verifier, requested_metrics[i]);
+            if (verifier_error(verifier)) {
+                printf("%s: %s on cycle %d at %d %d\n", requested_metrics[i], verifier_error(verifier),
+                    verifier_error_cycle(verifier), verifier_error_location_u(verifier), verifier_error_location_v(verifier));
+                verifier_error_clear(verifier);
+            } else
+                printf("%s is %d\n", requested_metrics[i], value);
+        }
+        return 0;
+    }
     // read input files.
-    if (argc < 3) {
-        fprintf(stderr, "usage: omsim [puzzle] [solution]\n");
-        return -1;
-    }
-    struct puzzle_file *pf = parse_puzzle_file(argv[1]);
+    struct puzzle_file *pf = parse_puzzle_file(puzzle_path);
     if (!pf) {
-        fprintf(stderr, "%s is not a valid puzzle file\n", argv[1]);
+        fprintf(stderr, "%s is not a valid puzzle file\n", puzzle_path);
         return -1;
     }
-    struct solution_file *sf = parse_solution_file(argv[2]);
+    struct solution_file *sf = parse_solution_file(solution_path);
     if (!sf) {
-        fprintf(stderr, "%s is not a valid solution file\n", argv[2]);
+        fprintf(stderr, "%s is not a valid solution file\n", solution_path);
         return -1;
     }
 

@@ -10,8 +10,8 @@ EMEXPORTS3=_verifier_set_fails_on_wrong_output,_verifier_set_fails_on_wrong_outp
 EMEXPORTS4=_verifier_wrong_output_atom,_verifier_wrong_output_clear,_verifier_number_of_output_intervals
 EMEXPORTS5=_verifier_output_interval,_verifier_output_intervals_repeat_after
 
-omsim: main.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
-	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c decode.c collision.c $(LDLIBS)
+omsim: main.c parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h verifier.c verifier.h Makefile
+	$(CC) $(CFLAGS) -o $@ main.c parse.c sim.c decode.c collision.c verifier.c $(LDLIBS)
 
 libverify.so: verifier.c verifier.h parse.c sim.c decode.c collision.c parse.h sim.h decode.h collision.h Makefile
 	$(CC) $(CFLAGS) -shared -fpic -o $@ verifier.c sim.c parse.c decode.c collision.c $(LDLIBS)
