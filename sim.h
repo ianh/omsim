@@ -10,6 +10,8 @@ typedef uint64_t atom;
 #define NUMBER_OF_ATOM_TYPES 16
 #define ATOM_OF_TYPE(type) (1ULL << ((type) + 1))
 
+#define VALID (1ULL << 0)
+
 // these shift amounts must match the atom bytes in the puzzle file format.
 #define SALT (1ULL << 1)
 #define AIR (1ULL << 2)
@@ -55,14 +57,13 @@ typedef uint64_t atom;
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
-#define GRABBED_ONCE (1ULL << 22)
+#define GRABBED_ONCE (1ULL << 23)
 #define GRABBED (0x1FULL * GRABBED_ONCE)
 
-#define VALID (1ULL << 27)
-#define REMOVED (1ULL << 28)
+#define REMOVED (1ULL << 27)
 // removed atoms can be marked with their movement index to detect movement in
 // different directions.  these flags are only valid for removed atoms.
-#define MOVED (1ULL << 26)
+#define MOVED (1ULL << 28)
 #define MOVEMENT_INDEX(movement_index) ((atom)(movement_index) << 29)
 #define GET_MOVEMENT_INDEX(atom) ((atom) >> 29)
 #define MAX_MOVEMENTS ((-1ULL) >> 29)
@@ -418,6 +419,7 @@ struct board {
     // how many hexes overlap one another (other than arms and track)?
     uint64_t overlap;
 
+    // did the solution complete yet?
     bool complete;
 };
 
