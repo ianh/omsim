@@ -352,11 +352,11 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     };
     bool has_atoms = false;
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        atom a = board->atoms_at_positions[i].atom;
+        atom a = board->grid.atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
         has_atoms = true;
-        struct vector p = board->atoms_at_positions[i].position;
+        struct vector p = board->grid.atoms_at_positions[i].position;
         for (int j = 0; j < sizeof(dimensions)/sizeof(dimensions[0]); ++j) {
             int64_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
             if (value < dimensions[j].min)
@@ -556,27 +556,27 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
 {
     snapshot->arms = realloc(snapshot->arms, sizeof(struct mechanism) * solution->number_of_arms);
     memcpy(snapshot->arms, solution->arms, sizeof(struct mechanism) * solution->number_of_arms);
-    struct atom_at_position *a = snapshot->board.atoms_at_positions;
+    struct atom_at_position *a = snapshot->board.grid.atoms_at_positions;
     snapshot->board = (struct board){
-        .hash_capacity = board->hash_capacity,
+        .grid.hash_capacity = board->grid.hash_capacity,
         .area = board->area,
         .cycle = board->cycle,
     };
     a = realloc(a, sizeof(struct atom_at_position) * BOARD_CAPACITY(board));
-    memcpy(a, board->atoms_at_positions, sizeof(struct atom_at_position) * BOARD_CAPACITY(board));
-    snapshot->board.atoms_at_positions = a;
+    memcpy(a, board->grid.atoms_at_positions, sizeof(struct atom_at_position) * BOARD_CAPACITY(board));
+    snapshot->board.grid.atoms_at_positions = a;
     snapshot->board_in_range = 0;
     snapshot->empty_in_range = 0;
     snapshot->throughput_waste = 0;
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        atom a = board->atoms_at_positions[i].atom;
+        atom a = board->grid.atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
-        struct vector p = board->atoms_at_positions[i].position;
+        struct vector p = board->grid.atoms_at_positions[i].position;
         if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
             if (!(a & REMOVED)) {
                 if (board->uses_poison)
-                    board->atoms_at_positions[i].atom |= POISON;
+                    board->grid.atoms_at_positions[i].atom |= POISON;
                 snapshot->throughput_waste = 1;
             }
             continue;
@@ -619,10 +619,10 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
     uint32_t board_in_range = 0;
     uint32_t empty_in_range = 0;
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        atom a = board->atoms_at_positions[i].atom;
+        atom a = board->grid.atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
-        struct vector p = board->atoms_at_positions[i].position;
+        struct vector p = board->grid.atoms_at_positions[i].position;
         bool in_range = true;
         if (p.u < snapshot->min_u || p.u > snapshot->max_u || p.v < snapshot->min_v || p.v > snapshot->max_v) {
             if (a & VISITED)
@@ -685,10 +685,10 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     int32_t max_v = INT32_MIN;
     int32_t min_v = INT32_MAX;
     for (uint32_t i = 0; i < BOARD_CAPACITY(&board); ++i) {
-        atom a = board.atoms_at_positions[i].atom;
+        atom a = board.grid.atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
-        struct vector p = board.atoms_at_positions[i].position;
+        struct vector p = board.grid.atoms_at_positions[i].position;
         if (p.u < min_u)
             min_u = p.u;
         if (p.u > max_u)
@@ -845,11 +845,11 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
                 s->satisfactions_until_snapshot = s->next_satisfactions_until_snapshot;
                 s->next_satisfactions_until_snapshot *= 2;
             } else if (steady_state && s->board.cycle % check_period == board.cycle % check_period) {
-                struct atom_at_position *a = shifted_board.atoms_at_positions;
+                struct atom_at_position *a = shifted_board.grid.atoms_at_positions;
                 shifted_board = board;
                 a = realloc(a, sizeof(struct atom_at_position) * BOARD_CAPACITY(&board));
-                memcpy(a, board.atoms_at_positions, sizeof(struct atom_at_position) * BOARD_CAPACITY(&board));
-                shifted_board.atoms_at_positions = a;
+                memcpy(a, board.grid.atoms_at_positions, sizeof(struct atom_at_position) * BOARD_CAPACITY(&board));
+                shifted_board.grid.atoms_at_positions = a;
 
                 // clear a gap corresponding to the number of repeating units added since the snapshot.
                 struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
@@ -948,15 +948,15 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
 error:
     for (uint32_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
         free(repeating_output_snapshots[i].arms);
-        free(repeating_output_snapshots[i].board.atoms_at_positions);
+        free(repeating_output_snapshots[i].board.grid.atoms_at_positions);
         free(repeating_output_snapshots[i].output_count);
     }
     free(repeating_output_snapshots);
     free(shifted_atoms);
     free(snapshot.arms);
-    free(snapshot.board.atoms_at_positions);
+    free(snapshot.board.grid.atoms_at_positions);
     free(snapshot.output_count);
-    free(shifted_board.atoms_at_positions);
+    free(shifted_board.grid.atoms_at_positions);
     check_wrong_output_and_destroy(v, &solution, &board);
     return m;
 }

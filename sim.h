@@ -363,14 +363,19 @@ struct marked_positions {
     size_t capacity;
     size_t length;
 };
-#define BOARD_ARRAY_MIN (-32)
-#define BOARD_ARRAY_MAX 32
-#define BOARD_ARRAY_PREFIX ((BOARD_ARRAY_MAX-BOARD_ARRAY_MIN)*(BOARD_ARRAY_MAX-BOARD_ARRAY_MIN))
-#define BOARD_CAPACITY(board) (BOARD_ARRAY_PREFIX + (board)->hash_capacity)
-struct board {
+#define GRID_ARRAY_MIN (-32)
+#define GRID_ARRAY_MAX 32
+#define GRID_ARRAY_PREFIX ((GRID_ARRAY_MAX-GRID_ARRAY_MIN)*(GRID_ARRAY_MAX-GRID_ARRAY_MIN))
+#define GRID_CAPACITY(grid) (GRID_ARRAY_PREFIX + (grid).hash_capacity)
+#define BOARD_CAPACITY(board) (GRID_CAPACITY((board)->grid))
+struct atom_grid {
     struct atom_at_position *atoms_at_positions;
-
     uint32_t hash_capacity;
+    struct board *board;
+};
+struct board {
+    struct atom_grid grid;
+
     uint32_t area;
 
     // atoms that need their flags reset.
@@ -446,6 +451,7 @@ void destroy(struct solution *solution, struct board *board);
 void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
 atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query);
+atom *lookup_atom_in_grid(struct atom_grid *grid, struct vector query);
 
 // returns the atom value at the point (for collision detection).
 atom mark_used_area(struct board *board, struct vector point);

@@ -91,9 +91,9 @@ static void print_board(struct board *board)
     int32_t maxu = -10000, minu = 10000;
     int32_t maxv = -10000, minv = 10000;
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        if (!(board->atoms_at_positions[i].atom & VALID))
+        if (!(board->grid.atoms_at_positions[i].atom & VALID))
             continue;
-        struct vector p = board->atoms_at_positions[i].position;
+        struct vector p = board->grid.atoms_at_positions[i].position;
         if (p.u < minu)
             minu = p.u;
         if (p.v < minv)
@@ -108,14 +108,14 @@ static void print_board(struct board *board)
     int stride = (maxu - minu + 1);
     atom *points = calloc(sizeof(atom), stride * (maxv - minv + 1));
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        if (!(board->atoms_at_positions[i].atom & VALID))
+        if (!(board->grid.atoms_at_positions[i].atom & VALID))
             continue;
-        if (!(board->atoms_at_positions[i].atom & REMOVED)) {
-            printf("%d %d %"PRIx64, board->atoms_at_positions[i].position.u, board->atoms_at_positions[i].position.v, board->atoms_at_positions[i].atom);
-            print_atom(board->atoms_at_positions[i].atom);
+        if (!(board->grid.atoms_at_positions[i].atom & REMOVED)) {
+            printf("%d %d %"PRIx64, board->grid.atoms_at_positions[i].position.u, board->grid.atoms_at_positions[i].position.v, board->grid.atoms_at_positions[i].atom);
+            print_atom(board->grid.atoms_at_positions[i].atom);
             printf("\n");
         }
-        points[(board->atoms_at_positions[i].position.u - minu) + stride * (board->atoms_at_positions[i].position.v - minv)] = board->atoms_at_positions[i].atom;
+        points[(board->grid.atoms_at_positions[i].position.u - minu) + stride * (board->grid.atoms_at_positions[i].position.v - minv)] = board->grid.atoms_at_positions[i].atom;
     }
     for (int v = maxv; v >= minv; --v) {
         for (int n = minv; n < v; ++n)
@@ -143,10 +143,10 @@ static void print_board(struct board *board)
 
 #if 0
     for (uint32_t i = 0; i < board->capacity; ++i) {
-        atom a = board->atoms_at_positions[i].atom;
+        atom a = board->grid.atoms_at_positions[i].atom;
         if (!(a & VALID) || (a & REMOVED))
             continue;
-        struct vector position = board->atoms_at_positions[i].position;
+        struct vector position = board->grid.atoms_at_positions[i].position;
         printf("%" PRId32 " %" PRId32 " %" PRIx64 "\n", position.u, position.v, a);
     }
 #endif

@@ -17,7 +17,7 @@ struct atom_ref_at_position {
 };
 
 // hash table functions -- see appendix.
-static void rehash(struct board *board, uint32_t size);
+static void rehash(struct atom_grid *grid, uint32_t size);
 static void schedule_flag_reset_if_needed(struct board *board, atom *a);
 
 static atom mark_used_area_with_overlap(struct board *board, struct vector point, uint64_t *overlap);
@@ -1554,7 +1554,8 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         initial_hashtable_size = 1;
     if (initial_hashtable_size > 99999)
         initial_hashtable_size = 99999;
-    rehash(board, initial_hashtable_size);
+    board->grid.board = board;
+    rehash(&board->grid, initial_hashtable_size);
     // place cabinet walls first; wall-wall overlap isn't counted.
     for (uint32_t i = 0; i < solution->number_of_cabinet_walls; ++i)
         mark_used_area(board, solution->cabinet_walls[i]);
@@ -1646,7 +1647,7 @@ void destroy(struct solution *solution, struct board *board)
         memset(solution, 0, sizeof(*solution));
     }
     if (board) {
-        free(board->atoms_at_positions);
+        free(board->grid.atoms_at_positions);
         free(board->flag_reset);
         free(board->movements.movements);
         free(board->moving_atoms.atoms_at_positions);
@@ -1696,27 +1697,27 @@ bool lookup_track(struct solution *solution, struct vector query, uint32_t *inde
     }
 }
 
-static struct atom_at_position *lookup_atom_at_position_in_array(struct board *board, struct vector query)
+static struct atom_at_position *lookup_atom_at_position_in_array(struct atom_grid *grid, struct vector query)
 {
-    return &board->atoms_at_positions[(query.u - BOARD_ARRAY_MIN) * (BOARD_ARRAY_MAX - BOARD_ARRAY_MIN) + query.v - BOARD_ARRAY_MIN];
+    return &grid->atoms_at_positions[(query.u - GRID_ARRAY_MIN) * (GRID_ARRAY_MAX - GRID_ARRAY_MIN) + query.v - GRID_ARRAY_MIN];
 }
 
 __attribute__((noinline))
-static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct board *board, struct vector query)
+static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct atom_grid *grid, struct vector query)
 {
     uint32_t hash = fnv(&query, sizeof(query));
     while (true) {
-        uint32_t mask = board->hash_capacity - 1;
+        uint32_t mask = grid->hash_capacity - 1;
         uint32_t index = hash & mask;
         uint32_t misses = 0;
         while (true) {
-            struct atom_at_position *a = &board->atoms_at_positions[BOARD_ARRAY_PREFIX + index];
+            struct atom_at_position *a = &grid->atoms_at_positions[GRID_ARRAY_PREFIX + index];
             if (!(a->atom & VALID))
                 return a;
             if (vectors_equal(a->position, query))
                 return a;
             if (++misses == 3) {
-                rehash(board, board->hash_capacity * 2);
+                rehash(grid, grid->hash_capacity * 2);
                 break;
             }
             index = (index + 1) & mask;
@@ -1726,22 +1727,27 @@ static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct boar
     }
 }
 
-static struct atom_at_position *lookup_atom_at_position(struct board *board, struct vector query)
+static struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, struct vector query)
 {
-    if (query.u >= BOARD_ARRAY_MIN && query.u < BOARD_ARRAY_MAX && query.v >= BOARD_ARRAY_MIN && query.v < BOARD_ARRAY_MAX)
-        return lookup_atom_at_position_in_array(board, query);
+    if (query.u >= GRID_ARRAY_MIN && query.u < GRID_ARRAY_MAX && query.v >= GRID_ARRAY_MIN && query.v < GRID_ARRAY_MAX)
+        return lookup_atom_at_position_in_array(grid, query);
     else
-        return lookup_atom_at_position_in_hashtable(board, query);
+        return lookup_atom_at_position_in_hashtable(grid, query);
 }
 
 atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query)
 {
-    return &lookup_atom_at_position(board, query)->atom;
+    return &lookup_atom_at_position(&board->grid, query)->atom;
+}
+
+atom *lookup_atom_in_grid(struct atom_grid *grid, struct vector query)
+{
+    return &lookup_atom_at_position(grid, query)->atom;
 }
 
 static atom mark_used_area_with_overlap(struct board *board, struct vector point, uint64_t *overlap)
 {
-    struct atom_at_position *a = lookup_atom_at_position(board, point);
+    struct atom_at_position *a = lookup_atom_at_position(&board->grid, point);
     if (a->atom & VALID) {
         if (overlap && !(a->atom & VISITED))
             (*overlap)++;
@@ -1782,7 +1788,7 @@ static void insert_overlapped_atom(struct board *board, struct atom_at_position 
 
 void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason)
 {
-    struct atom_at_position *a = lookup_atom_at_position(board, query);
+    struct atom_at_position *a = lookup_atom_at_position(&board->grid, query);
     if ((a->atom & VALID) && !(a->atom & REMOVED))
         insert_overlapped_atom(board, a, atom, collision_reason);
     else {
@@ -1794,36 +1800,39 @@ void insert_atom(struct board *board, struct vector query, atom atom, const char
 }
 
 __attribute__((noinline))
-static void rehash(struct board *board, uint32_t size)
+static void rehash(struct atom_grid *grid, uint32_t size)
 {
-    uint32_t n = board->hash_capacity;
+    uint32_t n = grid->hash_capacity;
     if (n < 16)
         n = 16;
     while (n < size)
         n *= 2;
-    if (n == board->hash_capacity)
+    if (n == grid->hash_capacity)
         return;
-    struct board old = *board;
-    board->atoms_at_positions = calloc(BOARD_ARRAY_PREFIX + n, sizeof(*board->atoms_at_positions));
-    board->hash_capacity = n;
-    board->flag_reset_length = 0;
+    struct atom_grid old = *grid;
+    grid->atoms_at_positions = calloc(GRID_ARRAY_PREFIX + n, sizeof(*grid->atoms_at_positions));
+    grid->hash_capacity = n;
+    if (grid->board)
+        grid->board->flag_reset_length = 0;
     if (!old.atoms_at_positions)
         return;
-    for (uint32_t i = 0; i < BOARD_ARRAY_PREFIX; ++i) {
+    for (uint32_t i = 0; i < GRID_ARRAY_PREFIX; ++i) {
         struct atom_at_position a = old.atoms_at_positions[i];
         if (!(a.atom & VALID))
             continue;
-        struct atom_at_position *b = lookup_atom_at_position_in_array(board, a.position);
+        struct atom_at_position *b = lookup_atom_at_position_in_array(grid, a.position);
         *b = a;
-        schedule_flag_reset_if_needed(board, &b->atom);
+        if (grid->board)
+            schedule_flag_reset_if_needed(grid->board, &b->atom);
     }
     for (uint32_t i = 0; i < old.hash_capacity; ++i) {
-        struct atom_at_position a = old.atoms_at_positions[BOARD_ARRAY_PREFIX + i];
+        struct atom_at_position a = old.atoms_at_positions[GRID_ARRAY_PREFIX + i];
         if (!(a.atom & VALID))
             continue;
-        struct atom_at_position *b = lookup_atom_at_position_in_hashtable(board, a.position);
+        struct atom_at_position *b = lookup_atom_at_position_in_hashtable(grid, a.position);
         *b = a;
-        schedule_flag_reset_if_needed(board, &b->atom);
+        if (grid->board)
+            schedule_flag_reset_if_needed(grid->board, &b->atom);
     }
     free(old.atoms_at_positions);
 }
