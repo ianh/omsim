@@ -371,7 +371,6 @@ struct board {
     struct atom_at_position *atoms_at_positions;
 
     uint32_t hash_capacity;
-    uint32_t hash_used;
     uint32_t area;
 
     // atoms that need their flags reset.

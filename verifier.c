@@ -559,7 +559,6 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
     struct atom_at_position *a = snapshot->board.atoms_at_positions;
     snapshot->board = (struct board){
         .hash_capacity = board->hash_capacity,
-        .hash_used = board->hash_used,
         .area = board->area,
         .cycle = board->cycle,
     };
