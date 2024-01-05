@@ -1425,7 +1425,7 @@ struct footprint {
     const struct vector *hexes;
 };
 
-struct footprint footprints[] = {
+static struct footprint footprints[] = {
     {
         .type = CALCIFICATION,
         .hexes = (const struct vector[]){
@@ -1534,6 +1534,16 @@ struct footprint footprints[] = {
     },
 };
 
+const struct vector *glyph_footprint(enum mechanism_type type)
+{
+    for (int i = 0; i < sizeof(footprints)/sizeof(footprints[0]); ++i) {
+        if (type & footprints[i].type)
+            return footprints[i].hexes;
+    }
+    static const struct vector trivial_footprint[] = { { 0, 0 } };
+    return trivial_footprint;
+}
+
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
 {
     struct vector p = mechanism_relative_position(m, du, dv, 1);
@@ -1566,15 +1576,12 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     }
     for (uint32_t i = 0; i < solution->number_of_glyphs; ++i) {
         struct mechanism m = solution->glyphs[i];
-        for (int j = 0; j < sizeof(footprints)/sizeof(footprints[0]); ++j) {
-            if (!(m.type & footprints[j].type))
-                continue;
-            for (int k = 0; ; ++k) {
-                struct vector p = footprints[j].hexes[k];
-                mark_used_area_with_overlap(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
-                if (vectors_equal(p, zero_vector))
-                    break;
-            }
+        const struct vector *footprint = glyph_footprint(m.type);
+        for (int j = 0; ; ++j) {
+            struct vector p = footprint[j];
+            mark_used_area_with_overlap(board, mechanism_relative_position(m, p.u, p.v, 1), &board->overlap);
+            if (vectors_equal(p, zero_vector))
+                break;
         }
     }
     for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {

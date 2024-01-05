@@ -320,6 +320,13 @@ struct solution {
     size_t number_of_inputs_and_outputs;
 
     uint64_t target_number_of_outputs;
+
+    // only atoms inside this bounding box are visible to the mechanisms of the
+    // solution.
+    int32_t min_visible_u;
+    int32_t max_visible_u;
+    int32_t min_visible_v;
+    int32_t max_visible_v;
 };
 enum movement_type {
     SWING_MOVEMENT = 0,
@@ -463,6 +470,9 @@ uint32_t used_area(struct board *board);
 // used during decoding.
 bool repeat_molecule(struct input_output *io, uint32_t number_of_repetitions,
  const char **error);
+
+// the origin is always the last vector in the footprint of a glyph.
+const struct vector *glyph_footprint(enum mechanism_type type);
 
 // geometric helper functions.
 struct vector u_offset_for_direction(int direction);
