@@ -359,12 +359,14 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             mark_visible_region(solution, m.position, (m.type & PISTON) ? 3 : part.size);
         } else if (m.type & ANY_GLYPH) {
             solution->glyphs[glyph_index--] = m;
-            const struct vector *footprint = glyph_footprint(m.type);
-            for (int j = 0; ; j++) {
-                struct vector p = footprint[j];
-                mark_visible_region(solution, mechanism_relative_position(m, p.u, p.v, 1), 0);
-                if (vectors_equal(p, zero_vector))
-                    break;
+            if (!(m.type & EQUILIBRIUM)) {
+                const struct vector *footprint = glyph_footprint(m.type);
+                for (int j = 0; ; j++) {
+                    struct vector p = footprint[j];
+                    mark_visible_region(solution, mechanism_relative_position(m, p.u, p.v, 1), 0);
+                    if (vectors_equal(p, zero_vector))
+                        break;
+                }
             }
         } else if (byte_string_is(part.name, "track")) {
             struct vector last_position = m.position;

@@ -54,6 +54,14 @@ typedef uint64_t atom;
 // molecule.  this is used for waste chains in throughput computation.
 #define POISON (1ULL << 21)
 
+// the motion of this atom is being tracked in a side table.  the flag and the
+// atom's motion data will be cleared if the atom enters the board's bounding
+// box.
+#define IS_CHAIN_ATOM (1ULL << 21)
+
+// this flag is set as part of waste chain / polymer throughput detection.
+#define IN_REPEATING_SECTION (1ULL << 22)
+
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
@@ -351,6 +359,10 @@ struct movement {
     int32_t rotation;
 
     int piston_extension;
+
+    // linked list of chain_atom structs corresponding to atoms
+    // involved in this movement.
+    uint32_t first_chain_atom;
 };
 
 struct movement_list {
@@ -369,6 +381,15 @@ struct marked_positions {
     struct vector *positions;
     size_t capacity;
     size_t length;
+};
+
+// chain atoms participate in waste chain / polymer throughput detection.
+struct chain_atom {
+    uint32_t *prev_in_list;
+    uint32_t next_in_list;
+    int rotation;
+    struct vector current_position;
+    struct vector original_position;
 };
 #define GRID_ARRAY_MIN (-32)
 #define GRID_ARRAY_MAX 32
@@ -430,6 +451,13 @@ struct board {
     // how many hexes overlap one another (other than arms and track)?
     uint64_t overlap;
 
+    // this is the side table for atoms with IS_CHAIN_ATOM set.
+    struct chain_atom *chain_atoms;
+    uint32_t number_of_chain_atoms;
+    // a hash table mapping atom positions to their index in chain_atoms.
+    uint32_t *chain_atom_table;
+    uint32_t chain_atom_table_size;
+
     // did the solution complete yet?
     bool complete;
 };
@@ -466,6 +494,15 @@ atom mark_used_area(struct board *board, struct vector point);
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
 
 uint32_t used_area(struct board *board);
+
+static inline bool position_may_be_visible_to_solution(struct solution *solution, struct vector p)
+{
+    return p.u >= solution->min_visible_u && p.u <= solution->max_visible_u &&
+        p.v >= solution->min_visible_v && p.v <= solution->max_visible_v;
+}
+void add_chain_atom_to_table(struct board *board, uint32_t chain_atom_index);
+uint32_t lookup_chain_atom(struct board *board, struct vector query);
+void move_chain_atom_to_list(struct board *board, uint32_t chain_atom_index, uint32_t *list);
 
 // used during decoding.
 bool repeat_molecule(struct input_output *io, uint32_t number_of_repetitions,

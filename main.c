@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "steady-state.h"
 
 static void print_bonds(atom a, uint64_t bond_shift, const char *name)
 {
@@ -242,6 +243,23 @@ int main(int argc, char *argv[])
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
     printf("solution file says area is: %" PRIu32 "\n", sf->area);
     printf("simulation says area is: %" PRIu32 "\n", used_area(&board));
+
+    struct steady_state steady_state = run_until_steady_state(&solution, &board, 20000);
+    switch (steady_state.eventual_behavior) {
+    case EVENTUALLY_ENTERS_STEADY_STATE:
+        printf("simulation entered a steady state (as of cycle %" PRIu64 "), outputting %" PRIu64 " times every %" PRIu64 " cycles\n", board.cycle, steady_state.number_of_outputs, steady_state.number_of_cycles);
+        break;
+    case EVENTUALLY_STOPS_RUNNING:
+        printf("simulation stopped running at cycle: %" PRIu64 "\n", board.cycle);
+        printf("due to collision at %" PRId32 ", %" PRId32 ": %s\n",
+         board.collision_location.u, board.collision_location.v,
+         board.collision_reason);
+        break;
+    case EVENTUALLY_REACHES_CYCLE_LIMIT:
+        printf("simulation reached cycle limit before entering a steady state");
+        break;
+    }
+
     destroy(&solution, &board);
 
     // for (int i = 0; i < solution.number_of_glyphs; ++i) {

@@ -570,7 +570,7 @@ static bool movements_equal(struct movement a, struct movement b)
     return vectors_equal(a_center, b_center);
 }
 
-static void move_atom(struct board *board, atom *a, struct vector position, size_t movement_index)
+static void move_atom(struct board *board, atom *a, struct vector position, size_t movement_index, uint32_t *chain_atom_list)
 {
     size_t capacity = board->moving_atoms.capacity;
     while (board->moving_atoms.length >= capacity)
@@ -587,6 +587,8 @@ static void move_atom(struct board *board, atom *a, struct vector position, size
         .atom = *a,
         .position = position,
     };
+    if (*a & IS_CHAIN_ATOM)
+        move_chain_atom_to_list(board, lookup_chain_atom(board, position), chain_atom_list);
     if (remove_atom(board, (struct atom_ref_at_position){ a, position }))
         *a |= MOVED | MOVEMENT_INDEX(movement_index);
 }
@@ -598,9 +600,10 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
             report_collision(board, movement.absolute_grab_position, "atom moved in two directions simultaneously");
         return;
     }
+    movement.first_chain_atom = UINT32_MAX;
     size_t movement_index = reserve_movement_index(board);
     size_t start = board->moving_atoms.cursor;
-    move_atom(board, a, movement.absolute_grab_position, movement_index);
+    move_atom(board, a, movement.absolute_grab_position, movement_index, &movement.first_chain_atom);
     // do a breadth-first search over the molecule, removing each atom from the
     // board as it's discovered.
     while (board->moving_atoms.cursor < board->moving_atoms.length) {
@@ -615,7 +618,7 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
             atom *b = lookup_atom_without_checking_for_poison(board, p);
             if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
                 continue;
-            move_atom(board, b, p, movement_index);
+            move_atom(board, b, p, movement_index, &movement.first_chain_atom);
         }
         board->moving_atoms.cursor++;
     }
@@ -903,6 +906,19 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                     rotate_bonds(&ap->atom, m->rotation);
                 }
             }
+            uint32_t chain = m->first_chain_atom;
+            while (chain != UINT32_MAX) {
+                struct chain_atom *ca = &board->chain_atoms[chain];
+                struct vector delta = ca->current_position;
+                delta.u -= base.u;
+                delta.v -= base.v;
+                ca->current_position = (struct vector){
+                    u.u * delta.u + v.u * delta.v + base.u + m->translation.u,
+                    u.v * delta.u + v.v * delta.v + base.v + m->translation.v,
+                };
+                ca->rotation = normalize_direction(ca->rotation + m->rotation);
+                chain = ca->next_in_list;
+            }
             if ((m->type & 3) == TRACK_MOVEMENT) {
                 m->base.u += m->translation.u;
                 m->base.v += m->translation.v;
@@ -932,7 +948,18 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct movement m = board->movements.movements[i];
             for (size_t j = 0; j < m.number_of_atoms; ++j) {
                 struct atom_at_position ap = board->moving_atoms.atoms_at_positions[atom_index++];
+                if (position_may_be_visible_to_solution(solution, ap.position))
+                    ap.atom &= ~IS_CHAIN_ATOM;
                 insert_atom(board, ap.position, VALID | ap.atom, "atom moved on top of another atom");
+            }
+            uint32_t chain = m.first_chain_atom;
+            while (chain != UINT32_MAX) {
+                struct chain_atom ca = board->chain_atoms[chain];
+                if (position_may_be_visible_to_solution(solution, ca.current_position))
+                    move_chain_atom_to_list(board, chain, 0);
+                else
+                    add_chain_atom_to_table(board, chain);
+                chain = ca.next_in_list;
             }
         }
     }
@@ -1660,6 +1687,8 @@ void destroy(struct solution *solution, struct board *board)
         free(board->moving_atoms.atoms_at_positions);
         free(board->marked.positions);
         free(board->overlapped_atoms);
+        free(board->chain_atoms);
+        free(board->chain_atom_table);
         memset(board, 0, sizeof(*board));
     }
 }
@@ -1702,6 +1731,54 @@ bool lookup_track(struct solution *solution, struct vector query, uint32_t *inde
         if (*index == (hash & mask))
             abort();
     }
+}
+
+void move_chain_atom_to_list(struct board *board, uint32_t chain_atom_index, uint32_t *list)
+{
+    if (chain_atom_index == UINT32_MAX)
+        return;
+    struct chain_atom *m = &board->chain_atoms[chain_atom_index];
+    if (m->next_in_list != UINT32_MAX)
+        board->chain_atoms[m->next_in_list].prev_in_list = m->prev_in_list;
+    if (m->prev_in_list)
+        *m->prev_in_list = m->next_in_list;
+    if (list) {
+        if (*list == chain_atom_index)
+            abort();
+        m->prev_in_list = list;
+        m->next_in_list = *list;
+        if (*list != UINT32_MAX)
+            board->chain_atoms[*list].prev_in_list = &m->next_in_list;
+        *list = chain_atom_index;
+    } else {
+        m->prev_in_list = 0;
+        m->next_in_list = UINT32_MAX;
+    }
+}
+
+void add_chain_atom_to_table(struct board *board, uint32_t chain_atom_index)
+{
+    if (board->chain_atom_table_size == 0)
+        return;
+    struct vector p = board->chain_atoms[chain_atom_index].current_position;
+    uint32_t hash = fnv(&p, sizeof(p));
+    uint32_t mask = board->chain_atom_table_size - 1;
+    move_chain_atom_to_list(board, chain_atom_index, &board->chain_atom_table[hash & mask]);
+}
+
+uint32_t lookup_chain_atom(struct board *board, struct vector query)
+{
+    if (board->chain_atom_table_size == 0)
+        return UINT32_MAX;
+    uint32_t hash = fnv(&query, sizeof(query));
+    uint32_t mask = board->chain_atom_table_size - 1;
+    uint32_t index = board->chain_atom_table[hash & mask];
+    while (index != UINT32_MAX) {
+        if (vectors_equal(query, board->chain_atoms[index].current_position))
+            return index;
+        index = board->chain_atoms[index].next_in_list;
+    }
+    return index;
 }
 
 static struct atom_at_position *lookup_atom_at_position_in_array(struct atom_grid *grid, struct vector query)
