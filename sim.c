@@ -626,6 +626,55 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
     board->movements.movements[movement_index] = movement;
 }
 
+static void apply_movement_to_position(struct vector base, struct vector translation, struct vector u, struct vector v, struct vector *position)
+{
+    struct vector delta = *position;
+    delta.u -= base.u;
+    delta.v -= base.v;
+    *position = (struct vector){
+        u.u * delta.u + v.u * delta.v + base.u + translation.u,
+        u.v * delta.u + v.v * delta.v + base.v + translation.v,
+    };
+}
+
+static bool range_of_periods_where_motion_is_in_interval(int32_t motion, int32_t interval_min, int32_t interval_max, int32_t *entry_period, int32_t *exit_period)
+{
+    if (motion == 0) {
+        // if there's no motion, either we stay in the interval forever (if zero
+        // is in the interval) or we never enter it.
+        *entry_period = INT32_MIN;
+        *exit_period = INT32_MAX;
+        return 0 >= interval_min && 0 <= interval_max;
+    } else if (motion < 0) {
+        // if the motion is negative, flip everything so it can be positive.
+        // note that max and min change roles when their signs change.
+        motion = -motion;
+        int32_t tmp = interval_max;
+        interval_max = -interval_min;
+        interval_min = -tmp;
+    }
+    // if the interval ends before the motion even begins, then we're never in
+    // the interval.
+    if (interval_max < 0)
+        return false;
+    // find the actual entry and exit periods.
+    *entry_period = (interval_min + motion - 1) / motion;
+    *exit_period = interval_max / motion;
+    // return whether the range is empty (false) or not (true).
+    return *entry_period <= *exit_period;
+}
+
+static bool position_may_eventually_be_visible_to_solution(struct solution *solution, struct vector original, struct vector current)
+{
+    int32_t u_entry, u_exit, v_entry, v_exit;
+    if (!range_of_periods_where_motion_is_in_interval(current.u - original.u, solution->min_visible_u - original.u, solution->max_visible_u - original.u, &u_entry, &u_exit))
+        return false;
+    if (!range_of_periods_where_motion_is_in_interval(current.v - original.v, solution->min_visible_v - original.v, solution->max_visible_v - original.v, &v_entry, &v_exit))
+        return false;
+    // return true if the ranges overlap and false otherwise.
+    return v_entry <= u_exit && u_entry <= v_exit;
+}
+
 static void perform_arm_instructions(struct solution *solution, struct board *board)
 {
     if (solution->tape_period == 0)
@@ -892,14 +941,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct vector v = v_offset_for_direction(m->rotation);
             for (size_t j = 0; j < m->number_of_atoms; ++j) {
                 struct atom_at_position *ap = &board->moving_atoms.atoms_at_positions[atom_index++];
-                struct vector delta = ap->position;
-                delta.u -= base.u;
-                delta.v -= base.v;
-                ap->position = (struct vector){
-                    u.u * delta.u + v.u * delta.v + base.u + m->translation.u,
-                    u.v * delta.u + v.v * delta.v + base.v + m->translation.v,
-                };
+                apply_movement_to_position(base, m->translation, u, v, &ap->position);
                 if (m->rotation != 0) {
+                    struct vector delta = ap->position;
+                    delta.u -= base.u;
+                    delta.v -= base.v;
                     int32_t distance = (abs(delta.u) + abs(delta.v) + abs(delta.u + delta.v)) / 2;
                     if (distance > maximum_rotation_distance)
                         maximum_rotation_distance = distance;
@@ -909,13 +955,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             uint32_t chain = m->first_chain_atom;
             while (chain != UINT32_MAX) {
                 struct chain_atom *ca = &board->chain_atoms[chain];
-                struct vector delta = ca->current_position;
-                delta.u -= base.u;
-                delta.v -= base.v;
-                ca->current_position = (struct vector){
-                    u.u * delta.u + v.u * delta.v + base.u + m->translation.u,
-                    u.v * delta.u + v.v * delta.v + base.v + m->translation.v,
-                };
+                apply_movement_to_position(base, m->translation, u, v, &ca->current_position);
+                if (board->chain_mode == EXTEND_CHAIN)
+                    apply_movement_to_position(base, m->translation, u, v, &ca->original_position);
                 ca->rotation = normalize_direction(ca->rotation + m->rotation);
                 chain = ca->next_in_list;
             }
@@ -927,13 +969,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 m->grabber_offset.u = g.u ? g.u * (m->grabber_offset.u / g.u + m->piston_extension) : 0;
                 m->grabber_offset.v = g.v ? g.v * (m->grabber_offset.v / g.v + m->piston_extension) : 0;
             }
-            struct vector delta = m->absolute_grab_position;
-            delta.u -= base.u;
-            delta.v -= base.v;
-            m->absolute_grab_position = (struct vector){
-                u.u * delta.u + v.u * delta.v + base.u + m->translation.u,
-                u.v * delta.u + v.v * delta.v + base.v + m->translation.v,
-            };
+            apply_movement_to_position(base, m->translation, u, v, &m->absolute_grab_position);
             if ((m->type & 3) == SWING_MOVEMENT)
                 m->base_rotation += m->rotation;
         }
@@ -955,9 +991,12 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             uint32_t chain = m.first_chain_atom;
             while (chain != UINT32_MAX) {
                 struct chain_atom ca = board->chain_atoms[chain];
-                if (position_may_be_visible_to_solution(solution, ca.current_position))
+                if (position_may_be_visible_to_solution(solution, ca.current_position) ||
+                 (board->chain_mode == EXTEND_CHAIN && position_may_eventually_be_visible_to_solution(solution, ca.original_position, ca.current_position))) {
+                    if (board->chain_mode == EXTEND_CHAIN)
+                        board->chain_will_become_visible = true;
                     move_chain_atom_to_list(board, chain, 0);
-                else
+                } else
                     add_chain_atom_to_table(board, chain);
                 chain = ca.next_in_list;
             }

@@ -391,6 +391,14 @@ struct chain_atom {
     struct vector current_position;
     struct vector original_position;
 };
+// in the DISCOVER_CHAIN mode, the original position is left fixed so that the
+// overall motion can be discovered.  in the EXTEND_CHAIN mode, the original
+// position is carried along with movements to track the relative translation
+// throughout the steady state period.
+enum chain_mode {
+    DISCOVER_CHAIN,
+    EXTEND_CHAIN,
+};
 #define GRID_ARRAY_MIN (-32)
 #define GRID_ARRAY_MAX 32
 #define GRID_ARRAY_PREFIX ((GRID_ARRAY_MAX-GRID_ARRAY_MIN)*(GRID_ARRAY_MAX-GRID_ARRAY_MIN))
@@ -451,12 +459,15 @@ struct board {
     // how many hexes overlap one another (other than arms and track)?
     uint64_t overlap;
 
+    enum chain_mode chain_mode;
     // this is the side table for atoms with IS_CHAIN_ATOM set.
     struct chain_atom *chain_atoms;
     uint32_t number_of_chain_atoms;
     // a hash table mapping atom positions to their index in chain_atoms.
     uint32_t *chain_atom_table;
     uint32_t chain_atom_table_size;
+    // set if a chain atom re-enters the box while chain_mode is EXTEND_CHAIN.
+    bool chain_will_become_visible;
 
     // did the solution complete yet?
     bool complete;

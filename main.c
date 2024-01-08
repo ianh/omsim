@@ -256,7 +256,7 @@ int main(int argc, char *argv[])
          board.collision_reason);
         break;
     case EVENTUALLY_REACHES_CYCLE_LIMIT:
-        printf("simulation reached cycle limit before entering a steady state");
+        printf("simulation reached cycle limit before entering a steady state\n");
         break;
     }
 

@@ -77,8 +77,6 @@ static bool arm_directions_equivalent(struct mechanism *a, struct mechanism *b)
 
 static bool check_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
 {
-    if (snapshot->cycle == 0)
-        return false;
     if (board->collision)
         return false;
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
@@ -141,12 +139,16 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
         if (period_aligned_start_cycle > next_snapshot_cycle)
             next_snapshot_cycle = period_aligned_start_cycle;
     }
+    bool disable_check_until_next_snapshot = true;
     while (board->cycle < cycle_limit && !board->collision) {
         // printf("cycle %llu\n", board->cycle);
+        while (board->cycle > next_snapshot_cycle)
+            next_snapshot_cycle *= 2;
         if (board->cycle == next_snapshot_cycle) {
             take_snapshot(solution, board, &snapshot);
+            disable_check_until_next_snapshot = false;
             next_snapshot_cycle *= 2;
-        } else if (!(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
+        } else if (!disable_check_until_next_snapshot && !(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
             struct steady_state result = {
                 .number_of_cycles = board->cycle - snapshot.cycle,
                 .number_of_outputs = UINT64_MAX,
@@ -163,11 +165,18 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 struct chain_atom ca = board->chain_atoms[i];
                 if (!ca.prev_in_list)
                     continue;
-                printf("atom at %d %d is moving by %d %d per period\n", ca.current_position.u, ca.current_position.v,
-                    ca.current_position.u - ca.original_position.u, ca.current_position.v - ca.original_position.v);
             }
-
-            // xx double check it doesn't hit bbox, fill in area growth data structures
+            board->chain_mode = EXTEND_CHAIN;
+            board->chain_will_become_visible = false;
+            for (uint64_t i = 0; i < result.number_of_cycles && !board->collision; ++i)
+                cycle(solution, board);
+            board->chain_mode = DISCOVER_CHAIN;
+            if (board->collision)
+                break;
+            if (board->chain_will_become_visible) {
+                disable_check_until_next_snapshot = true;
+                continue;
+            }
             destroy_snapshot(&snapshot);
             return result;
         }
