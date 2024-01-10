@@ -59,9 +59,6 @@ typedef uint64_t atom;
 // box.
 #define IS_CHAIN_ATOM (1ULL << 21)
 
-// this flag is set as part of waste chain / polymer throughput detection.
-#define IN_REPEATING_SECTION (1ULL << 22)
-
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
@@ -390,6 +387,7 @@ struct chain_atom {
     int rotation;
     struct vector current_position;
     struct vector original_position;
+    bool in_repeating_segment;
 };
 // in the DISCOVER_CHAIN mode, the original position is left fixed so that the
 // overall motion can be discovered.  in the EXTEND_CHAIN mode, the original

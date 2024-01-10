@@ -27,7 +27,6 @@ static void take_snapshot(struct solution *solution, struct board *board, struct
         struct atom_at_position *a = &board->grid.atoms_at_positions[i];
         if (!(a->atom & VALID) || (a->atom & REMOVED))
             continue;
-        a->atom &= ~IN_REPEATING_SECTION;
         if (!position_may_be_visible_to_solution(solution, a->position)) {
             a->atom |= IS_CHAIN_ATOM;
             board->number_of_chain_atoms++;
@@ -101,16 +100,17 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
         number_of_atoms++;
     }
     for (uint32_t i = 0; i < board->number_of_chain_atoms; ++i) {
-        struct chain_atom ca = board->chain_atoms[i];
+        struct chain_atom *ca = &board->chain_atoms[i];
         // skip atoms that aren't in any list (this means they stopped being tracked as chain atoms).
-        if (!ca.prev_in_list)
+        if (!ca->prev_in_list)
             continue;
         // ensure all chain atoms move in a pure translation each steady state period.
-        if (ca.rotation != 0)
+        if (ca->rotation != 0)
             return false;
         // avoid counting atoms in repeating segments twice.
-        atom original = *lookup_atom_in_grid(&board->grid, ca.original_position);
-        if (!(original & VALID) || (original & REMOVED) || (original & IS_CHAIN_ATOM))
+        atom original = *lookup_atom_in_grid(&board->grid, ca->original_position);
+        ca->in_repeating_segment = (original & VALID) && !(original & REMOVED) && !(original & IS_CHAIN_ATOM);
+        if (!ca->in_repeating_segment)
             number_of_atoms++;
     }
     if (number_of_atoms != snapshot->number_of_atoms)
