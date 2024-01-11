@@ -935,6 +935,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         size_t atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement *m = &board->movements.movements[i];
+            if (m->first_chain_atom != UINT32_MAX) {
+                // m->prev_in_list is pointing to stack data right now; fix it so it
+                // properly points to the list in the heap.
+                board->chain_atoms[m->first_chain_atom].prev_in_list = &m->first_chain_atom;
+            }
             // printf("movement: %d %d by %d / %d %d around %d %d (%d)\n", m.absolute_grab_position.u, m.absolute_grab_position.v, m.rotation, m.translation.u, m.translation.v, m.base.u, m.base.v, m.type);
             struct vector base = ((m->type & 3) == SWING_MOVEMENT) ? m->base : m->absolute_grab_position;
             struct vector u = u_offset_for_direction(m->rotation);
@@ -991,10 +996,13 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             uint32_t chain = m.first_chain_atom;
             while (chain != UINT32_MAX) {
                 struct chain_atom ca = board->chain_atoms[chain];
-                if (position_may_be_visible_to_solution(solution, ca.current_position) ||
-                 (board->chain_mode == EXTEND_CHAIN && position_may_eventually_be_visible_to_solution(solution, ca.original_position, ca.current_position))) {
+                if (position_may_be_visible_to_solution(solution, ca.current_position)) {
                     if (board->chain_mode == EXTEND_CHAIN)
                         board->chain_will_become_visible = true;
+                    move_chain_atom_to_list(board, chain, 0);
+                } else if (board->chain_mode == EXTEND_CHAIN && position_may_eventually_be_visible_to_solution(solution, ca.original_position, ca.current_position)) {
+                    board->chain_will_become_visible = true;
+                    *lookup_atom_in_grid(&board->grid, ca.current_position) &= ~IS_CHAIN_ATOM;
                     move_chain_atom_to_list(board, chain, 0);
                 } else
                     add_chain_atom_to_table(board, chain);
