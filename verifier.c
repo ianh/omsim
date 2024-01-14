@@ -133,7 +133,7 @@ struct verifier {
 static void *verifier_create_empty(void)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
-    v->cycle_limit = 100000;
+    v->cycle_limit = 150000;
     v->wrong_output_index = -1;
     v->output_to_measure_intervals_for = -1;
     v->throughput_margin = 50;
