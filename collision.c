@@ -51,6 +51,8 @@ struct collider_list {
 
     bool collision;
     struct vector *collision_location;
+
+    bool ignore_board;
 };
 
 // based on image dimensions in textures/board/hex_tile.lighting/
@@ -159,7 +161,7 @@ __attribute__((always_inline))
 static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
     struct vector p = from_xy(collider.center);
-    if (board->chain_mode != EXTEND_CHAIN) {
+    if (!list->ignore_board) {
         mark_area_and_check_board(list, board, collider, p.u, p.v);
         mark_area_and_check_board(list, board, collider, p.u + 1, p.v);
         mark_area_and_check_board(list, board, collider, p.u, p.v + 1);
@@ -420,6 +422,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         .collision_location = collision_location,
     };
     if (chain_mode == EXTEND_CHAIN) {
+        list.ignore_board = true;
         for (size_t i = 0; i < BOARD_CAPACITY(board); ++i) {
             struct atom_at_position ap = board->grid.atoms_at_positions[i];
             if (!(ap.atom & VALID) || (ap.atom & REMOVED))
@@ -433,6 +436,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 });
             }
         }
+        list.ignore_board = false;
         combine_chain_atoms(&list, 0);
         list.cursor = list.length;
         list.bounding_box_up_to_cursor = list.bounding_box;

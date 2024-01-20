@@ -175,6 +175,12 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 struct chain_atom ca = board->chain_atoms[i];
                 if (!ca.prev_in_list)
                     continue;
+                // chain atoms must move every period.
+                if (ca.current_position.u == ca.original_position.u && ca.current_position.v == ca.original_position.v) {
+                    atom *a = lookup_atom_in_grid(&board->grid, ca.current_position);
+                    *a &= ~IS_CHAIN_ATOM;
+                    move_chain_atom_to_list(board, i, 0);
+                }
             }
             board->chain_mode = EXTEND_CHAIN;
             board->chain_will_become_visible = false;
