@@ -1165,6 +1165,68 @@ static void spawn_inputs(struct solution *solution, struct board *board)
     board->active_input_or_output = UINT32_MAX;
 }
 
+static int32_t gcd(int32_t a, int32_t b)
+{
+    while (b != 0) {
+        int32_t t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+static void match_repeating_output_with_chain_atoms(struct board *board, struct input_output *io)
+{
+    struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
+    int32_t offset = placeholder.position.u - io->repetition_origin.u;
+    if (offset <= 0 || placeholder.position.v != io->repetition_origin.v)
+        return;
+    int32_t maximum_feed_rate = 0;
+    for (uint32_t i = 0; i < io->number_of_original_atoms - 1; ++i) {
+        struct atom_at_position output = io->original_atoms[i];
+        if (vectors_equal(output.position, io->repetition_origin))
+            output.atom |= placeholder.atom & ALL_BONDS;
+        uint32_t repeats_after = UINT32_MAX;
+        for (uint32_t j = REPEATING_OUTPUT_REPETITIONS; j < repeats_after; ++j) {
+            struct vector p = output.position;
+            p.u += j * offset;
+            atom a = *lookup_atom_without_checking_for_poison(board, p);
+            if (!(a & VALID) || (a & REMOVED) || (a & BEING_PRODUCED) || (a & IS_CHAIN_ATOM)) {
+                // look for a repeating chain atom that will fill in this hex.
+                bool found_chain_atom = false;
+                for (uint32_t k = 0; k < board->number_of_chain_atoms; ++k) {
+                    struct chain_atom ca = board->chain_atoms[k];
+                    if (!ca.prev_in_list || !ca.in_repeating_segment)
+                        continue;
+                    if (ca.current_position.v != p.v || ca.current_position.u > p.u)
+                        continue;
+                    int32_t chain_offset = ca.current_position.u - ca.original_position.u;
+                    if (chain_offset <= 0 || ca.current_position.v != ca.original_position.v)
+                        continue;
+                    if ((p.u - ca.current_position.u) % chain_offset != 0)
+                        continue;
+                    // we only have to check up to the offset where this chain
+                    // atom appears in the same spot in the output.
+                    if (repeats_after == UINT32_MAX)
+                        repeats_after = j + chain_offset / gcd(offset, chain_offset);
+                    if (chain_offset > maximum_feed_rate)
+                        maximum_feed_rate = chain_offset;
+                    found_chain_atom = true;
+                    a = *lookup_atom_without_checking_for_poison(board, ca.current_position);
+                    break;
+                }
+                if (!found_chain_atom)
+                    return;
+            }
+            if ((a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output.atom)
+                return;
+        }
+    }
+    // the entire product matched; update the maximum feed rate.
+    if (maximum_feed_rate > io->maximum_feed_rate)
+        io->maximum_feed_rate = maximum_feed_rate;
+}
+
 static bool mark_output_position(struct board *board, struct vector pos)
 {
     atom *a = lookup_atom_without_checking_for_poison(board, pos);
@@ -1289,6 +1351,14 @@ static void consume_outputs(struct solution *solution, struct board *board)
             while (match && cursor < board->marked.length) {
                 struct vector p = board->marked.positions[cursor++];
                 atom a = *lookup_atom_without_checking_for_poison(board, p);
+                if (a & IS_CHAIN_ATOM && board->chain_mode == EXTEND_CHAIN) {
+                    // ensure atoms stay within the vertical region forever.
+                    struct chain_atom ca = board->chain_atoms[lookup_chain_atom(board, p)];
+                    if (ca.current_position.v - ca.original_position.v != 0) {
+                        match = false;
+                        break;
+                    }
+                }
                 for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
                     if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
                         continue;
@@ -1320,6 +1390,8 @@ static void consume_outputs(struct solution *solution, struct board *board)
             atom *a = lookup_atom_without_checking_for_poison(board, board->marked.positions[j]);
             *a &= ~VISITED;
         }
+        if (match && (io->type & REPEATING_OUTPUT) && board->chain_mode == EXTEND_CHAIN)
+            match_repeating_output_with_chain_atoms(board, io);
         // if the output is a match, first trigger an interrupt if necessary.
         // then remove the output and increment the output counter.
         if (match) {

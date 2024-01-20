@@ -264,6 +264,10 @@ struct input_output {
     // how much should number_of_outputs go up for every matched repetition?
     uint32_t outputs_per_repetition;
 
+    // in EXTEND_CHAIN mode, this field records the fastest rate at which a
+    // matching output shape extends (in hexes per steady-state period).
+    int32_t maximum_feed_rate;
+
     // these are the original atoms, before repetition is applied.  the
     // placeholder atom is guaranteed to be at the last position in the array.
     struct atom_at_position *original_atoms;

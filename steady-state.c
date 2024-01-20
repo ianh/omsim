@@ -125,6 +125,16 @@ static void destroy_snapshot(struct snapshot *snapshot)
     free(snapshot->output_count);
 }
 
+static uint64_t gcd(uint64_t a, uint64_t b)
+{
+    while (b != 0) {
+        uint64_t t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
 struct steady_state run_until_steady_state(struct solution *solution, struct board *board, uint64_t cycle_limit)
 {
     struct snapshot snapshot = { 0 };
@@ -168,6 +178,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             }
             board->chain_mode = EXTEND_CHAIN;
             board->chain_will_become_visible = false;
+            for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
+                solution->inputs_and_outputs[i].maximum_feed_rate = 0;
             for (uint64_t i = 0; i < result.number_of_cycles && !board->collision; ++i)
                 cycle(solution, board);
             board->chain_mode = DISCOVER_CHAIN;
@@ -176,6 +188,31 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             if (board->chain_will_become_visible) {
                 disable_check_until_next_snapshot = true;
                 continue;
+            }
+            uint64_t repeating_outputs = 1;
+            uint64_t repeating_periods = 0;
+            for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+                struct input_output *io = &solution->inputs_and_outputs[i];
+                if (!(io->type & REPEATING_OUTPUT))
+                    continue;
+                struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
+                int32_t offset = placeholder.position.u - io->repetition_origin.u;
+                if (offset <= 0 || placeholder.position.v != io->repetition_origin.v) {
+                    repeating_outputs = 0;
+                    repeating_periods = 1;
+                    break;
+                }
+                if ((uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate * repeating_periods < repeating_outputs * (uint64_t)offset) {
+                    repeating_outputs = (uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate;
+                    repeating_periods = offset;
+                }
+            }
+            if (repeating_outputs < result.number_of_outputs * repeating_periods) {
+                uint64_t d = gcd(repeating_outputs, repeating_periods);
+                repeating_outputs /= d;
+                repeating_periods /= d;
+                result.number_of_outputs = repeating_outputs;
+                result.number_of_cycles *= repeating_periods;
             }
             destroy_snapshot(&snapshot);
             return result;
