@@ -136,6 +136,31 @@ static bool xy_rect_contains_collider(struct xy_rect rect, struct collider colli
     return true;
 }
 
+static bool xy_rect_intersects_ray(struct xy_rect rect, struct xy_vector origin, double motion_delta_x, double motion_delta_y, float radius)
+{
+    if (motion_delta_x < 0) {
+        float tmp = rect.min_x;
+        rect.min_x = -rect.max_x;
+        rect.max_x = -tmp;
+        motion_delta_x = -motion_delta_x;
+    }
+    if (motion_delta_y < 0) {
+        float tmp = rect.min_y;
+        rect.min_y = -rect.max_y;
+        rect.max_y = -tmp;
+        motion_delta_y = -motion_delta_y;
+    }
+    double max_x = rect.max_x + radius - origin.x;
+    double max_y = rect.max_y + radius - origin.y;
+    if (max_x < 0 || max_y < 0)
+        return false;
+    double min_x = rect.min_x - radius - origin.x;
+    double min_y = rect.min_y - radius - origin.y;
+    if (min_x * motion_delta_y > max_y * motion_delta_x || min_y * motion_delta_x > max_x * motion_delta_y)
+        return false;
+    return true;
+}
+
 static void mark_area_and_check_board(struct collider_list *list, struct board *board, struct collider collider, int32_t u, int32_t v)
 {
     struct vector p = { u, v };
@@ -317,13 +342,15 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
         double perp_ax = -motion_ay / motion_length_a * atomRadius * 2;
         double perp_ay = motion_ax / motion_length_a * atomRadius * 2;
         // first, check for collisions between the chain atom and normal colliders.
-        for (size_t j = 0; j < list->length; ++j) {
-            struct collider b = list->colliders[j];
-            int32_t period = minimum_approach_period(motion_ax, motion_ay, origin_a, b.center);
-            if (xy_dist(b.center, chain_atom_center_for_period(a, period)) < b.radius + atomRadius) {
-                list->collision = true;
-                if (list->collision_location)
-                    *list->collision_location = from_xy(b.center);
+        if (xy_rect_intersects_ray(list->bounding_box, origin_a, motion_ax, motion_ay, atomRadius)) {
+            for (size_t j = 0; j < list->length; ++j) {
+                struct collider b = list->colliders[j];
+                int32_t period = minimum_approach_period(motion_ax, motion_ay, origin_a, b.center);
+                if (xy_dist(b.center, chain_atom_center_for_period(a, period)) < b.radius + atomRadius) {
+                    list->collision = true;
+                    if (list->collision_location)
+                        *list->collision_location = from_xy(b.center);
+                }
             }
         }
         // then, check for collisions between the chain atom and other chain atoms.
