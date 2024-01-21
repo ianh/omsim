@@ -152,13 +152,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
     bool disable_check_until_next_snapshot = true;
     while (board->cycle < cycle_limit && !board->collision) {
         // printf("cycle %llu\n", board->cycle);
-        while (board->cycle > next_snapshot_cycle)
-            next_snapshot_cycle *= 2;
-        if (board->cycle == next_snapshot_cycle) {
-            take_snapshot(solution, board, &snapshot);
-            disable_check_until_next_snapshot = false;
-            next_snapshot_cycle *= 2;
-        } else if (!disable_check_until_next_snapshot && !(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
+        if (!disable_check_until_next_snapshot && !(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
             struct steady_state result = {
                 .number_of_cycles = board->cycle - snapshot.cycle,
                 .number_of_outputs = UINT64_MAX,
@@ -222,6 +216,13 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             }
             destroy_snapshot(&snapshot);
             return result;
+        }
+        while (board->cycle > next_snapshot_cycle)
+            next_snapshot_cycle *= 2;
+        if (board->cycle == next_snapshot_cycle) {
+            take_snapshot(solution, board, &snapshot);
+            disable_check_until_next_snapshot = false;
+            next_snapshot_cycle *= 2;
         }
         cycle(solution, board);
     }
