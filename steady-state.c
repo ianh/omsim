@@ -218,6 +218,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 repeating_periods /= d;
                 result.number_of_outputs = repeating_outputs;
                 result.number_of_cycles *= repeating_periods;
+                if (repeating_periods % 2 == 0)
+                    result.pivot_parity = false;
             }
             destroy_snapshot(&snapshot);
             return result;
