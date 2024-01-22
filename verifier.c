@@ -381,8 +381,8 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
                 continue;
             if (solution->arm_tape_length[i] <= 0)
                 continue;
-            int number_of_times_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) / solution->arm_tape_length[i];
-            int progress_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) % solution->arm_tape_length[i];
+            int number_of_times_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) / solution->tape_period;
+            int progress_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) % solution->tape_period;
             for (size_t j = 0; j < solution->arm_tape_length[i]; ++j) {
                 if (solution->arm_tape[i][j] == ' ' || solution->arm_tape[i][j] == '\0')
                     continue;
