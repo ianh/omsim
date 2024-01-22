@@ -439,7 +439,6 @@ struct board {
     struct marked_positions marked;
 
     bool ignore_swing_area;
-    bool disable_overlapped_atoms;
     bool uses_poison;
     const char *poison_message;
 

@@ -1970,10 +1970,6 @@ atom mark_used_area(struct board *board, struct vector point)
 __attribute__((noinline))
 static void insert_overlapped_atom(struct board *board, struct atom_at_position *existing_atom, atom atom, const char *collision_reason)
 {
-    if (board->disable_overlapped_atoms) {
-        report_collision(board, existing_atom->position, collision_reason);
-        return;
-    }
     size_t capacity = board->overlapped_atoms_capacity;
     while (board->number_of_overlapped_atoms >= capacity)
         capacity = 4 * (capacity + 12) / 3;
