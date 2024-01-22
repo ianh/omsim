@@ -24,6 +24,10 @@ struct steady_state {
 
     // how many outputs are produced during this loop?
     uint64_t number_of_outputs;
+
+    // is there a visual difference between the start and end of the loop due to
+    // arm grabbers pivoting?
+    bool pivot_parity;
 };
 
 struct steady_state run_until_steady_state(struct solution *solution, struct board *board, uint64_t cycle_limit);

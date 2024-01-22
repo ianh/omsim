@@ -156,6 +156,13 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 .number_of_outputs = UINT64_MAX,
                 .eventual_behavior = EVENTUALLY_ENTERS_STEADY_STATE,
             };
+            for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+                struct mechanism a = snapshot.arms[i];
+                struct mechanism b = solution->arms[i];
+                result.pivot_parity = a.pivot_parity != b.pivot_parity;
+                if (result.pivot_parity)
+                    break;
+            }
             for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
                 if (!(solution->inputs_and_outputs[i].type & SINGLE_OUTPUT))
                     continue;
