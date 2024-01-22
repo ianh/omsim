@@ -141,9 +141,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
     uint64_t check_period = solution->tape_period;
     if (check_period == 0)
         check_period = 1;
-    uint64_t next_snapshot_cycle = check_period;
-    while (board->cycle >= next_snapshot_cycle)
-        next_snapshot_cycle *= 2;
+    uint64_t next_snapshot_cycle = check_period * (1 + (board->cycle + check_period - 1) / check_period);
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
         uint64_t period_aligned_start_cycle = check_period * ((solution->arm_tape_start_cycle[i] + check_period - 1) / check_period);
         if (period_aligned_start_cycle > next_snapshot_cycle)
