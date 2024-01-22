@@ -90,11 +90,7 @@ struct throughput_measurements {
     int64_t throughput_cycles;
     int64_t throughput_outputs;
     int throughput_waste;
-    int steady_state_start_cycle;
-    int steady_state_end_cycle;
-    struct per_cycle_measurements steady_state_start;
-    struct per_cycle_measurements steady_state_end;
-    int pivot_parity;
+    struct per_cycle_measurements steady_state;
     struct error error;
     bool valid;
 };
@@ -117,16 +113,12 @@ struct verifier {
     struct vector wrong_output_basis_v;
 
     struct per_cycle_measurements completion;
-    struct per_cycle_measurements steady_state_start;
-    struct per_cycle_measurements steady_state_end;
 
     int output_to_measure_intervals_for;
     int *output_intervals;
     int output_intervals_capacity;
     int number_of_output_intervals;
     int output_intervals_repeat_after;
-
-    int throughput_margin;
 
     struct error error;
 };
@@ -137,7 +129,6 @@ static void *verifier_create_empty(void)
     v->cycle_limit = 150000;
     v->wrong_output_index = -1;
     v->output_to_measure_intervals_for = -1;
-    v->throughput_margin = 50;
     return v;
 }
 
@@ -297,13 +288,8 @@ static void check_wrong_output_and_destroy(struct verifier *v, struct solution *
 
 void verifier_set_throughput_margin(void *verifier, int margin)
 {
-    struct verifier *v = verifier;
-    v->throughput_margin = margin;
-    // reset throughput metrics so they're measured again if necessary.
-    v->throughput_measurements = (struct throughput_measurements){ 0 };
-    v->throughput_measurements_without_poison = (struct throughput_measurements){ 0 };
-    v->steady_state_start = (struct per_cycle_measurements){ 0 };
-    v->steady_state_end = (struct per_cycle_measurements){ 0 };
+    // this doesn't do anything since there's no throughput margin any more.
+    return;
 }
 
 struct area_dimension {
@@ -470,16 +456,16 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         return measurements->width2_120;
     else if (!strcmp(metric, "height")) {
         int height = measurements->height_0;
-        if (measurements->height_60 < height)
+        if (height < 0 || measurements->height_60 < height)
             height = measurements->height_60;
-        if (measurements->height_120 < height)
+        if (height < 0 || measurements->height_120 < height)
             height = measurements->height_120;
         return height;
     } else if (!strcmp(metric, "width*2")) {
         int width2 = measurements->width2_0;
-        if (measurements->width2_60 < width2)
+        if (width2 < 0 || measurements->width2_60 < width2)
             width2 = measurements->width2_60;
-        if (measurements->width2_120 < width2)
+        if (width2 < 0 || measurements->width2_120 < width2)
             width2 = measurements->width2_120;
         return width2;
     } else if (!strcmp(metric, "executed instructions"))
@@ -547,8 +533,6 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
         .valid = true,
         .throughput_cycles = -1,
         .throughput_outputs = -1,
-        .steady_state_start_cycle = -1,
-        .steady_state_end_cycle = -1,
     };
     struct solution solution = { 0 };
     struct board board = { 0 };
@@ -574,13 +558,45 @@ static struct throughput_measurements measure_throughput(struct verifier *v, boo
     m.throughput_cycles = steady_state.number_of_cycles;
     m.throughput_outputs = steady_state.number_of_outputs;
     m.throughput_waste = 0;
+    m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
+    if (steady_state.number_of_outputs > 0)
+        m.steady_state.cycles = -1;
     for (uint32_t i = 0; i < board.number_of_chain_atoms; ++i) {
         struct chain_atom ca = board.chain_atoms[i];
         if (ca.prev_in_list && !vectors_equal(ca.original_position, ca.current_position)) {
+            struct vector delta = {
+                ca.current_position.u - ca.original_position.u,
+                ca.current_position.v - ca.original_position.v,
+            };
+            if (delta.u != 0)
+                m.steady_state.height_0 = -1;
+            if (delta.v != 0)
+                m.steady_state.height_60 = -1;
+            if (delta.u + delta.v != 0)
+                m.steady_state.height_120 = -1;
+            if (delta.u + 2 * delta.v != 0)
+                m.steady_state.width2_0 = -1;
+            if (2 * delta.u + delta.v != 0)
+                m.steady_state.width2_60 = -1;
+            if (delta.u - delta.v != 0)
+                m.steady_state.width2_120 = -1;
+            m.steady_state.area = -1;
             m.throughput_waste = 1;
             break;
         }
     }
+    m.steady_state.executed_instructions = solution_instructions(&solution);
+    for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+        for (size_t j = 0; j < solution.arm_tape_length[i]; ++j) {
+            if (solution.arm_tape[i][j] == ' ' || solution.arm_tape[i][j] == '\0')
+                continue;
+            m.steady_state.instruction_executions[instruction_index(solution.arm_tape[i][j])] = -1;
+        }
+    }
+    // xx these are unsupported right now.
+    for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
+        m.steady_state.atom_grabs[i] = -1;
+    m.steady_state.maximum_absolute_arm_rotation = -1;
 error:
     check_wrong_output_and_destroy(v, &solution, &board);
     return m;
@@ -751,21 +767,6 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             v->throughput_measurements_without_poison = measure_throughput(v, false);
         v->error = v->throughput_measurements_without_poison.error;
         return v->throughput_measurements_without_poison.throughput_outputs;
-    } else if (!strcmp(metric, "visual loop start cycle")) {
-        if (!v->throughput_measurements_without_poison.valid)
-            v->throughput_measurements_without_poison = measure_throughput(v, false);
-        v->error = v->throughput_measurements_without_poison.error;
-        return v->throughput_measurements_without_poison.steady_state_start_cycle;
-    } else if (!strcmp(metric, "visual loop end cycle")) {
-        if (!v->throughput_measurements_without_poison.valid)
-            v->throughput_measurements_without_poison = measure_throughput(v, false);
-        v->error = v->throughput_measurements_without_poison.error;
-        int start = v->throughput_measurements_without_poison.steady_state_start_cycle;
-        int end = v->throughput_measurements_without_poison.steady_state_end_cycle;
-        if (v->throughput_measurements_without_poison.pivot_parity)
-            return 2 * (end - start) + start;
-        else
-            return end;
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
@@ -851,79 +852,19 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error = m.error;
         return lookup_per_cycle_metric(&m, metric, &v->error);
     } else if (!strncmp("steady state ", metric, strlen("steady state "))) {
+        destroy(&solution, &board);
         metric += strlen("steady state ");
-        if (!v->steady_state_start.valid || !v->steady_state_end.valid) {
-            if (!v->throughput_measurements.valid)
-                v->throughput_measurements = measure_throughput(v, true);
-            if ((!strcmp(metric, "area (approximate)") || !strcmp(metric, "area")) && v->throughput_measurements.throughput_waste > 0) {
-                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
-                destroy(&solution, &board);
-                return -1;
-            }
-            if (v->throughput_measurements.throughput_cycles < 0) {
-                v->error = v->throughput_measurements.error;
-                destroy(&solution, &board);
-                return -1;
-            }
-            if (lookup_per_cycle_metric(&v->throughput_measurements.steady_state_start, metric, &v->error) != lookup_per_cycle_metric(&v->throughput_measurements.steady_state_end, metric, &v->error)) {
-                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
-                destroy(&solution, &board);
-                return -1;
-            }
-            // measure one period later so all swings in the period are accounted for.
-            int start_cycle = v->throughput_measurements.steady_state_end_cycle;
-            int period = v->throughput_measurements.steady_state_end_cycle - v->throughput_measurements.steady_state_start_cycle;
-            while (board.cycle < start_cycle && !board.collision)
-                cycle(&solution, &board);
-            v->steady_state_start = measure_at_current_cycle(v, &solution, &board, false);
-            while (board.cycle < start_cycle + period && !board.collision)
-                cycle(&solution, &board);
-            v->steady_state_end = measure_at_current_cycle(v, &solution, &board, false);
-        }
-        check_wrong_output_and_destroy(v, &solution, &board);
-        if (v->steady_state_start.error.description) {
-            v->error = v->steady_state_start.error;
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v, true);
+        if (v->throughput_measurements.throughput_cycles < 0) {
+            v->error = v->throughput_measurements.error;
             return -1;
         }
-        if (v->steady_state_end.error.description) {
-            v->error = v->steady_state_end.error;
-            return -1;
-        }
-        if (!strcmp(metric, "height")) {
-            int value = INT_MAX;
-            if (v->steady_state_start.height_0 == v->steady_state_end.height_0 && v->steady_state_start.height_0 < value)
-                value = v->steady_state_start.height_0;
-            if (v->steady_state_start.height_60 == v->steady_state_end.height_60 && v->steady_state_start.height_60 < value)
-                value = v->steady_state_start.height_60;
-            if (v->steady_state_start.height_120 == v->steady_state_end.height_120 && v->steady_state_start.height_120 < value)
-                value = v->steady_state_start.height_120;
-            if (value == INT_MAX) {
-                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
-                return -1;
-            }
-            return value;
-        } else if (!strcmp(metric, "width*2")) {
-            int value = INT_MAX;
-            if (v->steady_state_start.width2_0 == v->steady_state_end.width2_0 && v->steady_state_start.width2_0 < value)
-                value = v->steady_state_start.width2_0;
-            if (v->steady_state_start.width2_60 == v->steady_state_end.width2_60 && v->steady_state_start.width2_60 < value)
-                value = v->steady_state_start.width2_60;
-            if (v->steady_state_start.width2_120 == v->steady_state_end.width2_120 && v->steady_state_start.width2_120 < value)
-                value = v->steady_state_start.width2_120;
-            if (value == INT_MAX) {
-                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
-                return -1;
-            }
-            return value;
-        } else {
-            int start_value = lookup_per_cycle_metric(&v->steady_state_start, metric, &v->error);
-            int end_value = lookup_per_cycle_metric(&v->steady_state_end, metric, &v->error);
-            if (start_value != end_value) {
-                v->error = (struct error){ .description = "metric doesn't reach a steady state" };
-                return -1;
-            }
-            return start_value;
-        }
+        v->error = v->throughput_measurements.steady_state.error;
+        int value = lookup_per_cycle_metric(&v->throughput_measurements.steady_state, metric, &v->error);
+        if (value < 0 && !v->error.description)
+            v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+        return value;
     } else {
         if (!v->completion.valid) {
             while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
