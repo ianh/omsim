@@ -118,7 +118,6 @@ struct verifier {
 
     int output_to_measure_intervals_for;
     int *output_intervals;
-    int output_intervals_capacity;
     int number_of_output_intervals;
     int output_intervals_repeat_after;
 
@@ -514,19 +513,6 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         *error = (struct error){ .description = "unknown metric" };
         return -1;
     }
-}
-
-static void mark_output_interval_cycle(struct verifier *v, int cycle)
-{
-    if (v->number_of_output_intervals >= v->output_intervals_capacity) {
-        if (v->output_intervals_capacity > 9999999) {
-            v->error.description = "too many outputs while computing output intervals";
-            return;
-        }
-        v->output_intervals_capacity = (v->output_intervals_capacity + 16) * 2;
-        v->output_intervals = realloc(v->output_intervals, v->output_intervals_capacity * sizeof(v->output_intervals[0]));
-    }
-    v->output_intervals[v->number_of_output_intervals++] = cycle;
 }
 
 static struct throughput_measurements measure_throughput(struct verifier *v, bool use_poison)
