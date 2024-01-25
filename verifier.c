@@ -456,16 +456,16 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         return measurements->width2_120;
     else if (!strcmp(metric, "height")) {
         int height = measurements->height_0;
-        if (height < 0 || measurements->height_60 < height)
+        if (height < 0 || (measurements->height_60 >= 0 && measurements->height_60 < height))
             height = measurements->height_60;
-        if (height < 0 || measurements->height_120 < height)
+        if (height < 0 || (measurements->height_120 >= 0 && measurements->height_120 < height))
             height = measurements->height_120;
         return height;
     } else if (!strcmp(metric, "width*2")) {
         int width2 = measurements->width2_0;
-        if (width2 < 0 || measurements->width2_60 < width2)
+        if (width2 < 0 || (measurements->width2_60 >= 0 && measurements->width2_60 < width2))
             width2 = measurements->width2_60;
-        if (width2 < 0 || measurements->width2_120 < width2)
+        if (width2 < 0 || (measurements->width2_120 >= 0 && measurements->width2_120 < width2))
             width2 = measurements->width2_120;
         return width2;
     } else if (!strcmp(metric, "executed instructions"))
@@ -572,7 +572,6 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                 m.steady_state.width2_120 = -1;
             m.steady_state.area = -1;
             m.throughput_waste = 1;
-            break;
         }
     }
     m.steady_state.executed_instructions = solution_instructions(&solution);
