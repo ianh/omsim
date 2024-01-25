@@ -60,9 +60,9 @@ for path in leaderboard.rglob('*.json'):
     v = lv.verifier_create(c_char_p(bytes(puzzle_path)), c_char_p(bytes(solution_path)))
     for metric, expected in metadata["score"].items():
         # if the leaderboard doesn't track width/height for a puzzle, don't validate it.
-        if metric == "height" or metric == "heightINF" and not metadata["score"]["height"]:
+        if (metric == "height" or metric == "heightINF") and not metadata["score"]["height"]:
             continue
-        if metric == "width" or metric == "widthINF" and not metadata["score"]["width"]:
+        if (metric == "width" or metric == "widthINF") and not metadata["score"]["width"]:
             continue
         f = leaderboard_metrics[metric]
         measured = f(lambda sim_metric: lv.verifier_evaluate_metric(c_void_p(v), c_char_p(sim_metric.encode('utf-8'))))
@@ -73,4 +73,4 @@ for path in leaderboard.rglob('*.json'):
             pass
         if measured != expected and measured != int_expected:
             print(puzzle_path, solution_path, metric, measured, expected)
-    lv.verifier_destroy(v)
+    lv.verifier_destroy(c_void_p(v))
