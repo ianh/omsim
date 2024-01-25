@@ -72,8 +72,8 @@ static void print_atom(atom a)
         printf(" dropped");
     if (a & VAN_BERLO_ATOM)
         printf(" van-berlo");
-    if (a & POISON)
-        printf(" poison");
+    if (a & IS_CHAIN_ATOM)
+        printf(" chain");
     if (a & GRABBED)
         printf(" grabbed[%llu]", (a & GRABBED) / GRABBED_ONCE);
     if (a & CONDUIT_SHAPE)
