@@ -529,6 +529,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
     struct steady_state steady_state = run_until_steady_state(&solution, &board, v->cycle_limit);
+
     if (board.collision) {
         v->output_intervals_repeat_after = -1;
         m.error.description = board.collision_reason;
@@ -557,17 +558,17 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                 ca.current_position.u - ca.original_position.u,
                 ca.current_position.v - ca.original_position.v,
             };
-            if (delta.u != 0)
+            if (ca.swings || delta.u != 0)
                 m.steady_state.height_0 = -1;
-            if (delta.v != 0)
+            if (ca.swings || delta.v != 0)
                 m.steady_state.height_60 = -1;
-            if (delta.u + delta.v != 0)
+            if (ca.swings || delta.u + delta.v != 0)
                 m.steady_state.height_120 = -1;
-            if (delta.u + 2 * delta.v != 0)
+            if (ca.swings || delta.u + 2 * delta.v != 0)
                 m.steady_state.width2_0 = -1;
-            if (2 * delta.u + delta.v != 0)
+            if (ca.swings || 2 * delta.u + delta.v != 0)
                 m.steady_state.width2_60 = -1;
-            if (delta.u - delta.v != 0)
+            if (ca.swings || delta.u - delta.v != 0)
                 m.steady_state.width2_120 = -1;
             m.steady_state.area = -1;
             m.throughput_waste = 1;

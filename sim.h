@@ -387,6 +387,7 @@ struct chain_atom {
     struct vector current_position;
     struct vector original_position;
     bool in_repeating_segment;
+    bool swings;
 };
 // in the DISCOVER_CHAIN mode, the original position is left fixed so that the
 // overall motion can be discovered.  in the EXTEND_CHAIN mode, the original

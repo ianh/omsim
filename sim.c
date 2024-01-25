@@ -991,8 +991,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                     board->chain_will_become_visible = true;
                     *lookup_atom_in_grid(&board->grid, ca.current_position) &= ~IS_CHAIN_ATOM;
                     move_chain_atom_to_list(board, chain, 0);
-                } else
+                } else {
                     add_chain_atom_to_table(board, chain);
+                    if (board->chain_mode == EXTEND_CHAIN && m.rotation != 0)
+                        board->chain_atoms[chain].swings = true;
+                }
                 chain = ca.next_in_list;
             }
         }
