@@ -1710,6 +1710,8 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     }
     for (uint32_t i = 0; i < solution->number_of_glyphs; ++i) {
         struct mechanism m = solution->glyphs[i];
+        if (m.type & CONDUIT)
+            continue;
         const struct vector *footprint = glyph_footprint(m.type);
         for (int j = 0; ; ++j) {
             struct vector p = footprint[j];
