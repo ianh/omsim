@@ -73,3 +73,4 @@ for path in leaderboard.rglob('*.json'):
             pass
         if measured != expected and measured != int_expected:
             print(puzzle_path, solution_path, metric, measured, expected)
+    lv.verifier_destroy(v)
