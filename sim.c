@@ -40,19 +40,6 @@ static void report_collision(struct board *board, struct vector p, const char *r
     board->collision_reason = reason;
 }
 
-static void check_for_poison(struct board *board, atom *a, struct vector p)
-{
-    if (board->uses_poison && (*a & VALID) && !(*a & REMOVED) && (*a & POISON))
-        report_collision(board, p, board->poison_message);
-}
-
-atom *lookup_atom(struct board *board, struct vector query)
-{
-    atom *a = lookup_atom_without_checking_for_poison(board, query);
-    check_for_poison(board, a, query);
-    return a;
-}
-
 static bool conversion_output(struct board *board, bool active, struct mechanism m, int32_t du, int32_t dv)
 {
     assert(m.type & CONVERSION_GLYPH);
@@ -615,7 +602,7 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
             struct vector d = u_offset_for_direction(bond_direction);
             p.u += d.u;
             p.v += d.v;
-            atom *b = lookup_atom_without_checking_for_poison(board, p);
+            atom *b = lookup_atom(board, p);
             if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
                 continue;
             move_atom(board, b, p, movement_index, &movement.first_chain_atom);
@@ -1190,7 +1177,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
         for (uint32_t j = REPEATING_OUTPUT_REPETITIONS; j < repeats_after; ++j) {
             struct vector p = output.position;
             p.u += j * offset;
-            atom a = *lookup_atom_without_checking_for_poison(board, p);
+            atom a = *lookup_atom(board, p);
             if (!(a & VALID) || (a & REMOVED) || (a & BEING_PRODUCED) || (a & IS_CHAIN_ATOM)) {
                 // look for a repeating chain atom that will fill in this hex.
                 bool found_chain_atom = false;
@@ -1212,7 +1199,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
                     if (chain_offset > maximum_feed_rate)
                         maximum_feed_rate = chain_offset;
                     found_chain_atom = true;
-                    a = *lookup_atom_without_checking_for_poison(board, ca.current_position);
+                    a = *lookup_atom(board, ca.current_position);
                     break;
                 }
                 if (!found_chain_atom)
@@ -1229,7 +1216,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
 
 static bool mark_output_position(struct board *board, struct vector pos)
 {
-    atom *a = lookup_atom_without_checking_for_poison(board, pos);
+    atom *a = lookup_atom(board, pos);
     if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
         return false;
     *a |= VISITED;
@@ -1265,9 +1252,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
             atom output = io->atoms[j].atom;
             if (output & REPEATING_OUTPUT_PLACEHOLDER)
                 continue;
-            atom *a = lookup_atom_without_checking_for_poison(board, io->atoms[j].position);
-            if (board->uses_poison && (io->type & SINGLE_OUTPUT))
-                check_for_poison(board, a, io->atoms[j].position);
+            atom *a = lookup_atom(board, io->atoms[j].position);
             // printf("checking %d %d... ", io->atoms[j].position.u, io->atoms[j].position.v);
             if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
                 // printf("no atom\n");
@@ -1313,7 +1298,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
             for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
                 if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
                     continue;
-                atom *a = lookup_atom_without_checking_for_poison(board, io->atoms[j].position);
+                atom *a = lookup_atom(board, io->atoms[j].position);
                 if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED) || (*a & GRABBED)) {
                     wrong_output_bonds = false;
                     break;
@@ -1350,7 +1335,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
             size_t cursor = 0;
             while (match && cursor < board->marked.length) {
                 struct vector p = board->marked.positions[cursor++];
-                atom a = *lookup_atom_without_checking_for_poison(board, p);
+                atom a = *lookup_atom(board, p);
                 if (a & IS_CHAIN_ATOM && board->chain_mode == EXTEND_CHAIN) {
                     // ensure atoms stay within the vertical region forever.
                     struct chain_atom ca = board->chain_atoms[lookup_chain_atom(board, p)];
@@ -1387,7 +1372,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
         }
         // reset the visited flag for all the marked atoms.
         for (size_t j = 0; j < board->marked.length; ++j) {
-            atom *a = lookup_atom_without_checking_for_poison(board, board->marked.positions[j]);
+            atom *a = lookup_atom(board, board->marked.positions[j]);
             *a &= ~VISITED;
         }
         if (match && (io->type & REPEATING_OUTPUT) && board->chain_mode == EXTEND_CHAIN)
@@ -1938,7 +1923,7 @@ static struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, 
         return lookup_atom_at_position_in_hashtable(grid, query);
 }
 
-atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query)
+atom *lookup_atom(struct board *board, struct vector query)
 {
     return &lookup_atom_at_position(&board->grid, query)->atom;
 }

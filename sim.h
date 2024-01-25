@@ -49,11 +49,6 @@ typedef uint64_t atom;
 // is this atom part of a van berlo's wheel?
 #define VAN_BERLO_ATOM (1ULL << 20)
 
-// if the uses_poison flag is set on a board, observing a poison atom on that
-// board produces a collision, except when moving that atom as part of a larger
-// molecule.  this is used for waste chains in throughput computation.
-#define POISON (1ULL << 21)
-
 // the motion of this atom is being tracked in a side table.  the flag and the
 // atom's motion data will be cleared if the atom enters the board's bounding
 // box.
@@ -438,10 +433,6 @@ struct board {
     // used for checking infinite products.
     struct marked_positions marked;
 
-    bool ignore_swing_area;
-    bool uses_poison;
-    const char *poison_message;
-
     bool collision;
     struct vector collision_location;
     const char *collision_reason;
@@ -497,7 +488,6 @@ void destroy(struct solution *solution, struct board *board);
 
 void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
-atom *lookup_atom_without_checking_for_poison(struct board *board, struct vector query);
 atom *lookup_atom_in_grid(struct atom_grid *grid, struct vector query);
 
 // returns the atom value at the point (for collision detection).

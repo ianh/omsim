@@ -102,7 +102,6 @@ struct verifier {
     struct solution_file *sf;
 
     struct throughput_measurements throughput_measurements;
-    struct throughput_measurements throughput_measurements_without_poison;
 
     uint64_t cycle_limit;
 
@@ -515,7 +514,7 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
     }
 }
 
-static struct throughput_measurements measure_throughput(struct verifier *v, bool use_poison)
+static struct throughput_measurements measure_throughput(struct verifier *v)
 {
     struct throughput_measurements m = {
         .valid = true,
@@ -601,7 +600,7 @@ static void ensure_output_intervals(struct verifier *v, int which_output)
     v->number_of_output_intervals = 0;
     v->output_intervals_repeat_after = -1;
 
-    v->throughput_measurements = measure_throughput(v, true);
+    v->throughput_measurements = measure_throughput(v);
 
     // during measurement, the intervals are actually absolute cycles.  fix that
     // up here as a post-processing pass.
@@ -734,41 +733,31 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     if (!strcmp(metric, "throughput cycles")) {
         if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v, true);
+            v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_cycles;
     } else if (!strcmp(metric, "throughput outputs")) {
         if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v, true);
+            v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_outputs;
     } else if (!strcmp(metric, "throughput waste")) {
         if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v, true);
+            v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_waste;
-    } else if (!strcmp(metric, "throughput cycles (unrestricted)")) {
-        if (!v->throughput_measurements_without_poison.valid)
-            v->throughput_measurements_without_poison = measure_throughput(v, false);
-        v->error = v->throughput_measurements_without_poison.error;
-        return v->throughput_measurements_without_poison.throughput_cycles;
-    } else if (!strcmp(metric, "throughput outputs (unrestricted)")) {
-        if (!v->throughput_measurements_without_poison.valid)
-            v->throughput_measurements_without_poison = measure_throughput(v, false);
-        v->error = v->throughput_measurements_without_poison.error;
-        return v->throughput_measurements_without_poison.throughput_outputs;
     } else if (!strcmp(metric, "visual loop start cycle")) {
-        if (!v->throughput_measurements_without_poison.valid)
-            v->throughput_measurements_without_poison = measure_throughput(v, false);
-        v->error = v->throughput_measurements_without_poison.error;
-        return v->throughput_measurements_without_poison.steady_state_start_cycle;
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v);
+        v->error = v->throughput_measurements.error;
+        return v->throughput_measurements.steady_state_start_cycle;
     } else if (!strcmp(metric, "visual loop end cycle")) {
-        if (!v->throughput_measurements_without_poison.valid)
-            v->throughput_measurements_without_poison = measure_throughput(v, false);
-        v->error = v->throughput_measurements_without_poison.error;
-        int start = v->throughput_measurements_without_poison.steady_state_start_cycle;
-        int period = v->throughput_measurements_without_poison.throughput_cycles;
-        if (v->throughput_measurements_without_poison.pivot_parity)
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v);
+        v->error = v->throughput_measurements.error;
+        int start = v->throughput_measurements.steady_state_start_cycle;
+        int period = v->throughput_measurements.throughput_cycles;
+        if (v->throughput_measurements.pivot_parity)
             return start + 2 * period;
         else
             return start + period;
@@ -860,7 +849,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         destroy(&solution, &board);
         metric += strlen("steady state ");
         if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v, true);
+            v->throughput_measurements = measure_throughput(v);
         if (v->throughput_measurements.throughput_cycles < 0) {
             v->error = v->throughput_measurements.error;
             return -1;
