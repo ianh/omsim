@@ -180,6 +180,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                     *a &= ~IS_CHAIN_ATOM;
                     move_chain_atom_to_list(board, i, 0);
                 }
+                board->chain_atoms[i].swings = false;
             }
             board->chain_mode = EXTEND_CHAIN;
             board->chain_will_become_visible = false;
