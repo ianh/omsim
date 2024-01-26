@@ -1414,7 +1414,7 @@ static void reset_temporary_flags(struct board *board)
         board->overlapped_atoms[i].atom &= ~TEMPORARY_FLAGS;
 }
 
-static bool check_completion(struct solution *solution)
+static void check_completion(struct solution *solution, struct board *board)
 {
     uint64_t min = UINT64_MAX;
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
@@ -1424,7 +1424,16 @@ static bool check_completion(struct solution *solution)
         if (count < min)
             min = count;
     }
-    return min >= solution->target_number_of_outputs;
+    board->complete = min >= solution->target_number_of_outputs;
+    if (min > board->output_cycles_capacity) {
+        board->output_cycles_capacity = (min * 3) / 2;
+        if (board->output_cycles_capacity < 6)
+            board->output_cycles_capacity = 6;
+        board->output_cycles = realloc(board->output_cycles, board->output_cycles_capacity * sizeof(uint64_t));
+    }
+    for (uint64_t i = board->number_of_output_cycles; i < min; ++i)
+        board->output_cycles[i] = board->cycle;
+    board->number_of_output_cycles = min;
 }
 
 enum run_result run(struct solution *solution, struct board *board)
@@ -1456,9 +1465,9 @@ continue_with_outputs:
         if (board->active_input_or_output != UINT32_MAX)
             return INPUT_OUTPUT;
     }
-    board->complete = check_completion(solution);
     board->cycle++;
     board->half_cycle = 1;
+    check_completion(solution, board);
     return FINISHED_CYCLE;
 }
 
@@ -1798,6 +1807,7 @@ void destroy(struct solution *solution, struct board *board)
         free(board->overlapped_atoms);
         free(board->chain_atoms);
         free(board->chain_atom_table);
+        free(board->output_cycles);
         memset(board, 0, sizeof(*board));
     }
 }

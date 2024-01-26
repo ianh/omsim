@@ -115,7 +115,6 @@ struct verifier {
 
     struct per_cycle_measurements completion;
 
-    int output_to_measure_intervals_for;
     int *output_intervals;
     int number_of_output_intervals;
     int output_intervals_repeat_after;
@@ -128,7 +127,6 @@ static void *verifier_create_empty(void)
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 150000;
     v->wrong_output_index = -1;
-    v->output_to_measure_intervals_for = -1;
     return v;
 }
 
@@ -521,6 +519,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         .throughput_cycles = -1,
         .throughput_outputs = -1,
     };
+    v->output_intervals_repeat_after = -1;
     struct solution solution = { 0 };
     struct board board = { 0 };
     if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
@@ -531,134 +530,155 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
     struct steady_state steady_state = run_until_steady_state(&solution, &board, v->cycle_limit);
 
     if (board.collision) {
-        v->output_intervals_repeat_after = -1;
         m.error.description = board.collision_reason;
         m.error.cycle = (int)board.cycle;
         m.error.location_u = (int)board.collision_location.u;
         m.error.location_v = (int)board.collision_location.v;
-        goto error;
-    }
-    if (steady_state.eventual_behavior != EVENTUALLY_ENTERS_STEADY_STATE) {
-        v->output_intervals_repeat_after = -1;
+    } else if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
+        m.throughput_cycles = steady_state.number_of_cycles;
+        m.throughput_outputs = steady_state.number_of_outputs;
+        m.pivot_parity = steady_state.pivot_parity;
+        m.steady_state_start_cycle = board.cycle;
+        m.throughput_waste = 0;
+        m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
+        if (steady_state.number_of_outputs > 0)
+            m.steady_state.cycles = -1;
+        for (uint32_t i = 0; i < board.number_of_chain_atoms; ++i) {
+            struct chain_atom ca = board.chain_atoms[i];
+            if (ca.prev_in_list && !vectors_equal(ca.original_position, ca.current_position)) {
+                struct vector delta = {
+                    ca.current_position.u - ca.original_position.u,
+                    ca.current_position.v - ca.original_position.v,
+                };
+                if (ca.swings || delta.u != 0)
+                    m.steady_state.height_0 = -1;
+                if (ca.swings || delta.v != 0)
+                    m.steady_state.height_60 = -1;
+                if (ca.swings || delta.u + delta.v != 0)
+                    m.steady_state.height_120 = -1;
+                if (ca.swings || delta.u + 2 * delta.v != 0)
+                    m.steady_state.width2_0 = -1;
+                if (ca.swings || 2 * delta.u + delta.v != 0)
+                    m.steady_state.width2_60 = -1;
+                if (ca.swings || delta.u - delta.v != 0)
+                    m.steady_state.width2_120 = -1;
+                m.steady_state.area = -1;
+                m.throughput_waste = 1;
+            }
+        }
+        m.steady_state.executed_instructions = solution_instructions(&solution);
+        for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
+            for (size_t j = 0; j < solution.arm_tape_length[i]; ++j) {
+                if (solution.arm_tape[i][j] == ' ' || solution.arm_tape[i][j] == '\0')
+                    continue;
+                m.steady_state.instruction_executions[instruction_index(solution.arm_tape[i][j])] = -1;
+            }
+        }
+        // xx these are unsupported right now.
+        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
+            m.steady_state.atom_grabs[i] = -1;
+        m.steady_state.maximum_absolute_arm_rotation = -1;
+    } else
         m.error.description = "solution did not converge on a throughput";
-        goto error;
-    }
-    m.throughput_cycles = steady_state.number_of_cycles;
-    m.throughput_outputs = steady_state.number_of_outputs;
-    m.pivot_parity = steady_state.pivot_parity;
-    m.steady_state_start_cycle = board.cycle;
-    m.throughput_waste = 0;
-    m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
-    if (steady_state.number_of_outputs > 0)
-        m.steady_state.cycles = -1;
-    for (uint32_t i = 0; i < board.number_of_chain_atoms; ++i) {
-        struct chain_atom ca = board.chain_atoms[i];
-        if (ca.prev_in_list && !vectors_equal(ca.original_position, ca.current_position)) {
-            struct vector delta = {
-                ca.current_position.u - ca.original_position.u,
-                ca.current_position.v - ca.original_position.v,
-            };
-            if (ca.swings || delta.u != 0)
-                m.steady_state.height_0 = -1;
-            if (ca.swings || delta.v != 0)
-                m.steady_state.height_60 = -1;
-            if (ca.swings || delta.u + delta.v != 0)
-                m.steady_state.height_120 = -1;
-            if (ca.swings || delta.u + 2 * delta.v != 0)
-                m.steady_state.width2_0 = -1;
-            if (ca.swings || 2 * delta.u + delta.v != 0)
-                m.steady_state.width2_60 = -1;
-            if (ca.swings || delta.u - delta.v != 0)
-                m.steady_state.width2_120 = -1;
-            m.steady_state.area = -1;
-            m.throughput_waste = 1;
+
+    // output intervals are currently unsupported for puzzles with polymers.
+    bool output_intervals_supported = true;
+    for (size_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+        if (solution.inputs_and_outputs[i].type & REPEATING_OUTPUT) {
+            output_intervals_supported = false;
+            break;
         }
     }
-    m.steady_state.executed_instructions = solution_instructions(&solution);
-    for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
-        for (size_t j = 0; j < solution.arm_tape_length[i]; ++j) {
-            if (solution.arm_tape[i][j] == ' ' || solution.arm_tape[i][j] == '\0')
-                continue;
-            m.steady_state.instruction_executions[instruction_index(solution.arm_tape[i][j])] = -1;
+    if (output_intervals_supported) {
+        v->output_intervals = calloc(board.number_of_output_cycles, sizeof(uint64_t));
+        for (uint64_t i = 0; i < board.number_of_output_cycles; ++i)
+            v->output_intervals[i] = board.output_cycles[i];
+        v->number_of_output_intervals = board.number_of_output_cycles;
+
+        // if the solution enters a steady state, outputs repeat during the steady state period.
+        if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
+            uint64_t repetition_start = board.cycle - steady_state.number_of_cycles;
+            for (size_t i = 0; i < v->number_of_output_intervals; ++i) {
+                if (v->output_intervals[i] > repetition_start) {
+                    v->output_intervals_repeat_after = i;
+                    break;
+                }
+            }
+        }
+
+        // during measurement, the intervals are actually absolute cycles.  fix that
+        // up here as a post-processing pass.
+        int last = 0;
+        for (int i = 0; i < v->number_of_output_intervals; ++i) {
+            int delta = v->output_intervals[i] - last;
+            last = v->output_intervals[i];
+            v->output_intervals[i] = delta;
+        }
+
+        int cycle_start = v->output_intervals_repeat_after;
+        int n = v->number_of_output_intervals - cycle_start;
+        if (v->output_intervals_repeat_after > 0 && n > 0) {
+            // eliminate extra repetitions within the repeating range.
+            for (int i = 1; i <= n / 2; ++i) {
+                if ((n % i) != 0)
+                    continue;
+                bool repeating = true;
+                for (int j = 0; j < n; ++j) {
+                    if (v->output_intervals[cycle_start + j] != v->output_intervals[cycle_start + (j % i)]) {
+                        repeating = false;
+                        break;
+                    }
+                }
+                if (repeating) {
+                    v->number_of_output_intervals = cycle_start + i;
+                    n = i;
+                    break;
+                }
+            }
+            // eliminate extra repetitions before the repeating range.
+            while (v->number_of_output_intervals > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
+                v->output_intervals_repeat_after--;
+                v->number_of_output_intervals--;
+            }
         }
     }
-    // xx these are unsupported right now.
-    for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
-        m.steady_state.atom_grabs[i] = -1;
-    m.steady_state.maximum_absolute_arm_rotation = -1;
-error:
     check_wrong_output_and_destroy(v, &solution, &board);
     return m;
 }
 
-static void ensure_output_intervals(struct verifier *v, int which_output)
+static void ensure_output_intervals(struct verifier *v)
 {
-    if (v->output_to_measure_intervals_for == which_output)
+    if (v->throughput_measurements.valid)
         return;
-
-    v->output_to_measure_intervals_for = which_output;
-    v->number_of_output_intervals = 0;
-    v->output_intervals_repeat_after = -1;
-
     v->throughput_measurements = measure_throughput(v);
-
-    // during measurement, the intervals are actually absolute cycles.  fix that
-    // up here as a post-processing pass.
-    int last = 0;
-    for (int i = 0; i < v->number_of_output_intervals; ++i) {
-        int delta = v->output_intervals[i] - last;
-        last = v->output_intervals[i];
-        v->output_intervals[i] = delta;
-    }
-
-    int cycle_start = v->output_intervals_repeat_after;
-    int n = v->number_of_output_intervals - cycle_start;
-    if (v->output_intervals_repeat_after > 0 && n > 0) {
-        // eliminate extra repetitions within the repeating range.
-        for (int i = 1; i <= n / 2; ++i) {
-            if ((n % i) != 0)
-                continue;
-            bool repeating = true;
-            for (int j = 0; j < n; ++j) {
-                if (v->output_intervals[cycle_start + j] != v->output_intervals[cycle_start + (j % i)]) {
-                    repeating = false;
-                    break;
-                }
-            }
-            if (repeating) {
-                v->number_of_output_intervals = cycle_start + i;
-                n = i;
-                break;
-            }
-        }
-        // eliminate extra repetitions before the repeating range.
-        while (v->number_of_output_intervals > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
-            v->output_intervals_repeat_after--;
-            v->number_of_output_intervals--;
-        }
-    }
 }
 
-int verifier_number_of_output_intervals(void *verifier, int which_output)
+int verifier_number_of_output_intervals(void *verifier)
 {
     struct verifier *v = verifier;
-    ensure_output_intervals(v, which_output);
+    if (!v->sf)
+        return 0;
+    ensure_output_intervals(v);
     return v->number_of_output_intervals;
 }
 
-int verifier_output_interval(void *verifier, int which_output, int which_interval)
+int verifier_output_interval(void *verifier, int which_interval)
 {
     struct verifier *v = verifier;
-    ensure_output_intervals(v, which_output);
+    if (!v->sf)
+        return -1;
+    ensure_output_intervals(v);
     if (which_interval < 0 || which_interval >= v->number_of_output_intervals)
         return -1;
     return v->output_intervals[which_interval];
 }
 
-int verifier_output_intervals_repeat_after(void *verifier, int which_output)
+int verifier_output_intervals_repeat_after(void *verifier)
 {
     struct verifier *v = verifier;
-    ensure_output_intervals(v, which_output);
+    if (!v->sf)
+        return -1;
+    ensure_output_intervals(v);
     return v->output_intervals_repeat_after;
 }
 

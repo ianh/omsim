@@ -462,6 +462,13 @@ struct board {
     // set if a chain atom re-enters the box while chain_mode is EXTEND_CHAIN.
     bool chain_will_become_visible;
 
+    // records each cycle the output count increases toward completion.
+    // a cycle on which the output count increased multiple times will appear
+    // that number of times in the list.
+    uint64_t *output_cycles;
+    uint64_t number_of_output_cycles;
+    uint64_t output_cycles_capacity;
+
     // did the solution complete yet?
     bool complete;
 };
