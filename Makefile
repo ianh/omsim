@@ -2,7 +2,7 @@
 
 CFLAGS=-O2 -std=c11 -pedantic -Wall -Wno-missing-braces
 LDLIBS=-lm
-LLVMCC=/opt/homebrew/Cellar/llvm/12.0.1/bin/clang
+LLVMCC=/opt/homebrew/Cellar/llvm/17.0.6/bin/clang
 EMFLAGS=--no-entry -s ALLOW_MEMORY_GROWTH=1 -s ALLOW_TABLE_GROWTH=1 --profiling-funcs -DNDEBUG
 EMEXPORTS1=_malloc,_free,_verifier_create_from_bytes,_verifier_create_from_bytes_without_copying
 EMEXPORTS2=_verifier_destroy,_verifier_set_cycle_limit,_verifier_error,_verifier_error_clear,_verifier_evaluate_metric

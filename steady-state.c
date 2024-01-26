@@ -151,6 +151,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
     while (board->cycle < cycle_limit && !board->collision) {
         // printf("cycle %llu\n", board->cycle);
         if (!disable_check_until_next_snapshot && !(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
+            // printf("check passed on cycle %llu\n", board->cycle);
             struct steady_state result = {
                 .number_of_cycles = board->cycle - snapshot.cycle,
                 .number_of_outputs = UINT64_MAX,
@@ -187,12 +188,15 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             board->chain_will_become_visible = false;
             for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
                 solution->inputs_and_outputs[i].maximum_feed_rate = 0;
-            for (uint64_t i = 0; i < result.number_of_cycles && !board->collision; ++i)
+            for (uint64_t i = 0; i < result.number_of_cycles && !board->collision; ++i) {
+                // printf("last sim cycle %llu (%llu / %llu)\n", board->cycle, i, result.number_of_cycles);
                 cycle(solution, board);
+            }
             board->chain_mode = DISCOVER_CHAIN;
             if (board->collision)
                 break;
             if (board->chain_will_become_visible) {
+                // printf("re-entering box; disabling check until next snapshot\n");
                 disable_check_until_next_snapshot = true;
                 continue;
             }
@@ -229,6 +233,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
         while (board->cycle > next_snapshot_cycle)
             next_snapshot_cycle *= 2;
         if (board->cycle == next_snapshot_cycle) {
+            // printf("snapshot %llu\n", board->cycle);
             take_snapshot(solution, board, &snapshot);
             disable_check_until_next_snapshot = false;
             next_snapshot_cycle *= 2;

@@ -129,7 +129,16 @@ static void print_board(struct board *board)
                 printf("  ");
             else if (a & REMOVED)
                 printf(" .");
-            else {
+            else if (a & IS_CHAIN_ATOM) {
+                uint32_t chain = lookup_chain_atom(board, (struct vector){ u, v });
+                if (chain != UINT32_MAX) {
+                    if (board->chain_atoms[chain].in_repeating_segment)
+                        printf(" /");
+                    else
+                        printf(" %%");
+                } else
+                    printf(" ?");
+            } else {
                 for (int i = 1; i < 16; ++i) {
                     if (a & (1 << i)) {
                         printf(" %x", i & 0xf);
@@ -244,9 +253,11 @@ int main(int argc, char *argv[])
     printf("solution file says area is: %" PRIu32 "\n", sf->area);
     printf("simulation says area is: %" PRIu32 "\n", used_area(&board));
 
-    struct steady_state steady_state = run_until_steady_state(&solution, &board, 20000);
+#if 0
+    struct steady_state steady_state = run_until_steady_state(&solution, &board, 100000);
     switch (steady_state.eventual_behavior) {
     case EVENTUALLY_ENTERS_STEADY_STATE:
+        print_board(&board);
         printf("simulation entered a steady state (as of cycle %" PRIu64 "), outputting %" PRIu64 " times every %" PRIu64 " cycles\n", board.cycle, steady_state.number_of_outputs, steady_state.number_of_cycles);
         break;
     case EVENTUALLY_STOPS_RUNNING:
@@ -254,24 +265,15 @@ int main(int argc, char *argv[])
         printf("due to collision at %" PRId32 ", %" PRId32 ": %s\n",
          board.collision_location.u, board.collision_location.v,
          board.collision_reason);
+        print_board(&board);
         break;
     case EVENTUALLY_REACHES_CYCLE_LIMIT:
         printf("simulation reached cycle limit before entering a steady state\n");
         break;
     }
+#endif
 
     destroy(&solution, &board);
-
-    // for (int i = 0; i < solution.number_of_glyphs; ++i) {
-    //     if (solution.glyphs[i].type == EQUILIBRIUM)
-    //         printf("%d %d\n", solution.glyphs[i].position.u, solution.glyphs[i].position.v);
-    // }
-    // for (int i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
-    //     if (!(solution.inputs_and_outputs[i].type & INPUT))
-    //         continue;
-    //     printf("%d %d\n", solution.inputs_and_outputs[i].atoms[0].position.u,
-    //      solution.inputs_and_outputs[i].atoms[0].position.v);
-    // }
 
     free_solution_file(sf);
     return 0;
