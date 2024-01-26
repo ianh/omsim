@@ -597,9 +597,8 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
 
         // if the solution enters a steady state, outputs repeat during the steady state period.
         if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
-            uint64_t repetition_start = board.cycle - steady_state.number_of_cycles;
             for (size_t i = 0; i < v->number_of_output_intervals; ++i) {
-                if (v->output_intervals[i] > repetition_start) {
+                if (v->output_intervals[i] > steady_state.outputs_repeat_after_cycle) {
                     v->output_intervals_repeat_after = i;
                     break;
                 }

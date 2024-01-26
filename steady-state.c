@@ -154,6 +154,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             struct steady_state result = {
                 .number_of_cycles = board->cycle - snapshot.cycle,
                 .number_of_outputs = UINT64_MAX,
+                .outputs_repeat_after_cycle = snapshot.cycle,
                 .eventual_behavior = EVENTUALLY_ENTERS_STEADY_STATE,
             };
             for (uint32_t i = 0; i < solution->number_of_arms; ++i) {

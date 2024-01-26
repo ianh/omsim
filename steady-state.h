@@ -25,6 +25,9 @@ struct steady_state {
     // how many outputs are produced during this loop?
     uint64_t number_of_outputs;
 
+    // after which cycle do outputs start to repeat?
+    uint64_t outputs_repeat_after_cycle;
+
     // is there a visual difference between the start and end of the loop due to
     // arm grabbers pivoting?
     bool pivot_parity;
