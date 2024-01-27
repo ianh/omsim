@@ -105,13 +105,16 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
         if (!ca->prev_in_list)
             continue;
         // ensure all chain atoms move in a pure translation each steady state period.
-        if (ca->rotation != 0)
+        if ((ca->flags & CHAIN_ATOM_ROTATION) != 0)
             return false;
         // avoid counting atoms in repeating segments twice.
         atom original = *lookup_atom_in_grid(&board->grid, ca->original_position);
-        ca->in_repeating_segment = (original & VALID) && !(original & REMOVED) && !(original & IS_CHAIN_ATOM);
-        if (!ca->in_repeating_segment)
+        if ((original & VALID) && !(original & REMOVED) && !(original & IS_CHAIN_ATOM))
+            ca->flags |= CHAIN_ATOM_IN_REPEATING_SEGMENT;
+        else {
+            ca->flags &= ~CHAIN_ATOM_IN_REPEATING_SEGMENT;
             number_of_atoms++;
+        }
     }
     if (number_of_atoms != snapshot->number_of_atoms)
         return false;
@@ -182,7 +185,6 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                     *a &= ~IS_CHAIN_ATOM;
                     move_chain_atom_to_list(board, i, 0);
                 }
-                board->chain_atoms[i].swings = false;
             }
             board->chain_mode = EXTEND_CHAIN;
             board->chain_will_become_visible = false;

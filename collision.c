@@ -221,7 +221,7 @@ static void add_chain_atom_collider(struct collider_list *list, struct board *bo
         .offset_from_grab = { ca.current_position.u - absolute_grab_position.u, ca.current_position.v - absolute_grab_position.v },
         .per_period_motion = { ca.current_position.u - ca.original_position.u, ca.current_position.v - ca.original_position.v },
         .movement_index = movement_index,
-        .in_repeating_segment = ca.in_repeating_segment,
+        .in_repeating_segment = ca.flags & CHAIN_ATOM_IN_REPEATING_SEGMENT,
     };
 }
 

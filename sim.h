@@ -380,14 +380,15 @@ struct marked_positions {
 };
 
 // chain atoms participate in waste chain / polymer throughput detection.
+#define CHAIN_ATOM_ROTATION 7
+#define CHAIN_ATOM_IN_REPEATING_SEGMENT (1u << 3)
+#define CHAIN_ATOM_SWINGS (1u << 4)
 struct chain_atom {
     uint32_t *prev_in_list;
     uint32_t next_in_list;
-    int rotation;
+    uint32_t flags;
     struct vector current_position;
     struct vector original_position;
-    bool in_repeating_segment;
-    bool swings;
 };
 // in the DISCOVER_CHAIN mode, the original position is left fixed so that the
 // overall motion can be discovered.  in the EXTEND_CHAIN mode, the original

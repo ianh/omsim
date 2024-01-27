@@ -132,7 +132,7 @@ static void print_board(struct board *board)
             else if (a & IS_CHAIN_ATOM) {
                 uint32_t chain = lookup_chain_atom(board, (struct vector){ u, v });
                 if (chain != UINT32_MAX) {
-                    if (board->chain_atoms[chain].in_repeating_segment)
+                    if (board->chain_atoms[chain].flags & CHAIN_ATOM_IN_REPEATING_SEGMENT)
                         printf(" /");
                     else
                         printf(" %%");

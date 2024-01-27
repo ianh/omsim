@@ -550,17 +550,18 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                     ca.current_position.u - ca.original_position.u,
                     ca.current_position.v - ca.original_position.v,
                 };
-                if (ca.swings || delta.u != 0)
+                bool swings = ca.flags & CHAIN_ATOM_SWINGS;
+                if (swings || delta.u != 0)
                     m.steady_state.height_0 = -1;
-                if (ca.swings || delta.v != 0)
+                if (swings || delta.v != 0)
                     m.steady_state.height_60 = -1;
-                if (ca.swings || delta.u + delta.v != 0)
+                if (swings || delta.u + delta.v != 0)
                     m.steady_state.height_120 = -1;
-                if (ca.swings || delta.u + 2 * delta.v != 0)
+                if (swings || delta.u + 2 * delta.v != 0)
                     m.steady_state.width2_0 = -1;
-                if (ca.swings || 2 * delta.u + delta.v != 0)
+                if (swings || 2 * delta.u + delta.v != 0)
                     m.steady_state.width2_60 = -1;
-                if (ca.swings || delta.u - delta.v != 0)
+                if (swings || delta.u - delta.v != 0)
                     m.steady_state.width2_120 = -1;
                 m.steady_state.area = -1;
                 m.throughput_waste = 1;

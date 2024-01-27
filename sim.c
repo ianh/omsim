@@ -950,7 +950,11 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 apply_movement_to_position(base, m->translation, u, v, &ca->current_position);
                 if (board->chain_mode == EXTEND_CHAIN)
                     apply_movement_to_position(base, m->translation, u, v, &ca->original_position);
-                ca->rotation = normalize_direction(ca->rotation + m->rotation);
+                int rotation = ca->flags & CHAIN_ATOM_ROTATION;
+                ca->flags &= ~CHAIN_ATOM_ROTATION;
+                ca->flags |= normalize_direction(rotation + m->rotation);
+                if (m->rotation != 0)
+                    ca->flags |= CHAIN_ATOM_SWINGS;
                 chain = ca->next_in_list;
             }
             if ((m->type & 3) == TRACK_MOVEMENT) {
@@ -991,11 +995,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                     board->chain_will_become_visible = true;
                     *lookup_atom_in_grid(&board->grid, ca.current_position) &= ~IS_CHAIN_ATOM;
                     move_chain_atom_to_list(board, chain, 0);
-                } else {
+                } else
                     add_chain_atom_to_table(board, chain);
-                    if (board->chain_mode == EXTEND_CHAIN && m.rotation != 0)
-                        board->chain_atoms[chain].swings = true;
-                }
                 chain = ca.next_in_list;
             }
         }
@@ -1186,7 +1187,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
                 bool found_chain_atom = false;
                 for (uint32_t k = 0; k < board->number_of_chain_atoms; ++k) {
                     struct chain_atom ca = board->chain_atoms[k];
-                    if (!ca.prev_in_list || !ca.in_repeating_segment)
+                    if (!ca.prev_in_list || !(ca.flags & CHAIN_ATOM_IN_REPEATING_SEGMENT))
                         continue;
                     if (ca.current_position.v != p.v || ca.current_position.u > p.u)
                         continue;
