@@ -49,6 +49,8 @@ for path in Path(sys.argv[1]).rglob('*.puzzle'):
     puzzles[path.stem] = path
 
 leaderboard = Path(sys.argv[2])
+total = 0
+valid = 0
 for path in leaderboard.rglob('*.json'):
     with path.open() as f:
         metadata = json.load(f)
@@ -71,6 +73,10 @@ for path in leaderboard.rglob('*.json'):
             int_expected = int(expected)
         except:
             pass
-        if measured != expected and measured != int_expected:
+        total += 1
+        if measured == expected or measured == int_expected:
+            valid += 1
+        else:
             print(puzzle_path, solution_path, metric, measured, expected)
     lv.verifier_destroy(c_void_p(v))
+print(f'{valid}/{total} leaderboard solutions match libverify measurements')
