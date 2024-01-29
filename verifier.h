@@ -78,6 +78,11 @@ void verifier_error_clear(void *verifier);
 // <http://events.critelli.technology/static/metrics.html>.
 int verifier_evaluate_metric(void *verifier, const char *metric);
 
+// the "per squared repetition area" metric is too complicated to represent
+// using 32-bit integers.  here's a way to measure it approximately as a
+// double-precision floating-point number.
+double verifier_per_squared_repetition_area(void *verifier);
+
 // used to compute the lexicographic cycles metric.  the first interval is
 // the cycle on which the first output is dropped; the second interval is the
 // difference between the cycles on which the second and the first outputs are

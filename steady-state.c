@@ -138,6 +138,23 @@ static uint64_t gcd(uint64_t a, uint64_t b)
     return a;
 }
 
+static struct vector chain_atom_direction(struct chain_atom *ca)
+{
+    int32_t u = ca->current_position.u - ca->original_position.u;
+    int32_t v = ca->current_position.v - ca->original_position.v;
+    int32_t divisor = gcd(labs(u), labs(v));
+    return (struct vector){ u / divisor, v / divisor };
+}
+
+static int compare_chain_atoms_by_direction(const void *a, const void *b)
+{
+    struct vector a_dir = chain_atom_direction(*(struct chain_atom * const *)a);
+    struct vector b_dir = chain_atom_direction(*(struct chain_atom * const *)b);
+    if (a_dir.u - b_dir.u)
+        return a_dir.u - b_dir.u;
+    return a_dir.v - b_dir.v;
+}
+
 struct steady_state run_until_steady_state(struct solution *solution, struct board *board, uint64_t cycle_limit)
 {
     struct snapshot snapshot = { 0 };
@@ -155,6 +172,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
         // printf("cycle %llu\n", board->cycle);
         if (!disable_check_until_next_snapshot && !(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
             // printf("check passed on cycle %llu\n", board->cycle);
+            uint64_t repetition_period_length = board->cycle - snapshot.cycle;
             struct steady_state result = {
                 .number_of_cycles = board->cycle - snapshot.cycle,
                 .number_of_outputs = UINT64_MAX,
@@ -175,6 +193,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 if (outputs < result.number_of_outputs)
                     result.number_of_outputs = outputs;
             }
+            uint32_t number_of_active_chain_atoms = 0;
+            uint32_t number_of_swinging_chain_atoms = 0;
             for (uint32_t i = 0; i < board->number_of_chain_atoms; ++i) {
                 struct chain_atom ca = board->chain_atoms[i];
                 if (!ca.prev_in_list)
@@ -184,8 +204,62 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                     atom *a = lookup_atom_in_grid(&board->grid, ca.current_position);
                     *a &= ~IS_CHAIN_ATOM;
                     move_chain_atom_to_list(board, i, 0);
+                } else {
+                    number_of_active_chain_atoms++;
+                    if (ca.flags & CHAIN_ATOM_SWING_SEXTANTS)
+                        number_of_swinging_chain_atoms++;
                 }
             }
+            if (number_of_active_chain_atoms == 0)
+                board->area_growth_order = GROWTH_NONE;
+            else if (number_of_swinging_chain_atoms == 0) {
+                board->area_growth_order = GROWTH_LINEAR;
+                for (uint32_t i = 0; i < board->number_of_area_directions; ++i)
+                    free(board->area_directions[i].footprint_at_infinity.atoms_at_positions);
+                free(board->area_directions);
+                struct chain_atom **chain_atoms_by_direction = calloc(number_of_active_chain_atoms, sizeof(struct chain_atom *));
+                number_of_active_chain_atoms = 0;
+                for (uint32_t i = 0; i < board->number_of_chain_atoms; ++i) {
+                    struct chain_atom *ca = &board->chain_atoms[i];
+                    if (!ca->prev_in_list)
+                        continue;
+                    chain_atoms_by_direction[number_of_active_chain_atoms++] = ca;
+                }
+                qsort(chain_atoms_by_direction, number_of_active_chain_atoms, sizeof(struct chain_atom *), compare_chain_atoms_by_direction);
+                board->number_of_area_directions = 0;
+                struct vector previous_direction;
+                for (uint32_t i = 0; i < number_of_active_chain_atoms; ++i) {
+                    struct vector direction = chain_atom_direction(chain_atoms_by_direction[i]);
+                    if (i == 0 || !vectors_equal(previous_direction, direction)) {
+                        board->number_of_area_directions++;
+                        previous_direction = direction;
+                    }
+                }
+                board->area_directions = calloc(board->number_of_area_directions, sizeof(struct linear_area_direction));
+                board->number_of_area_directions = 0;
+                for (uint32_t i = 0; i < number_of_active_chain_atoms; ++i) {
+                    struct vector direction = chain_atom_direction(chain_atoms_by_direction[i]);
+                    if (i == 0 || !vectors_equal(previous_direction, direction)) {
+                        board->area_directions[board->number_of_area_directions++].direction = direction;
+                        previous_direction = direction;
+                    }
+                    uint32_t area_direction = board->number_of_area_directions - 1;
+                    chain_atoms_by_direction[i]->area_direction = area_direction;
+                    int32_t multiplier = 1;
+                    if (direction.u != 0) {
+                        multiplier = labs(chain_atoms_by_direction[i]->current_position.u - chain_atoms_by_direction[i]->original_position.u);
+                        multiplier /= (int32_t)gcd(multiplier, labs(board->area_directions[area_direction].direction.u));
+                    } else {
+                        multiplier = labs(chain_atoms_by_direction[i]->current_position.v - chain_atoms_by_direction[i]->original_position.v);
+                        multiplier /= (int32_t)gcd(multiplier, labs(board->area_directions[area_direction].direction.v));
+                    }
+                    board->area_directions[area_direction].direction.u *= multiplier;
+                    board->area_directions[area_direction].direction.v *= multiplier;
+                }
+                free(chain_atoms_by_direction);
+            } else
+                board->area_growth_order = GROWTH_QUADRATIC;
+            result.area_growth_order = board->area_growth_order;
             board->chain_mode = EXTEND_CHAIN;
             board->chain_will_become_visible = false;
             for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i)
@@ -228,6 +302,29 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 result.number_of_cycles *= repeating_periods;
                 if (repeating_periods % 2 == 0)
                     result.pivot_parity = false;
+            }
+            if (board->area_growth_order == GROWTH_LINEAR) {
+                uint64_t linear_area_growth = 0;
+                uint64_t linear_area_growth_periods = 1;
+                for (uint32_t i = 0; i < board->number_of_area_directions; ++i) {
+                    for (uint32_t j = 0; j < GRID_CAPACITY(board->area_directions[i].footprint_at_infinity); ++j) {
+                        struct atom_at_position ap = board->area_directions[i].footprint_at_infinity.atoms_at_positions[j];
+                        if (!(ap.atom & VALID))
+                            continue;
+                        uint64_t divisions = ap.atom >> 1;
+                        uint64_t d = gcd(divisions, linear_area_growth_periods);
+                        linear_area_growth *= divisions / d;
+                        linear_area_growth += linear_area_growth_periods / d;
+                        linear_area_growth_periods *= divisions / d;
+                    }
+                }
+                linear_area_growth *= result.number_of_cycles / repetition_period_length;
+                uint64_t d = gcd(linear_area_growth, linear_area_growth_periods);
+                linear_area_growth /= d;
+                linear_area_growth_periods /= d;
+                result.number_of_outputs *= linear_area_growth_periods;
+                result.number_of_cycles *= linear_area_growth_periods;
+                result.linear_area_growth = linear_area_growth;
             }
             destroy_snapshot(&snapshot);
             return result;

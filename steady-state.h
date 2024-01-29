@@ -9,12 +9,6 @@ enum eventual_behavior {
     EVENTUALLY_REACHES_CYCLE_LIMIT,
 };
 
-enum growth_order {
-    GROWTH_NONE,
-    GROWTH_LINEAR,
-    GROWTH_QUADRATIC,
-};
-
 struct steady_state {
     // what type of overall behavior does the solution have in the limit?
     enum eventual_behavior eventual_behavior;
@@ -27,6 +21,11 @@ struct steady_state {
 
     // after which cycle do outputs start to repeat?
     uint64_t outputs_repeat_after_cycle;
+
+    // how much does the area increase each loop?
+    enum growth_order area_growth_order;
+    uint64_t linear_area_growth;
+    double quadratic_area_growth;
 
     // is there a visual difference between the start and end of the loop due to
     // arm grabbers pivoting?

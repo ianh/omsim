@@ -953,8 +953,17 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 int rotation = ca->flags & CHAIN_ATOM_ROTATION;
                 ca->flags &= ~CHAIN_ATOM_ROTATION;
                 ca->flags |= normalize_direction(rotation + m->rotation);
-                if (m->rotation != 0)
-                    ca->flags |= CHAIN_ATOM_SWINGS;
+                if (m->rotation < 0) {
+                    uint32_t sextants = ((ca->flags & CHAIN_ATOM_SWING_SEXTANTS) >> 1) & CHAIN_ATOM_SWING_SEXTANTS;
+                    sextants |= 1u << (CHAIN_ATOM_SWING_SEXTANTS_SHIFT + 5);
+                    ca->flags &= ~CHAIN_ATOM_SWING_SEXTANTS;
+                    ca->flags |= sextants;
+                } else if (m->rotation > 0) {
+                    uint32_t sextants = ((ca->flags & CHAIN_ATOM_SWING_SEXTANTS) << 1) & CHAIN_ATOM_SWING_SEXTANTS;
+                    sextants |= 1u << CHAIN_ATOM_SWING_SEXTANTS_SHIFT;
+                    ca->flags &= ~CHAIN_ATOM_SWING_SEXTANTS;
+                    ca->flags |= sextants;
+                }
                 chain = ca->next_in_list;
             }
             if ((m->type & 3) == TRACK_MOVEMENT) {
@@ -1809,6 +1818,9 @@ void destroy(struct solution *solution, struct board *board)
         free(board->chain_atoms);
         free(board->chain_atom_table);
         free(board->output_cycles);
+        for (uint32_t i = 0; i < board->number_of_area_directions; ++i)
+            free(board->area_directions[i].footprint_at_infinity.atoms_at_positions);
+        free(board->area_directions);
         memset(board, 0, sizeof(*board));
     }
 }
@@ -1931,8 +1943,10 @@ static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct atom
     }
 }
 
-static struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, struct vector query)
+struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, struct vector query)
 {
+    if (grid->hash_capacity == 0)
+        rehash(grid, 1);
     if (query.u >= GRID_ARRAY_MIN && query.u < GRID_ARRAY_MAX && query.v >= GRID_ARRAY_MIN && query.v < GRID_ARRAY_MAX)
         return lookup_atom_at_position_in_array(grid, query);
     else

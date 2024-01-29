@@ -89,6 +89,8 @@ struct per_cycle_measurements {
 struct throughput_measurements {
     int64_t throughput_cycles;
     int64_t throughput_outputs;
+    int64_t throughput_linear_area;
+    enum growth_order area_growth_order;
     int throughput_waste;
     int pivot_parity;
     int steady_state_start_cycle;
@@ -518,6 +520,8 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         .valid = true,
         .throughput_cycles = -1,
         .throughput_outputs = -1,
+        .throughput_linear_area = -1,
+        .throughput_waste = -1,
     };
     v->output_intervals_repeat_after = -1;
     struct solution solution = { 0 };
@@ -537,12 +541,13 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
     } else if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
         m.throughput_cycles = steady_state.number_of_cycles;
         m.throughput_outputs = steady_state.number_of_outputs;
+        m.throughput_linear_area = steady_state.linear_area_growth;
+        m.area_growth_order = steady_state.area_growth_order;
         m.pivot_parity = steady_state.pivot_parity;
         m.steady_state_start_cycle = board.cycle;
         m.throughput_waste = 0;
         m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
-        if (steady_state.number_of_outputs > 0)
-            m.steady_state.cycles = -1;
+        m.steady_state.cycles = -1;
         for (uint32_t i = 0; i < board.number_of_chain_atoms; ++i) {
             struct chain_atom ca = board.chain_atoms[i];
             if (ca.prev_in_list && !vectors_equal(ca.original_position, ca.current_position)) {
@@ -550,7 +555,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                     ca.current_position.u - ca.original_position.u,
                     ca.current_position.v - ca.original_position.v,
                 };
-                bool swings = ca.flags & CHAIN_ATOM_SWINGS;
+                bool swings = ca.flags & CHAIN_ATOM_SWING_SEXTANTS;
                 if (swings || delta.u != 0)
                     m.steady_state.height_0 = -1;
                 if (swings || delta.v != 0)
@@ -682,6 +687,15 @@ int verifier_output_intervals_repeat_after(void *verifier)
     return v->output_intervals_repeat_after;
 }
 
+double verifier_per_squared_repetition_area(void *verifier)
+{
+    struct verifier *v = verifier;
+    if (!v->sf)
+        return -1;
+    v->error.description = "metric not actually supported yet";
+    return -1;
+}
+
 int verifier_evaluate_metric(void *verifier, const char *metric)
 {
     struct verifier *v = verifier;
@@ -751,16 +765,23 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error.description = "invalid puzzle file";
         return -1;
     }
-    if (!strcmp(metric, "throughput cycles")) {
+    if (!strcmp(metric, "per repetition cycles") || !strcmp(metric, "throughput cycles")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_cycles;
-    } else if (!strcmp(metric, "throughput outputs")) {
+    } else if (!strcmp(metric, "per repetition outputs") || !strcmp(metric, "throughput outputs")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_outputs;
+    } else if (!strcmp(metric, "per repetition area")) {
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v);
+        v->error = v->throughput_measurements.error;
+        if (v->throughput_measurements.area_growth_order == GROWTH_QUADRATIC)
+            v->error = (struct error){ .description = "metric doesn't have a consistent per-repetition value" };
+        return v->throughput_measurements.throughput_linear_area;
     } else if (!strcmp(metric, "throughput waste")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);

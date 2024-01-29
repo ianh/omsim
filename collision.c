@@ -35,6 +35,7 @@ struct chain_atom_collider {
     struct vector per_period_motion;
     size_t movement_index;
     int32_t extra_periods;
+    uint32_t area_direction;
     bool in_repeating_segment;
 };
 
@@ -221,6 +222,7 @@ static void add_chain_atom_collider(struct collider_list *list, struct board *bo
         .offset_from_grab = { ca.current_position.u - absolute_grab_position.u, ca.current_position.v - absolute_grab_position.v },
         .per_period_motion = { ca.current_position.u - ca.original_position.u, ca.current_position.v - ca.original_position.v },
         .movement_index = movement_index,
+        .area_direction = ca.area_direction,
         .in_repeating_segment = ca.flags & CHAIN_ATOM_IN_REPEATING_SEGMENT,
     };
 }
@@ -421,6 +423,57 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
     }
 }
 
+// stolen from python
+static int32_t floor_div(int32_t a, int32_t b)
+{
+    if (a < 0 == b < 0)
+        return labs(a) / labs(b);
+    else
+        return -1 - (labs(a) - 1) / labs(b);
+}
+
+static void mark_area_at_infinity_in_direction(struct linear_area_direction *d, struct xy_vector center, int32_t divisions, int32_t u, int32_t v)
+{
+    struct vector p = { u, v };
+    struct xy_vector grid_center = to_xy(p);
+    float dist = xy_dist(center, grid_center);
+    if (!(dist < atomRadius + atomRadius))
+        return;
+    int32_t period = 0;
+    if (d->direction.u != 0)
+        period = floor_div(p.u, d->direction.u);
+    else
+        period = floor_div(p.v, d->direction.v);
+    p.u -= period * d->direction.u;
+    p.v -= period * d->direction.v;
+    struct atom_at_position *ap = lookup_atom_at_position(&d->footprint_at_infinity, p);
+    if (!(ap->atom & VALID) || ((ap->atom >> 1) > divisions)) {
+        ap->position = p;
+        ap->atom = VALID | ((atom)divisions << 1);
+    }
+}
+
+static void mark_area_at_infinity(struct board *board, struct chain_atom_collider collider)
+{
+    struct linear_area_direction *d = &board->area_directions[collider.area_direction];
+    int32_t divisions = 1;
+    if (collider.per_period_motion.u != 0)
+        divisions = d->direction.u / collider.per_period_motion.u;
+    else
+        divisions = d->direction.v / collider.per_period_motion.v;
+    for (int32_t i = 0; i < divisions; ++i) {
+        struct xy_vector center = chain_atom_center_for_period(collider, i);
+        struct vector p = from_xy(center);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u, p.v);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u + 1, p.v);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u, p.v + 1);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u - 1, p.v + 1);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u - 1, p.v);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u, p.v - 1);
+        mark_area_at_infinity_in_direction(d, center, divisions, p.u + 1, p.v - 1);
+    }
+}
+
 bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
 {
     enum chain_mode chain_mode = board->chain_mode;
@@ -571,6 +624,8 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             while (chain_atom_cursor < list.number_of_chain_atom_colliders && list.chain_atom_colliders[chain_atom_cursor].movement_index == i) {
                 list.chain_atom_colliders[chain_atom_cursor].v = v;
                 list.chain_atom_colliders[chain_atom_cursor].r = (struct xy_vector){ rx, ry };
+                if (board->area_growth_order == GROWTH_LINEAR)
+                    mark_area_at_infinity(board, list.chain_atom_colliders[chain_atom_cursor]);
                 chain_atom_cursor++;
             }
             list.cursor = list.length;

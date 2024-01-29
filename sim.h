@@ -380,15 +380,17 @@ struct marked_positions {
 };
 
 // chain atoms participate in waste chain / polymer throughput detection.
-#define CHAIN_ATOM_ROTATION 7
+#define CHAIN_ATOM_ROTATION 7u
 #define CHAIN_ATOM_IN_REPEATING_SEGMENT (1u << 3)
-#define CHAIN_ATOM_SWINGS (1u << 4)
+#define CHAIN_ATOM_SWING_SEXTANTS_SHIFT 4
+#define CHAIN_ATOM_SWING_SEXTANTS (63u << CHAIN_ATOM_SWING_SEXTANTS_SHIFT)
 struct chain_atom {
     uint32_t *prev_in_list;
     uint32_t next_in_list;
     uint32_t flags;
     struct vector current_position;
     struct vector original_position;
+    uint32_t area_direction;
 };
 // in the DISCOVER_CHAIN mode, the original position is left fixed so that the
 // overall motion can be discovered.  in the EXTEND_CHAIN mode, the original
@@ -397,6 +399,12 @@ struct chain_atom {
 enum chain_mode {
     DISCOVER_CHAIN,
     EXTEND_CHAIN,
+};
+// used for chain atom area.
+enum growth_order {
+    GROWTH_NONE,
+    GROWTH_LINEAR,
+    GROWTH_QUADRATIC,
 };
 #define GRID_ARRAY_MIN (-32)
 #define GRID_ARRAY_MAX 32
@@ -407,6 +415,10 @@ struct atom_grid {
     struct atom_at_position *atoms_at_positions;
     uint32_t hash_capacity;
     struct board *board;
+};
+struct linear_area_direction {
+    struct vector direction;
+    struct atom_grid footprint_at_infinity;
 };
 struct board {
     struct atom_grid grid;
@@ -463,6 +475,10 @@ struct board {
     // set if a chain atom re-enters the box while chain_mode is EXTEND_CHAIN.
     bool chain_will_become_visible;
 
+    enum growth_order area_growth_order;
+    struct linear_area_direction *area_directions;
+    uint32_t number_of_area_directions;
+
     // records each cycle the output count increases toward completion.
     // a cycle on which the output count increased multiple times will appear
     // that number of times in the list.
@@ -498,6 +514,7 @@ void destroy(struct solution *solution, struct board *board);
 void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason);
 atom *lookup_atom(struct board *board, struct vector query);
 atom *lookup_atom_in_grid(struct atom_grid *grid, struct vector query);
+struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, struct vector query);
 
 // returns the atom value at the point (for collision detection).
 atom mark_used_area(struct board *board, struct vector point);
