@@ -953,12 +953,12 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 int rotation = ca->flags & CHAIN_ATOM_ROTATION;
                 ca->flags &= ~CHAIN_ATOM_ROTATION;
                 ca->flags |= normalize_direction(rotation + m->rotation);
-                if (m->rotation < 0) {
+                if (m->rotation > 0) {
                     uint32_t sextants = ((ca->flags & CHAIN_ATOM_SWING_SEXTANTS) >> 1) & CHAIN_ATOM_SWING_SEXTANTS;
                     sextants |= 1u << (CHAIN_ATOM_SWING_SEXTANTS_SHIFT + 5);
                     ca->flags &= ~CHAIN_ATOM_SWING_SEXTANTS;
                     ca->flags |= sextants;
-                } else if (m->rotation > 0) {
+                } else if (m->rotation < 0) {
                     uint32_t sextants = ((ca->flags & CHAIN_ATOM_SWING_SEXTANTS) << 1) & CHAIN_ATOM_SWING_SEXTANTS;
                     sextants |= 1u << CHAIN_ATOM_SWING_SEXTANTS_SHIFT;
                     ca->flags &= ~CHAIN_ATOM_SWING_SEXTANTS;

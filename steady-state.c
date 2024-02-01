@@ -1,5 +1,7 @@
 #include "steady-state.h"
 
+#include <assert.h>
+#include <math.h>
 #include <stdlib.h>
 
 // xx
@@ -12,6 +14,14 @@ struct snapshot {
     uint64_t cycle;
     uint64_t *output_count;
 };
+
+struct chain_swing {
+    struct vector direction;
+    int32_t length_squared;
+    int sextant;
+};
+
+#define SQRT3_2 0.8660254037844386
 
 static void take_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
 {
@@ -153,6 +163,72 @@ static int compare_chain_atoms_by_direction(const void *a, const void *b)
     if (a_dir.u - b_dir.u)
         return a_dir.u - b_dir.u;
     return a_dir.v - b_dir.v;
+}
+
+static int32_t chain_atom_motion_length_squared(struct chain_atom *ca)
+{
+    int32_t u = ca->current_position.u - ca->original_position.u;
+    int32_t v = ca->current_position.v - ca->original_position.v;
+    return u * u + u * v + v * v;
+}
+
+static int compare_chain_swings_by_direction(struct chain_swing a, struct chain_swing b)
+{
+    if (a.sextant != b.sextant)
+        return a.sextant - b.sextant;
+    return a.direction.v * b.direction.u - b.direction.v * a.direction.u;
+}
+
+static int compare_chain_swings(const void *aa, const void *bb)
+{
+    struct chain_swing a = *(const struct chain_swing *)aa;
+    struct chain_swing b = *(const struct chain_swing *)bb;
+    int32_t order = compare_chain_swings_by_direction(a, b);
+    if (order != 0)
+        return order;
+    return a.length_squared - b.length_squared;
+}
+
+static struct chain_swing end_of_swing(struct chain_swing a)
+{
+    a.sextant++;
+    return a;
+}
+
+static double measure_quadratic_swing_area(struct chain_swing *starting_point, int32_t length_squared, struct chain_swing start, struct chain_swing end)
+{
+    // wait until sextant=1 to start marking area (in order to collect all the
+    // wedges that start in sextant=0).
+    if (end.sextant == 0)
+        return 0;
+    if (starting_point->sextant == 0) {
+        *starting_point = end;
+        starting_point->sextant += 6;
+        return 0;
+    }
+    // printf("len^2=%d from %d / %d %d to %d / %d %d\n", length_squared,
+    //     start.sextant, start.direction.u, start.direction.v,
+    //     end.sextant, end.direction.u, end.direction.v);
+    struct chain_swing delta = {
+        .direction = {
+            start.direction.u * end.direction.u + start.direction.v * end.direction.u + start.direction.v * end.direction.v,
+            start.direction.u * end.direction.v - start.direction.v * end.direction.u,
+        },
+        .length_squared = length_squared,
+        .sextant = end.sextant - start.sextant,
+    };
+    if (delta.direction.u <= 0 || delta.direction.v < 0) {
+        delta.sextant--;
+        int32_t tmp = delta.direction.u;
+        delta.direction.u = -delta.direction.v;
+        delta.direction.v += tmp;
+    }
+    if (delta.sextant == 1 && delta.direction.v == 0) {
+        // the swing goes for a full sextant.
+        return length_squared;
+    }
+    assert(delta.sextant == 0);
+    return atan2(SQRT3_2 * delta.direction.v, delta.direction.u + 0.5 * delta.direction.v) / M_PI * length_squared * 3;
 }
 
 struct steady_state run_until_steady_state(struct solution *solution, struct board *board, uint64_t cycle_limit)
@@ -325,6 +401,75 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 result.number_of_outputs *= linear_area_growth_periods;
                 result.number_of_cycles *= linear_area_growth_periods;
                 result.linear_area_growth = linear_area_growth;
+            } else if (board->area_growth_order == GROWTH_QUADRATIC) {
+                struct chain_swing *chain_swings = calloc(number_of_swinging_chain_atoms * 6 * 2, sizeof(struct chain_swing));
+                uint32_t number_of_chain_swings = 0;
+                for (uint32_t i = 0; i < board->number_of_chain_atoms; ++i) {
+                    struct chain_atom *ca = &board->chain_atoms[i];
+                    if (!ca->prev_in_list)
+                        continue;
+                    struct chain_swing swing = {
+                        .direction = chain_atom_direction(ca),
+                        .length_squared = chain_atom_motion_length_squared(ca),
+                    };
+                    while (swing.direction.u <= 0 || swing.direction.v < 0) {
+                        swing.sextant++;
+                        int32_t tmp = swing.direction.u;
+                        swing.direction.u += swing.direction.v;
+                        swing.direction.v = -tmp;
+                    }
+                    for (int j = 0; j < 6; ++j) {
+                        if (ca->flags & (1u << (CHAIN_ATOM_SWING_SEXTANTS_SHIFT + j))) {
+                            chain_swings[number_of_chain_swings++] = swing;
+                            if (swing.sextant == 0) {
+                                struct chain_swing duplicate = swing;
+                                duplicate.sextant += 6;
+                                chain_swings[number_of_chain_swings++] = duplicate;
+                            }
+                        }
+                        swing.sextant = (swing.sextant + 1) % 6;
+                    }
+                }
+                qsort(chain_swings, number_of_chain_swings, sizeof(struct chain_swing), compare_chain_swings);
+                uint32_t deleted = 0;
+                uint32_t first_active_index = 0;
+                struct chain_swing longest_active_swing = { 0 };
+                struct chain_swing longest_active_swing_start = { 0 };
+                struct chain_swing starting_point = { 0 };
+                for (uint32_t i = 0; i < number_of_chain_swings + 1; ++i) {
+                    struct chain_swing current_swing = i < number_of_chain_swings ? chain_swings[i] : starting_point;
+                    if (i < number_of_chain_swings) {
+                        if (i != 0 && compare_chain_swings_by_direction(chain_swings[i - 1], current_swing) == 0) {
+                            deleted++;
+                            continue;
+                        }
+                        chain_swings[i - deleted] = current_swing;
+                    }
+                    // if the longest active swing ended, choose a new longest swing from the active swings.
+                    while (compare_chain_swings_by_direction(current_swing, end_of_swing(longest_active_swing)) >= 0) {
+                        result.quadratic_area_growth += measure_quadratic_swing_area(&starting_point, longest_active_swing.length_squared, longest_active_swing_start, end_of_swing(longest_active_swing));
+                        struct chain_swing last_end = end_of_swing(longest_active_swing);
+                        while (first_active_index < i - deleted && compare_chain_swings_by_direction(chain_swings[first_active_index], longest_active_swing) <= 0)
+                            first_active_index++;
+                        longest_active_swing = current_swing;
+                        longest_active_swing_start = current_swing;
+                        for (uint32_t j = first_active_index; j < i - deleted; ++j) {
+                            if (compare_chain_swings_by_direction(last_end, longest_active_swing_start) < 0 || chain_swings[j].length_squared > longest_active_swing.length_squared) {
+                                longest_active_swing = chain_swings[j];
+                                longest_active_swing_start = last_end;
+                            }
+                        }
+                    }
+                    // if this swing is longer than the longest active swing, take its place as the longest active swing.
+                    if (current_swing.length_squared > longest_active_swing.length_squared) {
+                        result.quadratic_area_growth += measure_quadratic_swing_area(&starting_point, longest_active_swing.length_squared, longest_active_swing_start, current_swing);
+                        longest_active_swing = current_swing;
+                        longest_active_swing_start = current_swing;
+                    }
+                }
+                free(chain_swings);
+                double cycles_scale_factor = result.number_of_cycles / repetition_period_length;
+                result.quadratic_area_growth *= cycles_scale_factor * cycles_scale_factor;
             }
             destroy_snapshot(&snapshot);
             return result;

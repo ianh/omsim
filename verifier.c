@@ -90,6 +90,7 @@ struct throughput_measurements {
     int64_t throughput_cycles;
     int64_t throughput_outputs;
     int64_t throughput_linear_area;
+    double throughput_quadratic_area;
     enum growth_order area_growth_order;
     int throughput_waste;
     int pivot_parity;
@@ -521,6 +522,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         .throughput_cycles = -1,
         .throughput_outputs = -1,
         .throughput_linear_area = -1,
+        .throughput_quadratic_area = -1,
         .throughput_waste = -1,
     };
     v->output_intervals_repeat_after = -1;
@@ -542,6 +544,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.throughput_cycles = steady_state.number_of_cycles;
         m.throughput_outputs = steady_state.number_of_outputs;
         m.throughput_linear_area = steady_state.linear_area_growth;
+        m.throughput_quadratic_area = steady_state.quadratic_area_growth;
         m.area_growth_order = steady_state.area_growth_order;
         m.pivot_parity = steady_state.pivot_parity;
         m.steady_state_start_cycle = board.cycle;
@@ -685,15 +688,6 @@ int verifier_output_intervals_repeat_after(void *verifier)
         return -1;
     ensure_output_intervals(v);
     return v->output_intervals_repeat_after;
-}
-
-double verifier_per_squared_repetition_area(void *verifier)
-{
-    struct verifier *v = verifier;
-    if (!v->sf)
-        return -1;
-    v->error.description = "metric not actually supported yet";
-    return -1;
 }
 
 int verifier_evaluate_metric(void *verifier, const char *metric)
@@ -910,4 +904,18 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error = v->completion.error;
         return lookup_per_cycle_metric(&v->completion, metric, &v->error);
     }
+}
+
+double verifier_evaluate_approximate_metric(void *verifier, const char *metric)
+{
+    struct verifier *v = verifier;
+    if (!v->sf)
+        return -1;
+    if (!strcmp(metric, "per repetition squared area")) {
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v);
+        v->error = v->throughput_measurements.error;
+        return v->throughput_measurements.throughput_quadratic_area;
+    } else
+        return verifier_evaluate_metric(verifier, metric);
 }
