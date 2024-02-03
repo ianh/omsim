@@ -911,7 +911,7 @@ double verifier_evaluate_approximate_metric(void *verifier, const char *metric)
     struct verifier *v = verifier;
     if (!v->sf)
         return -1;
-    if (!strcmp(metric, "per squared repetition area")) {
+    if (!strcmp(metric, "per repetition^2 area")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
