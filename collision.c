@@ -4,9 +4,11 @@
 #include <math.h>
 #include <stdlib.h>
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
+// M_PI isn't standard, so we define it ourselves here.
+#ifdef M_PI
+#undef M_PI
 #endif
+#define M_PI 3.14159265358979323846
 
 // only try to find collisions up to this number of periods.
 #define CHAIN_ATOM_PERIOD_LIMIT 500

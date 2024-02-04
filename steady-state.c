@@ -22,6 +22,11 @@ struct chain_swing {
 };
 
 #define SQRT3_2 0.8660254037844386
+// M_PI isn't standard, so we define it ourselves here.
+#ifdef M_PI
+#undef M_PI
+#endif
+#define M_PI 3.14159265358979323846
 
 static void take_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
 {
