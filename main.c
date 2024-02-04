@@ -200,13 +200,13 @@ int main(int argc, char *argv[])
             return -1;
         }
         for (int i = 0; i < number_of_requested_metrics; ++i) {
-            int value = verifier_evaluate_metric(verifier, requested_metrics[i]);
+            double value = verifier_evaluate_approximate_metric(verifier, requested_metrics[i]);
             if (verifier_error(verifier)) {
                 printf("%s: %s on cycle %d at %d %d\n", requested_metrics[i], verifier_error(verifier),
                     verifier_error_cycle(verifier), verifier_error_location_u(verifier), verifier_error_location_v(verifier));
                 verifier_error_clear(verifier);
             } else
-                printf("%s is %d\n", requested_metrics[i], value);
+                printf("%s is %g\n", requested_metrics[i], value);
         }
         return 0;
     }
