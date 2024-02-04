@@ -343,12 +343,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     size_t io_index = solution->number_of_inputs_and_outputs - 1;
     for (uint32_t i = sf->number_of_parts - 1; i < sf->number_of_parts; --i) {
         struct solution_part part = sf->parts[i];
+        part.rotation = part.rotation % 6;
         struct mechanism m = {
             .type = decode_mechanism_type(part.name),
             .position = { part.position[0], part.position[1] },
             .direction_u = u_offset_for_direction(part.rotation),
             .direction_v = v_offset_for_direction(part.rotation),
-            .arm_rotation = part.rotation % 6,
+            .arm_rotation = part.rotation,
         };
         if (m.type & ANY_ARM) {
             m.direction_u.u *= part.size;
