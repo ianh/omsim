@@ -3,6 +3,7 @@
 #include "sim.h"
 #include <limits.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 static unsigned char stabilized_water[] = {
   0x03, 0x00, 0x00, 0x00, 0x10, 0x53, 0x54, 0x41, 0x42, 0x49, 0x4c, 0x49,
@@ -36,9 +37,9 @@ static void print_board(struct board *board)
     int32_t maxu = -10000, minu = 10000;
     int32_t maxv = -10000, minv = 10000;
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        if (!(board->atoms_at_positions[i].atom & VALID))
+        if (!(board->grid.atoms_at_positions[i].atom & VALID))
             continue;
-        struct vector p = board->atoms_at_positions[i].position;
+        struct vector p = board->grid.atoms_at_positions[i].position;
         if (p.u < minu)
             minu = p.u;
         if (p.v < minv)
@@ -53,9 +54,9 @@ static void print_board(struct board *board)
     int stride = (maxv - minv + 1);
     atom *points = calloc(sizeof(atom), stride * (maxu - minu + 1));
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        if (!(board->atoms_at_positions[i].atom & VALID))
+        if (!(board->grid.atoms_at_positions[i].atom & VALID))
             continue;
-        points[(board->atoms_at_positions[i].position.v - minv) + stride * (board->atoms_at_positions[i].position.u - minu)] = board->atoms_at_positions[i].atom;
+        points[(board->grid.atoms_at_positions[i].position.v - minv) + stride * (board->grid.atoms_at_positions[i].position.u - minu)] = board->grid.atoms_at_positions[i].atom;
     }
     for (int u = maxu; u >= minu; --u) {
         for (int n = minu; n < u; ++n)
@@ -81,10 +82,10 @@ static void print_board(struct board *board)
 
 #if 0
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
-        atom a = board->atoms_at_positions[i].atom;
+        atom a = board->grid.atoms_at_positions[i].atom;
         if (!(a & VALID) || (a & REMOVED))
             continue;
-        struct vector position = board->atoms_at_positions[i].position;
+        struct vector position = board->grid.atoms_at_positions[i].position;
         printf("%" PRId32 " %" PRId32 " %" PRIx64 "\n", position.u, position.v, a);
     }
 #endif
