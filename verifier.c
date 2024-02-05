@@ -773,8 +773,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
-        if (v->throughput_measurements.area_growth_order == GROWTH_QUADRATIC)
+        if (v->throughput_measurements.area_growth_order == GROWTH_QUADRATIC) {
             v->error = (struct error){ .description = "metric doesn't have a consistent per-repetition value" };
+            return -1;
+        }
         return v->throughput_measurements.throughput_linear_area;
     } else if (!strcmp(metric, "throughput waste")) {
         if (!v->throughput_measurements.valid)
