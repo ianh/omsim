@@ -588,8 +588,8 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
         return;
     }
     movement.first_chain_atom = UINT32_MAX;
+    movement.first_atom_index = board->moving_atoms.cursor;
     size_t movement_index = reserve_movement_index(board);
-    size_t start = board->moving_atoms.cursor;
     move_atom(board, a, movement.absolute_grab_position, movement_index, &movement.first_chain_atom);
     // do a breadth-first search over the molecule, removing each atom from the
     // board as it's discovered.
@@ -609,7 +609,7 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
         }
         board->moving_atoms.cursor++;
     }
-    movement.number_of_atoms = board->moving_atoms.cursor - start;
+    movement.number_of_atoms = board->moving_atoms.cursor - movement.first_atom_index;
     board->movements.movements[movement_index] = movement;
 }
 
@@ -660,6 +660,11 @@ static bool position_may_eventually_be_visible_to_solution(struct solution *solu
         return false;
     // return true if the ranges overlap and false otherwise.
     return v_entry <= u_exit && u_entry <= v_exit;
+}
+
+static int compare_movements_by_number_of_atoms(const void *a, const void *b)
+{
+    return (int)((const struct movement *)a)->number_of_atoms - (int)((const struct movement *)b)->number_of_atoms;
 }
 
 static void perform_arm_instructions(struct solution *solution, struct board *board)
@@ -913,13 +918,32 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             }
         }
 
+        size_t atom_index = 0;
+
+        // sort movements by number of atoms to make the collision bounding box
+        // optimization work better.  this has to be done before fixing up the
+        // chain atom list pointers.
+        qsort(board->movements.movements, board->movements.length, sizeof(struct movement), compare_movements_by_number_of_atoms);
+        size_t offset = board->moving_atoms.length;
+        if (offset * 2 > board->moving_atoms.capacity) {
+            board->moving_atoms.capacity = offset * 2;
+            board->moving_atoms.atoms_at_positions = realloc(board->moving_atoms.atoms_at_positions, sizeof(struct atom_at_position) * board->moving_atoms.capacity);
+        }
+        memcpy(board->moving_atoms.atoms_at_positions + offset, board->moving_atoms.atoms_at_positions, sizeof(struct atom_at_position) * offset);
+        for (size_t i = 0; i < board->movements.length; ++i) {
+            struct movement *m = &board->movements.movements[i];
+            memcpy(board->moving_atoms.atoms_at_positions + atom_index, board->moving_atoms.atoms_at_positions + offset + m->first_atom_index, m->number_of_atoms * sizeof(struct atom_at_position));
+            m->first_atom_index = atom_index;
+            atom_index += m->number_of_atoms;
+        }
+
         int32_t maximum_rotation_distance = 1;
+        atom_index = 0;
         // this is kind of terrible.  we have to fix up the movement structs to
         // look like the game is expecting (instead of the initial state, before
         // the movement, the game expects to see the final state, after the
         // movement already happened).  so, for now, we'll do two passes.  this
         // code should be cleaned up at some point.
-        size_t atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement *m = &board->movements.movements[i];
             if (m->first_chain_atom != UINT32_MAX) {

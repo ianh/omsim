@@ -343,6 +343,7 @@ enum movement_type {
 struct movement {
     // the number of atoms involved in this movement.
     size_t number_of_atoms;
+    size_t first_atom_index;
 
     uint32_t type;
 
