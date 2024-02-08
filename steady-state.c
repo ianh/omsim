@@ -243,6 +243,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
     if (check_period == 0)
         check_period = 1;
     uint64_t next_snapshot_cycle = check_period * (1 + (board->cycle + check_period - 1) / check_period);
+    uint64_t snapshot_period = next_snapshot_cycle;
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
         uint64_t period_aligned_start_cycle = check_period * ((solution->arm_tape_start_cycle[i] + check_period - 1) / check_period);
         if (period_aligned_start_cycle > next_snapshot_cycle)
@@ -251,7 +252,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
     bool disable_check_until_next_snapshot = true;
     while (board->cycle < cycle_limit && !board->collision) {
         // printf("cycle %llu\n", board->cycle);
-        if (!disable_check_until_next_snapshot && !(board->cycle % check_period) && check_snapshot(solution, board, &snapshot)) {
+        if (!disable_check_until_next_snapshot && board->cycle % check_period == 0 && check_snapshot(solution, board, &snapshot)) {
             // printf("check passed on cycle %llu\n", board->cycle);
             uint64_t repetition_period_length = board->cycle - snapshot.cycle;
             struct steady_state result = {
@@ -480,12 +481,13 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             return result;
         }
         while (board->cycle > next_snapshot_cycle)
-            next_snapshot_cycle *= 2;
+            next_snapshot_cycle += snapshot_period;
         if (board->cycle == next_snapshot_cycle) {
             // printf("snapshot %llu\n", board->cycle);
             take_snapshot(solution, board, &snapshot);
             disable_check_until_next_snapshot = false;
-            next_snapshot_cycle *= 2;
+            next_snapshot_cycle += snapshot_period;
+            snapshot_period *= 2;
         }
         cycle(solution, board);
     }
