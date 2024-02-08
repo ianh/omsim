@@ -759,7 +759,14 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error.description = "invalid puzzle file";
         return -1;
     }
-    if (!strcmp(metric, "per repetition cycles") || !strcmp(metric, "throughput cycles")) {
+    if (!strcmp(metric, "reaches steady state")) {
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v);
+        if (v->throughput_measurements.throughput_cycles < 0)
+            return 0;
+        else
+            return 1;
+    } else if (!strcmp(metric, "per repetition cycles") || !strcmp(metric, "throughput cycles")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
