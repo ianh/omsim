@@ -547,7 +547,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.throughput_quadratic_area = steady_state.quadratic_area_growth;
         m.area_growth_order = steady_state.area_growth_order;
         m.pivot_parity = steady_state.pivot_parity;
-        m.steady_state_start_cycle = board.cycle;
+        m.steady_state_start_cycle = steady_state.outputs_repeat_after_cycle;
         m.throughput_waste = 0;
         m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
         m.steady_state.cycles = -1;
