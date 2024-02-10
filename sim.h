@@ -487,6 +487,10 @@ struct board {
     uint64_t number_of_output_cycles;
     uint64_t output_cycles_capacity;
 
+    // if non-zero, sets an upper limit on the number of atoms that can move at
+    // once from a single grabber movement.
+    size_t movement_limit;
+
     // did the solution complete yet?
     bool complete;
 };

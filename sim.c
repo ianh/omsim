@@ -610,6 +610,8 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
         board->moving_atoms.cursor++;
     }
     movement.number_of_atoms = board->moving_atoms.cursor - movement.first_atom_index;
+    if (board->movement_limit > 0 && movement.number_of_atoms > board->movement_limit)
+        report_collision(board, movement.absolute_grab_position, "simulation reached limit for maximum number of atoms being moved");
     board->movements.movements[movement_index] = movement;
 }
 
