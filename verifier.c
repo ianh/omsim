@@ -131,7 +131,7 @@ static void *verifier_create_empty(void)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 150000;
-    v->movement_limit = 5000;
+    v->movement_limit = 1500;
     v->wrong_output_index = -1;
     return v;
 }
