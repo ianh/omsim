@@ -516,7 +516,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 });
             }
         }
-        list.ignore_board = false;
+        list.ignore_board = board->area_growth_order >= GROWTH_LINEAR;
         combine_chain_atoms(&list, 0);
         list.cursor = list.length;
         list.bounding_box_up_to_cursor = list.bounding_box;
