@@ -573,6 +573,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
                 .radius = armBaseRadius,
             });
             list.cursor = list.length;
+            list.bounding_box_up_to_cursor = list.bounding_box;
         }
         size_t atom_index = 0;
         size_t chain_atom_cursor = fixed_chain_atom_colliders;
