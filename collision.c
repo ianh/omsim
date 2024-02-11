@@ -128,13 +128,13 @@ static struct xy_rect xy_rect_add_collider(struct xy_rect rect, struct collider 
 }
 static bool xy_rect_contains_collider(struct xy_rect rect, struct collider collider)
 {
-    if (collider.center.x - collider.radius < rect.min_x)
+    if (collider.center.x + collider.radius < rect.min_x)
         return false;
-    if (collider.center.x + collider.radius > rect.max_x)
+    if (collider.center.x - collider.radius > rect.max_x)
         return false;
-    if (collider.center.y - collider.radius < rect.min_y)
+    if (collider.center.y + collider.radius < rect.min_y)
         return false;
-    if (collider.center.y + collider.radius > rect.max_y)
+    if (collider.center.y - collider.radius > rect.max_y)
         return false;
     return true;
 }
