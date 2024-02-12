@@ -681,6 +681,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
     for (uint32_t i = 0; i < n; ++i) {
         struct mechanism *m = &solution->arms[i];
         m->movement = zero_vector;
+        m->type &= ~MOVED_GRABBED_ATOMS;
         if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
             continue;
         size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
@@ -733,6 +734,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             if (track_motion.u == 0 && track_motion.v == 0)
                 continue;
         }
+        m->type |= MOVED_GRABBED_ATOMS;
         // next, apply the instruction to any grabbed atoms. atom movements are
         // added to a list (board->movements) and deferred until later.
         int step = angular_distance_between_grabbers(m->type);
@@ -900,14 +902,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct mechanism *m = &solution->arms[i];
             if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
                 continue;
-            size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
-            index %= solution->tape_period;
-            if (index < solution->arm_tape_length[i]) {
-                char inst = solution->arm_tape[i][index];
-                // check whether the arm isn't moving on this cycle.
-                if (inst != ' ' && inst != '\0' && inst != 'r')
-                    continue;
-            }
+            // check whether the arm is static on this cycle.
+            if (m->type & MOVED_GRABBED_ATOMS)
+                continue;
             int step = angular_distance_between_grabbers(m->type);
             for (int direction = 0; direction < 6; direction += step) {
                 if (!(m->type & (GRABBING_LOW_BIT << direction)))

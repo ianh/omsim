@@ -137,6 +137,9 @@ enum mechanism_type {
 
     // is the arm itself grabbing?
     GRABBING = 1 << 27,
+
+    // were the grabbed atoms moved this cycle?
+    MOVED_GRABBED_ATOMS = 1 << 28,
 };
 
 static const enum mechanism_type GRABBING_EVERYTHING = 0x3FULL * GRABBING_LOW_BIT;
