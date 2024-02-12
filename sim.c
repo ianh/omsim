@@ -902,12 +902,12 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 continue;
             size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
             index %= solution->tape_period;
-            if (index >= solution->arm_tape_length[i])
-                continue;
-            char inst = solution->arm_tape[i][index];
-            // check whether the arm isn't moving on this cycle.
-            if (inst != ' ' && inst != '\0' && inst != 'r')
-                continue;
+            if (index < solution->arm_tape_length[i]) {
+                char inst = solution->arm_tape[i][index];
+                // check whether the arm isn't moving on this cycle.
+                if (inst != ' ' && inst != '\0' && inst != 'r')
+                    continue;
+            }
             int step = angular_distance_between_grabbers(m->type);
             for (int direction = 0; direction < 6; direction += step) {
                 if (!(m->type & (GRABBING_LOW_BIT << direction)))
