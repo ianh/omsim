@@ -479,7 +479,7 @@ static void mark_area_at_infinity(struct board *board, struct chain_atom_collide
 bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
 {
     enum chain_mode chain_mode = board->chain_mode;
-    size_t number_of_colliders = solution->number_of_arms + board->moving_atoms.length;
+    size_t number_of_colliders = solution->number_of_arms + solution->number_of_cabinet_walls + board->moving_atoms.length;
     size_t number_of_chain_atom_colliders = 0;
     if (chain_mode == EXTEND_CHAIN) {
         for (size_t i = 0; i < BOARD_CAPACITY(board); ++i) {
@@ -553,6 +553,12 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         });
         list.cursor = list.length;
         list.bounding_box_up_to_cursor = list.bounding_box;
+    }
+    for (size_t i = 0; i < solution->number_of_cabinet_walls; ++i) {
+        add_collider(&list, board, (struct collider){
+            .center = to_xy(solution->cabinet_walls[i]),
+            .radius = armBaseRadius,
+        });
     }
     size_t fixed_colliders = list.length;
     struct xy_rect fixed_bounding_box = list.bounding_box;
