@@ -1951,11 +1951,11 @@ static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct atom
         uint32_t misses = 0;
         while (true) {
             struct atom_at_position *a = &grid->atoms_at_positions[GRID_ARRAY_PREFIX + index];
-            if (!(a->atom & VALID))
+            if (!a->atom)
                 return a;
             if (vectors_equal(a->position, query))
                 return a;
-            if (++misses == 3) {
+            if (++misses == 6) {
                 rehash(grid, grid->hash_capacity * 2);
                 break;
             }
