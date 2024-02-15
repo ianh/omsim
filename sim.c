@@ -1855,25 +1855,11 @@ uint32_t used_area(struct board *board)
 
 // appendix A -- hash table functions.
 
-// This is the 32-bit FNV-1a hash diffusion algorithm.
-// http://www.isthe.com/chongo/tech/comp/fnv/index.html
-
-static uint32_t fnv(const void *dataPointer, size_t length)
-{
-    uint32_t hash = 0x811c9dc5;
-    const unsigned char *data = dataPointer;
-    for (size_t i = 0; i < length; ++i) {
-        hash ^= data[i];
-        hash *= 0x01000193;
-    }
-    return hash;
-}
-
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index)
 {
     if (solution->track_table_size == 0)
         return false;
-    uint32_t hash = fnv(&query, sizeof(query));
+    uint32_t hash = vector_hash(query);
     uint32_t mask = solution->track_table_size - 1;
     *index = hash & mask;
     while (true) {
@@ -1916,7 +1902,7 @@ void add_chain_atom_to_table(struct board *board, uint32_t chain_atom_index)
     if (board->chain_atom_table_size == 0)
         return;
     struct vector p = board->chain_atoms[chain_atom_index].current_position;
-    uint32_t hash = fnv(&p, sizeof(p));
+    uint32_t hash = vector_hash(p);
     uint32_t mask = board->chain_atom_table_size - 1;
     move_chain_atom_to_list(board, chain_atom_index, &board->chain_atom_table[hash & mask]);
 }
@@ -1925,7 +1911,7 @@ uint32_t lookup_chain_atom(struct board *board, struct vector query)
 {
     if (board->chain_atom_table_size == 0)
         return UINT32_MAX;
-    uint32_t hash = fnv(&query, sizeof(query));
+    uint32_t hash = vector_hash(query);
     uint32_t mask = board->chain_atom_table_size - 1;
     uint32_t index = board->chain_atom_table[hash & mask];
     while (index != UINT32_MAX) {
@@ -1944,7 +1930,7 @@ static struct atom_at_position *lookup_atom_at_position_in_array(struct atom_gri
 __attribute__((noinline))
 static struct atom_at_position *lookup_atom_at_position_in_hashtable(struct atom_grid *grid, struct vector query)
 {
-    uint32_t hash = fnv(&query, sizeof(query));
+    uint32_t hash = vector_hash(query);
     while (true) {
         uint32_t mask = grid->hash_capacity - 1;
         uint32_t index = hash & mask;

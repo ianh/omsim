@@ -162,6 +162,13 @@ static inline bool vectors_equal(struct vector a, struct vector b)
 {
     return a.u == b.u && a.v == b.v;
 }
+static inline uint32_t vector_hash(struct vector p)
+{
+    uint64_t hash = 0x542ddeaec5c75e0full;
+    hash += 0xc0c594dd042705fbull * (uint32_t)p.u;
+    hash += 0x93b45776c46130c1ull * (uint32_t)p.v;
+    return hash >> 32;
+}
 
 struct atom_at_position {
     struct vector position;
