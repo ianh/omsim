@@ -565,6 +565,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 struct vector position = solution->arms[arm_index].position;
                 struct vector track = position;
                 int track_steps = 0;
+                int track_looping_steps = 0;
                 int rotation = 0;
                 int piston = part.size;
                 int grab = 0;
@@ -601,8 +602,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                         grab = 0;
                     track.u += motion.u;
                     track.v += motion.v;
-                    if (track.u == position.u && track.v == position.v)
+                    if (track.u == position.u && track.v == position.v) {
+                        track_looping_steps += track_steps;
                         track_steps = 0;
+                    }
                 }
                 if (grab > 0)
                     tape[n++] = 'f';
@@ -633,6 +636,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                         direction = -1;
                         forward = solution->track_minus_motions;
                     }
+                    // if taking into account looping steps changes the sign,
+                    // resolve ties in the opposite way.
+                    if (track_steps * (track_steps + track_looping_steps) < 0)
+                        search_depth++;
                     struct vector p = track;
                     for (int i = 0; i < search_depth; ++i) {
                         if (p.u == position.u && p.v == position.v) {
