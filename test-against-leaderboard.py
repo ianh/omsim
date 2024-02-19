@@ -10,8 +10,8 @@ if len(sys.argv) < 3:
     exit(1)
 
 def measure_rate(m):
-    cycles = m("throughput cycles")
-    outputs = m("throughput outputs")
+    cycles = m("per repetition cycles")
+    outputs = m("per repetition outputs")
     if outputs <= 0 or cycles < 0:
         return None
     else:
@@ -23,6 +23,17 @@ def check_rate_metric(m, val):
     else:
         return val
 
+def measure_area_at_infinity(m):
+    if not measure_rate(m):
+        return None
+    a2 = m("per repetition^2 area") / m("per repetition outputs")**2
+    if a2 > 0:
+        return {'level': 2, 'value': a2}
+    a1 = m("per repetition area") / m("per repetition outputs")
+    if a1 > 0:
+        return {'level': 1, 'value': a1}
+    return {'level': 0, 'value': m("steady state area")}
+
 leaderboard_metrics = {
     "cost": lambda m: m("cost"),
     "instructions": lambda m: m("instructions"),
@@ -33,7 +44,7 @@ leaderboard_metrics = {
     "width": lambda m: m("width*2") / 2,
     "height": lambda m: m("height"),
     "rate": measure_rate,
-    "areaINF": lambda m: check_rate_metric(m, m("steady state area")),
+    "areaINF": measure_area_at_infinity,
     "heightINF": lambda m: check_rate_metric(m, m("steady state height")),
     "widthINF": lambda m: check_rate_metric(m, m("steady state width*2") / 2),
 }
@@ -42,6 +53,7 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 lv = cdll.LoadLibrary("libverify.so")
 lv.verifier_create.restype = c_void_p
 lv.verifier_error.restype = c_char_p
+lv.verifier_evaluate_approximate_metric.restype = c_double
 lv.verifier_find_puzzle_name_in_solution_bytes.restype = POINTER(c_char)
 
 puzzles = {}
@@ -67,7 +79,7 @@ for path in leaderboard.rglob('*.json'):
         if (metric == "width" or metric == "widthINF") and not metadata["score"]["width"]:
             continue
         f = leaderboard_metrics[metric]
-        measured = f(lambda sim_metric: lv.verifier_evaluate_metric(c_void_p(v), c_char_p(sim_metric.encode('utf-8'))))
+        measured = f(lambda sim_metric: lv.verifier_evaluate_approximate_metric(c_void_p(v), c_char_p(sim_metric.encode('utf-8'))))
         int_expected = None
         try:
             int_expected = int(expected)
