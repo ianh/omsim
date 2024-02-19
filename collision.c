@@ -56,6 +56,7 @@ struct collider_list {
     struct vector *collision_location;
 
     bool ignore_board;
+    bool bounding_box_unused;
 };
 
 // based on image dimensions in textures/board/hex_tile.lighting/
@@ -188,8 +189,8 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
 __attribute__((always_inline))
 static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
-    struct vector p = from_xy(collider.center);
     if (!list->ignore_board) {
+        struct vector p = from_xy(collider.center);
         mark_area_and_check_board(list, board, collider, p.u, p.v);
         mark_area_and_check_board(list, board, collider, p.u + 1, p.v);
         mark_area_and_check_board(list, board, collider, p.u, p.v + 1);
@@ -199,7 +200,8 @@ static void add_collider(struct collider_list *list, struct board *board, struct
         mark_area_and_check_board(list, board, collider, p.u + 1, p.v - 1);
     }
     list->colliders[list->length++] = collider;
-    list->bounding_box = xy_rect_add_collider(list->bounding_box, collider);
+    if (!list->bounding_box_unused)
+        list->bounding_box = xy_rect_add_collider(list->bounding_box, collider);
     if (!xy_rect_contains_collider(list->bounding_box_up_to_cursor, collider))
         return;
     for (size_t i = 0; i < list->cursor; ++i) {
@@ -207,6 +209,7 @@ static void add_collider(struct collider_list *list, struct board *board, struct
         if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
             continue;
         list->collision = true;
+        struct vector p = from_xy(collider.center);
         if (list->collision_location)
             *list->collision_location = p;
         break;
@@ -565,6 +568,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
     size_t fixed_colliders = list.length;
     struct xy_rect fixed_bounding_box = list.bounding_box;
     for (float progress = increment; progress < 1.f; progress += increment) {
+        list.bounding_box_unused = false;
         list.cursor = fixed_colliders;
         list.length = fixed_colliders;
         list.bounding_box = fixed_bounding_box;
@@ -586,6 +590,8 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         size_t atom_index = 0;
         size_t chain_atom_cursor = fixed_chain_atom_colliders;
         for (size_t i = 0; i < board->movements.length; ++i) {
+            // skip updating the bounding box for the last movement.
+            list.bounding_box_unused = i + 1 == board->movements.length;
             struct movement m = board->movements.movements[i];
             struct xy_vector v = to_xy(m.base);
             float rotation = to_radians(m.rotation);
