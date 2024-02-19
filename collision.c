@@ -428,7 +428,9 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
 // stolen from python
 static int32_t floor_div(int32_t a, int32_t b)
 {
-    if (a < 0 == b < 0)
+    if (a == 0)
+        return 0;
+    else if (a < 0 == b < 0)
         return labs(a) / labs(b);
     else
         return -1 - (labs(a) - 1) / labs(b);
