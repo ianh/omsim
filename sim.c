@@ -610,6 +610,8 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
         board->moving_atoms.cursor++;
     }
     movement.number_of_atoms = board->moving_atoms.cursor - movement.first_atom_index;
+    if (board->movement_limit > 0 && movement.number_of_atoms > board->movement_limit)
+        report_collision(board, movement.absolute_grab_position, "simulation reached limit for maximum number of atoms being moved");
     board->movements.movements[movement_index] = movement;
 }
 
@@ -1014,7 +1016,6 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                     ap.atom &= ~IS_CHAIN_ATOM;
                 insert_atom(board, ap.position, VALID | ap.atom, "atom moved on top of another atom");
             }
-            size_t number_of_non_chain_atoms = m.number_of_atoms;
             uint32_t chain = m.first_chain_atom;
             while (chain != UINT32_MAX) {
                 struct chain_atom ca = board->chain_atoms[chain];
@@ -1028,11 +1029,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                     move_chain_atom_to_list(board, chain, 0);
                 } else
                     add_chain_atom_to_table(board, chain);
-                number_of_non_chain_atoms--;
                 chain = ca.next_in_list;
             }
-            if (board->chain_mode != EXTEND_CHAIN && board->movement_limit > 0 && number_of_non_chain_atoms > board->movement_limit)
-                report_collision(board, m.absolute_grab_position, "simulation reached limit for maximum number of atoms being moved");
         }
     }
 }
