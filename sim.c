@@ -610,8 +610,6 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
         board->moving_atoms.cursor++;
     }
     movement.number_of_atoms = board->moving_atoms.cursor - movement.first_atom_index;
-    if (board->movement_limit > 0 && movement.number_of_atoms > board->movement_limit)
-        report_collision(board, movement.absolute_grab_position, "simulation reached limit for maximum number of atoms being moved");
     board->movements.movements[movement_index] = movement;
 }
 
@@ -1007,6 +1005,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         struct vector collision_location;
         if (collision(solution, board, (float)collision_increment, &collision_location))
             report_collision(board, collision_location, "collision during motion phase");
+        if (board->collision_check_limit > 0 && board->collision_checks > board->collision_check_limit)
+            report_collision(board, zero_vector, "solution reached limit for maximum number of collision checks");
         atom_index = 0;
         for (size_t i = 0; i < board->movements.length; ++i) {
             struct movement m = board->movements.movements[i];

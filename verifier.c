@@ -122,7 +122,7 @@ struct verifier {
     int number_of_output_intervals;
     int output_intervals_repeat_after;
 
-    size_t movement_limit;
+    uint64_t collision_check_limit;
 
     struct error error;
 };
@@ -131,7 +131,7 @@ static void *verifier_create_empty(void)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 150000;
-    v->movement_limit = 1500;
+    v->collision_check_limit = 2000000000;
     v->wrong_output_index = -1;
     return v;
 }
@@ -534,7 +534,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
     if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
         return m;
     initial_setup(&solution, &board, v->sf->area);
-    board.movement_limit = v->movement_limit;
+    board.collision_check_limit = v->collision_check_limit;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
     struct steady_state steady_state = run_until_steady_state(&solution, &board, v->cycle_limit);
@@ -862,7 +862,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return arms;
     }
     initial_setup(&solution, &board, v->sf->area);
-    board.movement_limit = v->movement_limit;
+    board.collision_check_limit = v->collision_check_limit;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
     if (!strcmp(metric, "overlap")) {

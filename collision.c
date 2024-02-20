@@ -190,6 +190,7 @@ __attribute__((always_inline))
 static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
     if (!list->ignore_board) {
+        board->collision_checks += 7;
         struct vector p = from_xy(collider.center);
         mark_area_and_check_board(list, board, collider, p.u, p.v);
         mark_area_and_check_board(list, board, collider, p.u + 1, p.v);
@@ -204,6 +205,7 @@ static void add_collider(struct collider_list *list, struct board *board, struct
         list->bounding_box = xy_rect_add_collider(list->bounding_box, collider);
     if (!xy_rect_contains_collider(list->bounding_box_up_to_cursor, collider))
         return;
+    board->collision_checks += list->cursor;
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
         if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
