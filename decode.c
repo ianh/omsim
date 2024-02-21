@@ -544,16 +544,20 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
             int32_t n = inst.index - min_tape;
             if (inst.instruction == 'C') { // repeat
+                if (last_repeat < -min_tape)
+                    last_repeat = -min_tape;
                 while (j < part.number_of_instructions && part.instructions[j].instruction == 'C') {
                     if (last_end > part.instructions[j].index - min_tape) {
                         *error = "solution contains a repeat instruction that overlaps with a reset instruction";
                         destroy(solution, 0);
                         return false;
                     }
-                    memcpy(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
-                    int32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
-                    if (m > tape_length)
-                        tape_length = m;
+                    if (last_end > last_repeat) {
+                        memcpy(tape + part.instructions[j].index - min_tape, tape + last_repeat, last_end - last_repeat);
+                        int32_t m = part.instructions[j].index - min_tape + last_end - last_repeat;
+                        if (m > tape_length)
+                            tape_length = m;
+                    }
                     j++;
                 }
                 if (j < part.number_of_instructions) {
