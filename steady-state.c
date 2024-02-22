@@ -191,7 +191,7 @@ static int compare_chain_swings(const void *aa, const void *bb)
     int32_t order = compare_chain_swings_by_direction(a, b);
     if (order != 0)
         return order;
-    return a.length_squared - b.length_squared;
+    return b.length_squared - a.length_squared;
 }
 
 static struct chain_swing end_of_swing(struct chain_swing a)
