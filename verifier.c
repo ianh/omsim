@@ -332,8 +332,8 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     }
     struct area_dimension dimensions[] = {
         // height
-        { -1, 0, INT32_MIN, INT32_MAX },
-        { 0, 1, INT32_MIN, INT32_MAX },
+        { 0, -1, INT32_MIN, INT32_MAX },
+        { 1, 0, INT32_MIN, INT32_MAX },
         { -1, 1, INT32_MIN, INT32_MAX },
 
         // width
@@ -563,9 +563,9 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                     ca.current_position.v - ca.original_position.v,
                 };
                 bool swings = ca.flags & CHAIN_ATOM_SWING_SEXTANTS;
-                if (swings || delta.u != 0)
-                    m.steady_state.height_0 = -1;
                 if (swings || delta.v != 0)
+                    m.steady_state.height_0 = -1;
+                if (swings || delta.u != 0)
                     m.steady_state.height_60 = -1;
                 if (swings || delta.u + delta.v != 0)
                     m.steady_state.height_120 = -1;
