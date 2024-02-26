@@ -78,6 +78,7 @@ struct per_cycle_measurements {
     int width2_0;
     int width2_60;
     int width2_120;
+    int minimum_hexagon;
     int executed_instructions;
     int instruction_executions[NUMBER_OF_INSTRUCTIONS];
     int atom_grabs[NUMBER_OF_ATOM_TYPES];
@@ -314,6 +315,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         .width2_0 = -1,
         .width2_60 = -1,
         .width2_120 = -1,
+        .minimum_hexagon = -1,
         .executed_instructions = -1,
         .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .atom_grabs = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
@@ -376,6 +378,18 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         m.width2_0 = dimensions[3].max - dimensions[3].min + 2;
         m.width2_60 = dimensions[4].max - dimensions[4].min + 2;
         m.width2_120 = dimensions[5].max - dimensions[5].min + 2;
+        m.minimum_hexagon = m.height_0 / 2;
+        if (m.height_60 / 2 > m.minimum_hexagon)
+            m.minimum_hexagon = m.height_60 / 2;
+        if (m.height_120 / 2 > m.minimum_hexagon)
+            m.minimum_hexagon = m.height_120 / 2;
+        int32_t maxs = (dimensions[0].max + dimensions[1].max + dimensions[2].max + 2) / 3;
+        int32_t mins = (-dimensions[0].min - dimensions[1].min - dimensions[2].min + 2) / 3;
+        if (maxs > m.minimum_hexagon)
+            m.minimum_hexagon = maxs;
+        if (mins > m.minimum_hexagon)
+            m.minimum_hexagon = mins;
+        m.minimum_hexagon += 1;
     }
     if (solution) {
         for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
@@ -472,7 +486,9 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         if (width2 < 0 || (measurements->width2_120 >= 0 && measurements->width2_120 < width2))
             width2 = measurements->width2_120;
         return width2;
-    } else if (!strcmp(metric, "executed instructions"))
+    } else if (!strcmp(metric, "minimum hexagon"))
+        return measurements->minimum_hexagon;
+    else if (!strcmp(metric, "executed instructions"))
         return measurements->executed_instructions;
     else if (!strcmp(metric, "maximum absolute arm rotation"))
         return measurements->maximum_absolute_arm_rotation;
@@ -575,6 +591,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                     m.steady_state.width2_60 = -1;
                 if (swings || delta.u - delta.v != 0)
                     m.steady_state.width2_120 = -1;
+                m.steady_state.minimum_hexagon = -1;
                 m.steady_state.area = -1;
                 m.throughput_waste = 1;
             }
