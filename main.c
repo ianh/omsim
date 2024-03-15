@@ -169,6 +169,7 @@ int main(int argc, char *argv[])
     const char *requested_metrics[64];
     int number_of_requested_metrics = 0;
     bool awaiting_metric = false;
+    bool disable_limits = false;
     for (int i = 1; i < argc; ++i) {
         if (awaiting_metric) {
             if (number_of_requested_metrics >= sizeof(requested_metrics) / sizeof(requested_metrics[0])) {
@@ -179,6 +180,8 @@ int main(int argc, char *argv[])
             awaiting_metric = false;
         } else if (strcmp(argv[i], "--metric") == 0)
             awaiting_metric = true;
+        else if (strcmp(argv[i], "--disable-limits") == 0)
+            disable_limits = true;
         else if (!puzzle_path)
             puzzle_path = argv[i];
         else if (!solution_path)
@@ -190,7 +193,7 @@ int main(int argc, char *argv[])
         }
     }
     if (awaiting_metric || !puzzle_path || !solution_path) {
-        fprintf(stderr, "usage: omsim [--metric <metric name>]* puzzle solution\n");
+        fprintf(stderr, "usage: omsim [--metric <metric name>]* [--disable-limits] puzzle solution\n");
         return -1;
     }
     if (number_of_requested_metrics > 0) {
@@ -199,6 +202,8 @@ int main(int argc, char *argv[])
             puts(verifier_error(verifier));
             return -1;
         }
+        if (disable_limits)
+            verifier_disable_limits(verifier);
         for (int i = 0; i < number_of_requested_metrics; ++i) {
             double value = verifier_evaluate_approximate_metric(verifier, requested_metrics[i]);
             if (verifier_error(verifier)) {

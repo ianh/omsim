@@ -33,6 +33,9 @@ void verifier_destroy(void *verifier);
 // set how many cycles to wait for a solution to complete.
 void verifier_set_cycle_limit(void *verifier, int cycle_limit);
 
+// disable limits and let the solution run as long as possible.
+void verifier_disable_limits(void *verifier);
+
 // set whether the verifier fails if an output of the correct shape but with the
 // wrong atoms is dropped on the output with puzzle file index output_index.
 void verifier_set_fails_on_wrong_output(void *verifier, int output_index, int fails_on_wrong_output);

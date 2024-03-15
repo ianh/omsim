@@ -9,6 +9,7 @@ EMEXPORTS2=_verifier_destroy,_verifier_set_cycle_limit,_verifier_error,_verifier
 EMEXPORTS3=_verifier_set_fails_on_wrong_output,_verifier_set_fails_on_wrong_output_bonds,_verifier_wrong_output_index
 EMEXPORTS4=_verifier_wrong_output_atom,_verifier_wrong_output_clear,_verifier_number_of_output_intervals
 EMEXPORTS5=_verifier_output_interval,_verifier_output_intervals_repeat_after,_verifier_evaluate_approximate_metric
+EMEXPORTS6=_verifier_disable_limits
 
 HEADER=collision.h decode.h parse.h sim.h steady-state.h verifier.h
 SOURCE=collision.c decode.c parse.c sim.c steady-state.c verifier.c
@@ -20,7 +21,7 @@ libverify.so: $(HEADER) $(SOURCE) Makefile
 	$(CC) $(CFLAGS) -shared -fpic -o $@ $(SOURCE) $(LDLIBS)
 
 libverify.wasm: $(HEADER) $(SOURCE) Makefile
-	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS=$(EMEXPORTS1),$(EMEXPORTS2),$(EMEXPORTS3),$(EMEXPORTS4),$(EMEXPORTS5) -o $@ $(SOURCE)
+	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS=$(EMEXPORTS1),$(EMEXPORTS2),$(EMEXPORTS3),$(EMEXPORTS4),$(EMEXPORTS5),$(EMEXPORTS6) -o $@ $(SOURCE)
 
 run-tests: $(HEADER) $(SOURCE) Makefile run-tests.c
 	$(CC) $(CFLAGS) -g -D_DEFAULT_SOURCE -o $@ $(SOURCE) run-tests.c $(LDLIBS)

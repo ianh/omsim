@@ -498,9 +498,9 @@ struct board {
     uint64_t output_cycles_capacity;
 
     // how many times a collision check has been performed.
-    uint32_t collision_checks;
+    uint64_t collision_checks;
     // the limit after which execution will stop.
-    uint32_t collision_check_limit;
+    uint64_t collision_check_limit;
 
     // did the solution complete yet?
     bool complete;

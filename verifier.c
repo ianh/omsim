@@ -124,6 +124,7 @@ struct verifier {
     int output_intervals_repeat_after;
 
     uint64_t collision_check_limit;
+    bool disable_limits;
 
     struct error error;
 };
@@ -132,7 +133,7 @@ static void *verifier_create_empty(void)
 {
     struct verifier *v = calloc(sizeof(struct verifier), 1);
     v->cycle_limit = 150000;
-    v->collision_check_limit = 4000000000;
+    v->collision_check_limit = 2000000000;
     v->wrong_output_index = -1;
     return v;
 }
@@ -235,6 +236,14 @@ void verifier_set_cycle_limit(void *verifier, int cycle_limit)
     if (cycle_limit < 0)
         cycle_limit = 0;
     v->cycle_limit = cycle_limit;
+}
+
+void verifier_disable_limits(void *verifier)
+{
+    struct verifier *v = verifier;
+    if (!v)
+        return;
+    v->disable_limits = true;
 }
 
 void verifier_set_fails_on_wrong_output(void *verifier, int output_index, int fails_on_wrong_output)
@@ -550,10 +559,11 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
     if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
         return m;
     initial_setup(&solution, &board, v->sf->area);
-    board.collision_check_limit = v->collision_check_limit;
+    if (!v->disable_limits)
+        board.collision_check_limit = v->collision_check_limit;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
-    struct steady_state steady_state = run_until_steady_state(&solution, &board, v->cycle_limit);
+    struct steady_state steady_state = run_until_steady_state(&solution, &board, v->disable_limits ? UINT64_MAX : v->cycle_limit);
 
     if (board.collision) {
         m.error.description = board.collision_reason;
@@ -879,7 +889,8 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return arms;
     }
     initial_setup(&solution, &board, v->sf->area);
-    board.collision_check_limit = v->collision_check_limit;
+    if (!v->disable_limits)
+        board.collision_check_limit = v->collision_check_limit;
     board.fails_on_wrong_output_mask = v->fails_on_wrong_output_mask;
     board.fails_on_wrong_output_bonds_mask = v->fails_on_wrong_output_bonds_mask;
     if (!strcmp(metric, "overlap")) {
@@ -905,7 +916,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         }
         metric = (const char *)(endptr + 1);
         solution.target_number_of_outputs = product_count;
-        while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
+        while ((v->disable_limits || board.cycle < v->cycle_limit) && !board.complete && !board.collision)
             cycle(&solution, &board);
         struct per_cycle_measurements m = measure_at_current_cycle(v, &solution, &board, true);
         check_wrong_output_and_destroy(v, &solution, &board);
@@ -927,7 +938,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         return value;
     } else {
         if (!v->completion.valid) {
-            while (board.cycle < v->cycle_limit && !board.complete && !board.collision)
+            while ((v->disable_limits || board.cycle < v->cycle_limit) && !board.complete && !board.collision)
                 cycle(&solution, &board);
             v->completion = measure_at_current_cycle(v, &solution, &board, true);
         }
