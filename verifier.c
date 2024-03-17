@@ -639,7 +639,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
             for (size_t i = 0; i < v->number_of_output_intervals; ++i) {
                 if (v->output_intervals[i] > steady_state.outputs_repeat_after_cycle) {
-                    v->output_intervals_repeat_after = i + 1;
+                    v->output_intervals_repeat_after = i;
                     break;
                 }
             }
