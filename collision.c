@@ -190,7 +190,8 @@ __attribute__((always_inline))
 static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
     if (!list->ignore_board) {
-        board->collision_checks += 7;
+        // multiply by 10 to capture the difference between atom/board and atom/atom collision checks.
+        board->collision_checks += 7 * 10;
         struct vector p = from_xy(collider.center);
         mark_area_and_check_board(list, board, collider, p.u, p.v);
         mark_area_and_check_board(list, board, collider, p.u + 1, p.v);
