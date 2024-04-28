@@ -36,6 +36,8 @@ struct chain_atom_collider {
     struct vector offset_from_grab;
     struct vector per_period_motion;
     size_t movement_index;
+    size_t movement_collider_start;
+    size_t movement_collider_end;
     int32_t extra_periods;
     uint32_t area_direction;
     bool in_repeating_segment;
@@ -354,6 +356,8 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
         // first, check for collisions between the chain atom and normal colliders.
         if (xy_rect_intersects_ray(list->bounding_box, origin_a, motion_ax, motion_ay, atomRadius)) {
             for (size_t j = 0; j < list->length; ++j) {
+                if (j >= a.movement_collider_start && j < a.movement_collider_end)
+                    continue;
                 struct collider b = list->colliders[j];
                 int32_t period = minimum_approach_period(motion_ax, motion_ay, origin_a, b.center);
                 if (xy_dist(b.center, chain_atom_center_for_period(a, period)) < b.radius + atomRadius) {
@@ -569,6 +573,12 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         });
     }
     size_t fixed_colliders = list.length;
+    if (chain_mode == EXTEND_CHAIN) {
+        for (size_t i = 0; i < list.number_of_chain_atom_colliders; ++i) {
+            list.chain_atom_colliders[i].movement_collider_start = 0;
+            list.chain_atom_colliders[i].movement_collider_end = fixed_colliders;
+        }
+    }
     struct xy_rect fixed_bounding_box = list.bounding_box;
     for (float progress = increment; progress < 1.f; progress += increment) {
         list.bounding_box_unused = false;
@@ -644,6 +654,8 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             while (chain_atom_cursor < list.number_of_chain_atom_colliders && list.chain_atom_colliders[chain_atom_cursor].movement_index == i) {
                 list.chain_atom_colliders[chain_atom_cursor].v = v;
                 list.chain_atom_colliders[chain_atom_cursor].r = (struct xy_vector){ rx, ry };
+                list.chain_atom_colliders[chain_atom_cursor].movement_collider_start = list.cursor;
+                list.chain_atom_colliders[chain_atom_cursor].movement_collider_end = list.length;
                 if (board->area_growth_order == GROWTH_LINEAR)
                     mark_area_at_infinity(board, list.chain_atom_colliders[chain_atom_cursor]);
                 chain_atom_cursor++;
