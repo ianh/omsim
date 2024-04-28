@@ -675,7 +675,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
                 }
             }
             // eliminate extra repetitions before the repeating range.
-            while (v->number_of_output_intervals > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
+            while (v->number_of_output_intervals > 0 && v->output_intervals_repeat_after > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
                 v->output_intervals_repeat_after--;
                 v->number_of_output_intervals--;
             }
