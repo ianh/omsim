@@ -139,9 +139,9 @@ static void print_board(struct board *board)
                 } else
                     printf(" ?");
             } else {
-                for (int i = 1; i < 16; ++i) {
+                for (int i = 1; i < 17; ++i) {
                     if (a & (1 << i)) {
-                        printf(" %x", i & 0xf);
+                        printf(" %x", (i - 1) & 0xf);
                         break;
                     }
                 }
@@ -160,6 +160,48 @@ static void print_board(struct board *board)
         printf("%" PRId32 " %" PRId32 " %" PRIx64 "\n", position.u, position.v, a);
     }
 #endif
+}
+static void print_footprint_at_infinity(struct atom_grid *grid)
+{
+    int32_t maxu = -10000, minu = 10000;
+    int32_t maxv = -10000, minv = 10000;
+    if (grid->hash_capacity == 0)
+        return;
+    for (uint32_t i = 0; i < GRID_CAPACITY(*grid); ++i) {
+        if (!(grid->atoms_at_positions[i].atom & VALID))
+            continue;
+        struct vector p = grid->atoms_at_positions[i].position;
+        if (p.u < minu)
+            minu = p.u;
+        if (p.v < minv)
+            minv = p.v;
+        if (p.u > maxu)
+            maxu = p.u;
+        if (p.v > maxv)
+            maxv = p.v;
+    }
+    if (maxu < minu || maxv < minv)
+        return;
+    int stride = (maxu - minu + 1);
+    atom *points = calloc(sizeof(atom), stride * (maxv - minv + 1));
+    for (uint32_t i = 0; i < GRID_CAPACITY(*grid); ++i) {
+        if (!(grid->atoms_at_positions[i].atom & VALID))
+            continue;
+        points[(grid->atoms_at_positions[i].position.u - minu) + stride * (grid->atoms_at_positions[i].position.v - minv)] = grid->atoms_at_positions[i].atom;
+    }
+    for (int v = maxv; v >= minv; --v) {
+        for (int n = minv; n < v; ++n)
+            printf(" ");
+        for (int u = minu; u <= maxu; ++u) {
+            atom a = points[stride * (v - minv) + (u - minu)];
+            if (!a)
+                printf("  ");
+            else
+                printf(" %llu", a >> 1);
+        }
+        printf("\n");
+    }
+    free(points);
 }
 
 int main(int argc, char *argv[])
@@ -240,11 +282,25 @@ int main(int argc, char *argv[])
     initial_setup(&solution, &board, sf->area);
 
     // run the solution.
+#if 0
     printf("-- %.*s\n", (int)sf->name.length, sf->name.bytes);
-    while (board.cycle < 10000 && !board.complete) {
-        printf("-- %"PRIu64" %u %u\n", board.cycle, BOARD_CAPACITY(&board), board.area);
-        print_board(&board);
+    int32_t last_area = 0;
+    int32_t last_delta = 0;
+    double total_delta = 0;
+    double total_delta_n = 0;
+    while (true) {
+        if (!(board.cycle % 10000))
+            printf("-- %"PRIu64" %u %u\n", board.cycle, BOARD_CAPACITY(&board), board.area);
+        // print_board(&board);
         cycle(&solution, &board);
+        // if ((board.cycle % 4) == 0) {
+        //     int32_t delta = board.area - last_area;
+        //     total_delta += delta - last_delta;
+        //     total_delta_n++;
+        //     printf("cycle=%llu a=%u a'=%d a''=%d (avg=%f)\n", board.cycle, board.area, delta, delta - last_delta, total_delta / total_delta_n);
+        //     last_area = board.area;
+        //     last_delta = delta;
+        // }
         if (board.collision) {
             fprintf(stderr, "collision at %" PRId32 ", %" PRId32 ": %s\n",
              board.collision_location.u, board.collision_location.v,
@@ -257,13 +313,19 @@ int main(int argc, char *argv[])
     printf("simulation says cycle count is: %" PRIu64 "\n", board.cycle);
     printf("solution file says area is: %" PRIu32 "\n", sf->area);
     printf("simulation says area is: %" PRIu32 "\n", used_area(&board));
+#endif
 
-#if 0
-    struct steady_state steady_state = run_until_steady_state(&solution, &board, 100000);
+#if 1
+    struct steady_state steady_state = run_until_steady_state(&solution, &board, 100000000ull);
     switch (steady_state.eventual_behavior) {
     case EVENTUALLY_ENTERS_STEADY_STATE:
-        print_board(&board);
+        // print_board(&board);
         printf("simulation entered a steady state (as of cycle %" PRIu64 "), outputting %" PRIu64 " times every %" PRIu64 " cycles\n", board.cycle, steady_state.number_of_outputs, steady_state.number_of_cycles);
+        for (uint32_t i = 0; i < board.number_of_area_directions; ++i) {
+            printf("footprint for %d %d:\n", board.area_directions[i].direction.u, board.area_directions[i].direction.v);
+            print_footprint_at_infinity(&board.area_directions[i].footprint_at_infinity);
+        }
+        printf("growth=%f\n", steady_state.quadratic_area_growth);
         break;
     case EVENTUALLY_STOPS_RUNNING:
         printf("simulation stopped running at cycle: %" PRIu64 "\n", board.cycle);
