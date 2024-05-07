@@ -1796,6 +1796,7 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         create_van_berlo_atom(board, solution->arms[i], 0, -1, FIRE);
         create_van_berlo_atom(board, solution->arms[i], 1, -1, EARTH);
     }
+    mark_arm_area(solution, board);
     // van berlo's wheel can block inputs.
     flag_blocked_inputs(solution, board);
     spawn_inputs(solution, board);

@@ -916,6 +916,8 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         }
         metric = (const char *)(endptr + 1);
         solution.target_number_of_outputs = product_count;
+        if (product_count <= 0)
+            board.complete = true;
         while ((v->disable_limits || board.cycle < v->cycle_limit) && !board.complete && !board.collision)
             cycle(&solution, &board);
         struct per_cycle_measurements m = measure_at_current_cycle(v, &solution, &board, true);
