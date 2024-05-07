@@ -89,6 +89,72 @@ static enum mechanism_type decode_mechanism_type(struct byte_string part_name)
         return 0;
 }
 
+static uint64_t parts_available_bits_for_part_name(struct byte_string part_name)
+{
+    if (byte_string_is(part_name, "glyph-calcification"))
+        return 1ull << 12;
+    else if (byte_string_is(part_name, "glyph-life-and-death"))
+        return 1ull << 16;
+    else if (byte_string_is(part_name, "glyph-projection"))
+        return 1ull << 14;
+    else if (byte_string_is(part_name, "glyph-dispersion"))
+        return 1ull << 18;
+    else if (byte_string_is(part_name, "glyph-purification"))
+        return 1ull << 15;
+    else if (byte_string_is(part_name, "glyph-duplication"))
+        return 1ull << 13;
+    else if (byte_string_is(part_name, "glyph-unification"))
+        return 1ull << 18;
+    else if (byte_string_is(part_name, "bonder"))
+        return 1ull << 8;
+    else if (byte_string_is(part_name, "unbonder"))
+        return 1ull << 9;
+    else if (byte_string_is(part_name, "bonder-prisma"))
+        return 1ull << 11;
+    else if (byte_string_is(part_name, "bonder-speed"))
+        return 1ull << 10;
+    else if (byte_string_is(part_name, "glyph-disposal"))
+        return 1ull << 17;
+    else if (byte_string_is(part_name, "glyph-marker"))
+        return 1ull << 1;
+    else if (byte_string_is(part_name, "arm1"))
+        return 1ull << 0;
+    else if (byte_string_is(part_name, "arm2"))
+        return 1ull << 1;
+    else if (byte_string_is(part_name, "arm3"))
+        return 1ull << 1;
+    else if (byte_string_is(part_name, "arm6"))
+        return 1ull << 1;
+    else if (byte_string_is(part_name, "piston"))
+        return 1ull << 2;
+    else if (byte_string_is(part_name, "baron"))
+        return 1ull << 28;
+    else if (byte_string_is(part_name, "track"))
+        return 1ull << 3;
+    else
+        return 0;
+}
+
+static uint64_t parts_available_bits_for_instruction(char inst)
+{
+    switch (inst) {
+    case 'R': return 1ull << 22;
+    case 'r': return 1ull << 22;
+    case 'E': return 1ull << 2;
+    case 'e': return 1ull << 2;
+    case 'G': return 1ull << 23;
+    case 'g': return 1ull << 22;
+    case 'P': return 1ull << 26;
+    case 'p': return 1ull << 26;
+    case 'A': return 1ull << 3;
+    case 'a': return 1ull << 3;
+    case 'C': return 1ull << 25;
+    case 'X': return 1ull << 24;
+    case 'O': return 1ull << 25;
+    default: return 0;
+    }
+}
+
 static int compare_instructions_by_index(const void *aa, const void *bb)
 {
     const struct solution_instruction *a = aa;
@@ -246,6 +312,11 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     // first pass through the solution file: count how many things of each type
     // there are.  these counts are used to allocate arrays of the correct size.
     for (uint32_t i = 0; i < sf->number_of_parts; ++i) {
+        uint64_t parts_available = parts_available_bits_for_part_name(sf->parts[i].name);
+        if ((parts_available & pf->parts_available) != parts_available) {
+            *error = "solution contains a part that has been disabled in the puzzle file";
+            return false;
+        }
         enum mechanism_type type = decode_mechanism_type(sf->parts[i].name);
         if (type & ANY_ARM) {
             if (sf->parts[i].size > 3) {
@@ -540,6 +611,12 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             struct solution_instruction inst = part.instructions[j];
             if (j > 0 && inst.index == part.instructions[j - 1].index) {
                 *error = "solution contains an arm with two instructions that have the same index";
+                destroy(solution, 0);
+                return false;
+            }
+            uint64_t parts_available = parts_available_bits_for_instruction(inst.instruction);
+            if ((parts_available & pf->parts_available) != parts_available) {
+                *error = "solution contains an instruction that has been disabled in the puzzle file";
                 destroy(solution, 0);
                 return false;
             }
