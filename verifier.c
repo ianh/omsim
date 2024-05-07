@@ -924,6 +924,29 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         check_wrong_output_and_destroy(v, &solution, &board);
         v->error = m.error;
         return lookup_per_cycle_metric(&m, metric, &v->error);
+    } else if (!strncmp("cycle ", metric, strlen("cycle "))) {
+        metric += strlen("cycle ");
+        char *endptr = 0;
+        long cycle_count = strtol(metric, &endptr, 10);
+        if (cycle_count < 0 || endptr == metric) {
+            v->error.description = "invalid cycle count";
+            destroy(&solution, &board);
+            return -1;
+        }
+        if (*endptr != ' ') {
+            v->error.description = "cycle count must be followed by a metric";
+            destroy(&solution, &board);
+            return -1;
+        }
+        metric = (const char *)(endptr + 1);
+        solution.target_number_of_outputs = UINT64_MAX;
+        while (board.cycle < cycle_count && !board.collision)
+            cycle(&solution, &board);
+        board.complete = true;
+        struct per_cycle_measurements m = measure_at_current_cycle(v, &solution, &board, true);
+        check_wrong_output_and_destroy(v, &solution, &board);
+        v->error = m.error;
+        return lookup_per_cycle_metric(&m, metric, &v->error);
     } else if (!strncmp("steady state ", metric, strlen("steady state "))) {
         destroy(&solution, &board);
         metric += strlen("steady state ");
