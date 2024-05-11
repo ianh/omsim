@@ -17,8 +17,8 @@ SOURCE=collision.c decode.c parse.c sim.c steady-state.c verifier.c
 omsim: $(HEADER) $(SOURCE) Makefile main.c
 	$(CC) $(CFLAGS) -g -o $@ $(SOURCE) main.c $(LDLIBS)
 
-libverify.so: $(HEADER) $(SOURCE) Makefile
-	$(CC) $(CFLAGS) -shared -fpic -o $@ $(SOURCE) $(LDLIBS)
+libverify.so libverify.dll: $(HEADER) $(SOURCE) Makefile
+	$(CC) $(CFLAGS) -g -shared -fpic -o $@ $(SOURCE) $(LDLIBS)
 
 libverify.wasm: $(HEADER) $(SOURCE) Makefile
 	emcc $(CFLAGS) $(EMFLAGS) -s EXPORTED_FUNCTIONS=$(EMEXPORTS1),$(EMEXPORTS2),$(EMEXPORTS3),$(EMEXPORTS4),$(EMEXPORTS5),$(EMEXPORTS6) -o $@ $(SOURCE)
