@@ -43,10 +43,12 @@ leaderboard_metrics = {
     "area": lambda m: m("area"),
     "width": lambda m: m("width*2") / 2,
     "height": lambda m: m("height"),
+    "boundingHex": lambda m: m("minimum hexagon"),
     "rate": measure_rate,
     "areaINF": measure_area_at_infinity,
     "heightINF": lambda m: check_rate_metric(m, m("steady state height")),
     "widthINF": lambda m: check_rate_metric(m, m("steady state width*2") / 2),
+    "boundingHexINF": lambda m: check_rate_metric(m, m("steady state minimum hexagon")),
 }
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -73,10 +75,12 @@ for path in leaderboard.rglob('*.json'):
     puzzle_path = puzzles[puzzle_name_string[:puzzle_name_length.value].decode('utf-8')]
     v = lv.verifier_create(c_char_p(bytes(puzzle_path)), c_char_p(bytes(solution_path)))
     for metric, expected in metadata["score"].items():
-        # if the leaderboard doesn't track width/height for a puzzle, don't validate it.
+        # if the leaderboard doesn't track width/height/bestagon for a puzzle, don't validate it.
         if (metric == "height" or metric == "heightINF") and not metadata["score"]["height"]:
             continue
         if (metric == "width" or metric == "widthINF") and not metadata["score"]["width"]:
+            continue
+        if (metric == "boundingHex" or metric == "boundingHexINF") and not metadata["score"]["boundingHex"]:
             continue
         f = leaderboard_metrics[metric]
         measured = f(lambda sim_metric: lv.verifier_evaluate_approximate_metric(c_void_p(v), c_char_p(sim_metric.encode('utf-8'))))
