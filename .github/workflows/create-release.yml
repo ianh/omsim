@@ -7,7 +7,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - run: make
+    - run: make libverify.so
     - id: create_release
       uses: actions/create-release@v1
       env:
