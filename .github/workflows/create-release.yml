@@ -8,6 +8,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - run: make libverify.so
+    - run: gh release delete libverify-linux-x86_64
+      continue-on-error: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - id: create_release
       uses: actions/create-release@v1
       env:
