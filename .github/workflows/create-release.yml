@@ -30,9 +30,11 @@ jobs:
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
+    - uses: msys2/setup-msys2@v2
+      with:
+        install: mingw-w64-x86_64-gcc
     - run: make libverify.dll
-      env:
-        CC: C:\msys64\usr\bin\gcc
+      shell: msys2 {0}
     - run: gh release delete libverify-windows-x86_64
       continue-on-error: true
       env:
