@@ -3,7 +3,7 @@ on:
   push:
     branches: [ "master" ]
 jobs:
-  build:
+  build-linux-x86_64:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -24,5 +24,30 @@ jobs:
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }}
         asset_path: ./libverify.so
-        asset_name: libverify-linux-x86_64.so
+        asset_name: libverify.so
         asset_content_type: application/x-sharedlib
+  build-windows-x86_64:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - run: make libverify.dll
+      env:
+        CC: C:\msys64\usr\bin\gcc
+    - run: gh release delete libverify-windows-x86_64
+      continue-on-error: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: libverify-windows-x86_64
+    - uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./libverify.dll
+        asset_name: libverify.dll
+        asset_content_type: application/x-dosexec
