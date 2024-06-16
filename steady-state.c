@@ -389,6 +389,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 uint64_t linear_area_growth = 0;
                 uint64_t linear_area_growth_periods = 1;
                 for (uint32_t i = 0; i < board->number_of_area_directions; ++i) {
+                    if (!board->area_directions[i].footprint_at_infinity.atoms_at_positions)
+                        continue;
                     for (uint32_t j = 0; j < GRID_CAPACITY(board->area_directions[i].footprint_at_infinity); ++j) {
                         struct atom_at_position ap = board->area_directions[i].footprint_at_infinity.atoms_at_positions[j];
                         if (!(ap.atom & VALID))
