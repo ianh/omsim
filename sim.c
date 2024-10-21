@@ -95,11 +95,13 @@ static struct atom_ref_at_position get_atom(struct board *board, struct mechanis
 __attribute__((noinline))
 static void remove_overlapping_atom(struct board *board, struct atom_ref_at_position a)
 {
-    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; --i) {
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
         if (vectors_equal(board->overlapped_atoms[i].position, a.position)) {
             *a.atom = board->overlapped_atoms[i].atom;
             schedule_flag_reset_if_needed(board, a.atom);
-            memmove(board->overlapped_atoms + i, board->overlapped_atoms + i + 1, board->number_of_overlapped_atoms - i - 1);
+            memmove(board->overlapped_atoms + i,
+                    board->overlapped_atoms + i + 1,
+                    (board->number_of_overlapped_atoms - i - 1) * sizeof(struct atom_at_position));
             board->number_of_overlapped_atoms--;
             return;
         }
