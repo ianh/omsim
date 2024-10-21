@@ -140,7 +140,7 @@ int direction_for_offset(struct vector d)
     return -1;
 }
 
-static int angular_distance_between_grabbers(enum mechanism_type type)
+int angular_distance_between_grabbers(enum mechanism_type type)
 {
     switch (type & ANY_ARM) {
     case ARM:
