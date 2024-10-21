@@ -229,15 +229,14 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
 {
     struct conduit *conduit = &solution->conduits[m.conduit_index];
     struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
-    int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
     uint32_t base = 0;
-    if (board->half_cycle == 2)
-        conduit = &solution->conduits[other_side.conduit_index];
-    for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
-        uint32_t length = conduit->molecule_lengths[j];
-        bool valid = true;
-        bool consume = true;
-        if (board->half_cycle == 1) {
+
+    if (board->half_cycle == 1) {
+        int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
+        for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
+            uint32_t length = conduit->molecule_lengths[j];
+            bool valid = true;
+            bool consume = true;
             // if any of the atoms in this molecule have already been consumed
             // by some other glyph, then remove the molecule from the conduit.
             for (uint32_t k = 0; k < length; ++k) {
@@ -282,12 +281,10 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 j--;
                 continue;
             }
-        }
-        for (uint32_t k = 0; k < length; ++k) {
-            atom a = conduit->atoms[base + k].atom;
-            struct vector delta = conduit->atoms[base + k].position;
-            struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
-            if (board->half_cycle == 1) {
+            for (uint32_t k = 0; k < length; ++k) {
+                struct vector delta = conduit->atoms[base + k].position;
+                struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
+                atom a = conduit->atoms[base + k].atom;
                 atom *b = lookup_atom(board, p);
                 if (consume) {
                     conduit->atoms[base + k].atom = *b;
@@ -299,11 +296,20 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
                 rotate_bonds(&a, rotation);
                 insert_atom(board, p, a | BEING_PRODUCED, "conduit output");
-            } else {
+            }
+            base += length;
+        }
+    } else {
+        conduit = &solution->conduits[other_side.conduit_index];
+        for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
+            uint32_t length = conduit->molecule_lengths[j];
+            for (uint32_t k = 0; k < length; ++k) {
+                struct vector delta = conduit->atoms[base + k].position;
+                struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
                 *lookup_atom(board, p) &= ~BEING_PRODUCED;
             }
+            base += length;
         }
-        base += length;
     }
 }
 
