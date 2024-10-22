@@ -559,6 +559,7 @@ const struct vector *glyph_footprint(enum mechanism_type type);
 struct vector u_offset_for_direction(int direction);
 struct vector v_offset_for_direction(int direction);
 int direction_for_offset(struct vector d);
+int angular_distance_between_grabbers(enum mechanism_type);
 struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w);
 atom bond_direction(struct mechanism m, int32_t du, int32_t dv);
 

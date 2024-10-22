@@ -95,11 +95,13 @@ static struct atom_ref_at_position get_atom(struct board *board, struct mechanis
 __attribute__((noinline))
 static void remove_overlapping_atom(struct board *board, struct atom_ref_at_position a)
 {
-    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; --i) {
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
         if (vectors_equal(board->overlapped_atoms[i].position, a.position)) {
             *a.atom = board->overlapped_atoms[i].atom;
             schedule_flag_reset_if_needed(board, a.atom);
-            memmove(board->overlapped_atoms + i, board->overlapped_atoms + i + 1, board->number_of_overlapped_atoms - i - 1);
+            memmove(board->overlapped_atoms + i,
+                    board->overlapped_atoms + i + 1,
+                    (board->number_of_overlapped_atoms - i - 1) * sizeof(struct atom_at_position));
             board->number_of_overlapped_atoms--;
             return;
         }
@@ -140,7 +142,7 @@ int direction_for_offset(struct vector d)
     return -1;
 }
 
-static int angular_distance_between_grabbers(enum mechanism_type type)
+int angular_distance_between_grabbers(enum mechanism_type type)
 {
     switch (type & ANY_ARM) {
     case ARM:
@@ -227,13 +229,14 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
 {
     struct conduit *conduit = &solution->conduits[m.conduit_index];
     struct mechanism other_side = solution->glyphs[conduit->other_side_glyph_index];
-    int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
     uint32_t base = 0;
-    for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
-        uint32_t length = conduit->molecule_lengths[j];
-        bool valid = true;
-        bool consume = true;
-        if (board->half_cycle == 1) {
+
+    if (board->half_cycle == 1) {
+        int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
+        for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
+            uint32_t length = conduit->molecule_lengths[j];
+            bool valid = true;
+            bool consume = true;
             // if any of the atoms in this molecule have already been consumed
             // by some other glyph, then remove the molecule from the conduit.
             for (uint32_t k = 0; k < length; ++k) {
@@ -278,12 +281,10 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 j--;
                 continue;
             }
-        }
-        for (uint32_t k = 0; k < length; ++k) {
-            atom a = conduit->atoms[base + k].atom;
-            struct vector delta = conduit->atoms[base + k].position;
-            if (board->half_cycle == 1) {
+            for (uint32_t k = 0; k < length; ++k) {
+                struct vector delta = conduit->atoms[base + k].position;
                 struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
+                atom a = conduit->atoms[base + k].atom;
                 atom *b = lookup_atom(board, p);
                 if (consume) {
                     conduit->atoms[base + k].atom = *b;
@@ -292,13 +293,23 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                     // bonds are consumed even if the atoms aren't.
                     *b &= ~(ALL_BONDS & ~RECENT_BONDS & a);
                 }
-            } else {
-                struct vector p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
+                p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
                 rotate_bonds(&a, rotation);
-                insert_atom(board, p, a, "conduit output");
+                insert_atom(board, p, a | BEING_PRODUCED, "conduit output");
             }
+            base += length;
         }
-        base += length;
+    } else {
+        conduit = &solution->conduits[other_side.conduit_index];
+        for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
+            uint32_t length = conduit->molecule_lengths[j];
+            for (uint32_t k = 0; k < length; ++k) {
+                struct vector delta = conduit->atoms[base + k].position;
+                struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
+                *lookup_atom(board, p) &= ~BEING_PRODUCED;
+            }
+            base += length;
+        }
     }
 }
 

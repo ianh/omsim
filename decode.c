@@ -215,6 +215,13 @@ static struct vector cabinet_walls_Medium[] = { {3,0}, {2,1}, {1,2}, {0,3}, {-1,
 static struct vector cabinet_walls_MediumWide[] = { {4,0}, {3,1}, {2,2}, {1,3}, {0,3}, {-1,3}, {-2,3}, {-3,3}, {-3,2}, {-3,1}, {-3,0}, {-2,-1}, {-1,-2}, {0,-3}, {1,-3}, {2,-3}, {3,-3}, {4,-3}, {4,-2}, {4,-1} };
 static struct vector cabinet_walls_Large[] = { {4,0}, {3,1}, {2,2}, {1,3}, {0,4}, {-1,4}, {-2,4}, {-3,4}, {-4,4}, {-4,3}, {-4,2}, {-4,1}, {-4,0}, {-3,-1}, {-2,-2}, {-1,-3}, {0,-4}, {1,-4}, {2,-4}, {3,-4}, {4,-4}, {4,-3}, {4,-2}, {4,-1} };
 
+static struct vector cabinet_insides_Small[] = { {0,-1}, {1,-1}, {-1,0}, {0,0}, {1,0}, {-1,1}, {0,1} };
+static struct vector cabinet_insides_SmallWide[] = { {0,-1}, {1,-1}, {2,-1}, {-1,0}, {0,0}, {1,0}, {2,0}, {-1,1}, {0,1}, {1,1} };
+static struct vector cabinet_insides_SmallWider[] = { {0,-1}, {1,-1}, {2,-1}, {3,-1}, {-1,0}, {0,0}, {1,0}, {2,0}, {3,0}, {-1,1}, {0,1}, {1,1}, {2,1} };
+static struct vector cabinet_insides_Medium[] = { {0,-2}, {1,-2}, {2,-2}, {-1,-1}, {0,-1}, {1,-1}, {2,-1}, {-2,0}, {-1,0}, {0,0}, {1,0}, {2,0}, {-2,1}, {-1,1}, {0,1}, {1,1}, {-2,2}, {-1,2}, {0,2} };
+static struct vector cabinet_insides_MediumWide[] = { {0,-2}, {1,-2}, {2,-2}, {3,-2}, {-1,-1}, {0,-1}, {1,-1}, {2,-1}, {3,-1}, {-2,0}, {-1,0}, {0,0}, {1,0}, {2,0}, {3,0}, {-2,1}, {-1,1}, {0,1}, {1,1}, {2,1}, {-2,2}, {-1,2}, {0,2}, {1,2} };
+static struct vector cabinet_insides_Large[] = { {0,-3}, {1,-3}, {2,-3}, {3,-3}, {-1,-2}, {0,-2}, {1,-2}, {2,-2}, {3,-2}, {-2,-1}, {-1,-1}, {0,-1}, {1,-1}, {2,-1}, {3,-1}, {-3,0}, {-2,0}, {-1,0}, {0,0}, {1,0}, {2,0}, {3,0}, {-3,1}, {-2,1}, {-1,1}, {0,1}, {1,1}, {2,1}, {-3,2}, {-2,2}, {-1,2}, {0,2}, {1,2}, {-3,3}, {-2,3}, {-1,3}, {0,3} };
+
 static size_t number_of_walls_for_cabinet_type(struct byte_string type)
 {
     if (byte_string_is(type, "Small"))
@@ -258,6 +265,42 @@ static size_t copy_walls_for_cabinet_type(struct byte_string type, struct vector
     return n;
 }
 
+static size_t number_of_insides_for_cabinet_type(struct byte_string type)
+{
+    if (byte_string_is(type, "Small"))
+        return sizeof(cabinet_insides_Small) / sizeof(cabinet_insides_Small[0]);
+    else if (byte_string_is(type, "SmallWide"))
+        return sizeof(cabinet_insides_SmallWide) / sizeof(cabinet_insides_SmallWide[0]);
+    else if (byte_string_is(type, "SmallWider"))
+        return sizeof(cabinet_insides_SmallWider) / sizeof(cabinet_insides_SmallWider[0]);
+    else if (byte_string_is(type, "Medium"))
+        return sizeof(cabinet_insides_Medium) / sizeof(cabinet_insides_Medium[0]);
+    else if (byte_string_is(type, "MediumWide"))
+        return sizeof(cabinet_insides_MediumWide) / sizeof(cabinet_insides_MediumWide[0]);
+    else if (byte_string_is(type, "Large"))
+        return sizeof(cabinet_insides_Large) / sizeof(cabinet_insides_Large[0]);
+    else
+        return 0;
+}
+
+static struct vector* get_insides_for_cabinet_type(struct byte_string type)
+{
+    if (byte_string_is(type, "Small"))
+        return cabinet_insides_Small;
+    else if (byte_string_is(type, "SmallWide"))
+        return cabinet_insides_SmallWide;
+    else if (byte_string_is(type, "SmallWider"))
+        return cabinet_insides_SmallWider;
+    else if (byte_string_is(type, "Medium"))
+        return cabinet_insides_Medium;
+    else if (byte_string_is(type, "MediumWide"))
+        return cabinet_insides_MediumWide;
+    else if (byte_string_is(type, "Large"))
+        return cabinet_insides_Large;
+    else
+        return 0;
+}
+
 static void mark_visible_region(struct solution *solution, struct vector p, int32_t hex_radius)
 {
     if (p.u < INT32_MIN + hex_radius)
@@ -282,6 +325,135 @@ static void mark_visible_input_output(struct solution *solution, struct input_ou
 {
     for (uint32_t i = 0; i < io->number_of_atoms; ++i)
         mark_visible_region(solution, io->atoms[i].position, 0);
+}
+
+#define MAP_SIZE 32
+
+static uint8_t cabinet_for_position(uint8_t cabinet_map[MAP_SIZE][MAP_SIZE], struct vector position)
+{
+    int32_t u = position.u + (MAP_SIZE >> 1);
+    int32_t v = position.v + (MAP_SIZE >> 1);
+    if (u >= 0 && u < MAP_SIZE && v >= 0 && v < MAP_SIZE)
+        return cabinet_map[u][v];
+    return 0;
+}
+
+static struct vector decode_position(signed char position[2])
+{
+    return (struct vector) { position[0], position[1] };
+}
+
+static char* check_production_constraints(struct solution *solution, struct puzzle_production_info *info)
+{
+    // map u,v coordinates => cabinet id + 1 (0 means no cabinet)
+    uint8_t cabinet_map[MAP_SIZE][MAP_SIZE] = { 0 };
+    for (uint32_t i = 0; i < info->number_of_cabinets; ++i) {
+        struct vector *src = get_insides_for_cabinet_type(info->cabinets[i].type);
+        size_t n = number_of_insides_for_cabinet_type(info->cabinets[i].type);
+        for (size_t j = 0; j < n; ++j) {
+            int32_t u = info->cabinets[i].position[0] + src[j].u + (MAP_SIZE >> 1);
+            int32_t v = info->cabinets[i].position[1] + src[j].v + (MAP_SIZE >> 1);
+            if (u >= 0 && u < MAP_SIZE && v >= 0 && v < MAP_SIZE)
+                cabinet_map[u][v] = i + 1;
+        }
+    }
+
+    // check conduits
+    bool swapped = false;
+    for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
+        struct conduit *conduit = &solution->conduits[i];
+        uint32_t conduit_index = conduit->id - 100; // conduit ids start at 100
+        if (conduit_index >= info->number_of_conduits)
+            return "solution contains a conduit not defined in the puzzle file";
+
+        struct puzzle_conduit *puzzle_conduit = &info->conduits[conduit_index];
+        if (conduit->number_of_positions != puzzle_conduit->number_of_hexes)
+            return "solution contains a conduit with an edited shape";
+
+        signed char *starting_position = (i & 1) ? puzzle_conduit->starting_position_b : puzzle_conduit->starting_position_a;
+        uint8_t expected_cabinet = cabinet_for_position(cabinet_map, decode_position(starting_position));
+
+        // determine if this conduit is the A-side or the B-side of its pair
+        if ((i & 1) == 0) {
+            struct vector center = solution->glyphs[conduit->glyph_index].position;
+            swapped = cabinet_for_position(cabinet_map, center) != expected_cabinet;
+        }
+        struct mechanism *m = &solution->glyphs[swapped ? conduit->other_side_glyph_index : conduit->glyph_index];
+
+        for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
+            struct vector pos = conduit->positions[j];
+            if (!vectors_equal(pos, decode_position(puzzle_conduit->hexes[j].offset)))
+                return "solution contains a conduit with an edited shape";
+            pos = mechanism_relative_position(*m, pos.u, pos.v, 1);
+            if (cabinet_for_position(cabinet_map, pos) != expected_cabinet)
+                return "solution moved a conduit outside of its original chamber";
+        }
+    }
+
+    // check glyphs
+    for (uint32_t i = 0; i < solution->number_of_glyphs; ++i) {
+        struct mechanism *m = &solution->glyphs[i];
+        if (m->type == CONDUIT)
+            continue; // conduits were already checked
+        const struct vector *footprint = glyph_footprint(m->type);
+        for (int j = 0; ; ++j) {
+            struct vector pos = mechanism_relative_position(*m, footprint[j].u, footprint[j].v, 1);
+            if (cabinet_for_position(cabinet_map, pos) == 0)
+                return "solution contains a glyph outside of the cabinet";
+            if (vectors_equal(footprint[j], zero_vector))
+                break;
+        }
+    }
+
+    // check arms
+    for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+        struct mechanism *m = &solution->arms[i];
+        uint8_t base_cabinet = cabinet_for_position(cabinet_map, m->position);
+        if (base_cabinet == 0)
+            return "solution contains an arm outside of the cabinet";
+        int step = angular_distance_between_grabbers(m->type);
+        for (int direction = 0; direction < 6; direction += step) {
+            struct vector offset = u_offset_for_direction(direction);
+            struct vector pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
+            uint8_t cabinet = cabinet_for_position(cabinet_map, pos);
+            if (cabinet == 0)
+                return "solution contains an arm outside of the cabinet";
+            else if (cabinet != base_cabinet)
+                return "solution contains an arm reaching across cabinet walls";
+        }
+    }
+
+    // check tracks
+    for (uint32_t i = 0; i < solution->track_table_size; ++i) {
+        struct vector position = solution->track_positions[i];
+        if (position.u == INT32_MIN && position.v == INT32_MIN)
+            continue;
+        if (cabinet_for_position(cabinet_map, position) == 0)
+            return "solution contains a track outside of the cabinet";
+    }
+
+    // check inputs/outputs
+    for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        for (uint32_t j = 0; j < io->number_of_atoms; ++j)
+            if (cabinet_for_position(cabinet_map, io->atoms[j].position) == 0)
+                return "solution contains an input/output outside of the cabinet";
+    }
+
+    // check isolation
+    if (info->isolate_inputs_from_outputs) {
+        enum input_output_type *isolation_data = calloc(info->number_of_cabinets + 1, sizeof(enum input_output_type));
+        for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+            struct input_output *io = &solution->inputs_and_outputs[i];
+            uint8_t cabinet = cabinet_for_position(cabinet_map, io->atoms->position);
+            isolation_data[cabinet] |= io->type;
+            if ((isolation_data[cabinet] & INPUT) && (isolation_data[cabinet] & OUTPUT))
+                return "solution breaks the input/output isolation constraint";
+        }
+        free(isolation_data);
+    }
+
+    return NULL;
 }
 
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
@@ -571,6 +743,15 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             conduit->other_side_glyph_index = next->glyph_index;
         }
         solution->glyphs[conduit->glyph_index].conduit_index = i;
+    }
+    // production-only pass: enforce production constraints
+    if (pf->production_info) {
+        *error = check_production_constraints(solution, pf->production_info);
+        if (*error)
+            return false;
+    } else if (solution->number_of_conduits > 0) {
+        *error = "solution contains a conduit not defined in the puzzle file";
+        return false;
     }
     // decode arm tapes in one final pass.  this has to be another pass because
     // reset instructions depend on where track has been placed.
