@@ -257,7 +257,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             uint64_t repetition_period_length = board->cycle - snapshot.cycle;
             struct steady_state result = {
                 .number_of_cycles = board->cycle - snapshot.cycle,
-                .number_of_outputs = UINT64_MAX,
+                .number_of_outputs = solution->number_of_inputs_and_outputs ? UINT64_MAX : 0,
                 .outputs_repeat_after_cycle = board->cycle,
                 .eventual_behavior = EVENTUALLY_ENTERS_STEADY_STATE,
             };

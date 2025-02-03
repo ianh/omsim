@@ -1469,6 +1469,8 @@ static void check_completion(struct solution *solution, struct board *board)
             min = count;
     }
     board->complete = min >= solution->target_number_of_outputs;
+    if (min == UINT64_MAX)
+        return;
     if (min > board->output_cycles_capacity) {
         board->output_cycles_capacity = (min * 3) / 2;
         if (board->output_cycles_capacity < 6)
