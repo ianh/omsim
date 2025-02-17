@@ -928,6 +928,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     tape[n++] = 'w';
                     piston++;
                 }
+                // reset instructions add a blank instruction if they don't do
+                // anything -- this is important if they're repeated.
+                if (n == inst.index - min_tape)
+                    tape[n++] = ' ';
                 reset_from = n;
                 if (n > tape_length)
                     tape_length = n;
