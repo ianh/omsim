@@ -163,13 +163,14 @@ void *verifier_create_from_bytes(const char *puzzle_bytes, int puzzle_length,
     memcpy(solution_copy, solution_bytes, solution_length);
     struct verifier *v = verifier_create_from_bytes_without_copying(puzzle_copy,
      puzzle_length, solution_copy, solution_length);
-    if (!v->pf || !v->sf) {
-        free(puzzle_copy);
-        free(solution_copy);
-    } else {
+    if (v->pf)
         v->pf->owns_bytes = true;
+    else
+        free(puzzle_copy);
+    if (v->sf)
         v->sf->owns_bytes = true;
-    }
+    else
+        free(solution_copy);
     return v;
 }
 
