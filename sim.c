@@ -2011,7 +2011,7 @@ static void insert_overlapped_atom(struct board *board, struct atom_at_position 
     size_t capacity = board->overlapped_atoms_capacity;
     while (board->number_of_overlapped_atoms >= capacity)
         capacity = 4 * (capacity + 12) / 3;
-    if (capacity != board->number_of_overlapped_atoms) {
+    if (capacity != board->overlapped_atoms_capacity) {
         struct atom_at_position *atoms_at_positions = realloc(board->overlapped_atoms,
          sizeof(struct atom_at_position) * capacity);
         if (!atoms_at_positions)
