@@ -453,7 +453,6 @@ struct board {
     struct atom_at_position *overlapped_atoms;
     uint32_t number_of_overlapped_atoms;
     uint32_t overlapped_atoms_capacity;
-    const char *overlapped_reason;
 
     // used for checking infinite products.
     struct marked_positions marked;
@@ -527,7 +526,7 @@ static inline void cycle(struct solution *solution, struct board *board)
 // free memory associated with the solution and board.
 void destroy(struct solution *solution, struct board *board);
 
-void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason);
+void insert_atom(struct board *board, struct vector query, atom atom);
 atom *lookup_atom(struct board *board, struct vector query);
 atom *lookup_atom_in_grid(struct atom_grid *grid, struct vector query);
 struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, struct vector query);

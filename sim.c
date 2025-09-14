@@ -65,7 +65,7 @@ static void produce_atom(struct board *board, struct mechanism m, int32_t du, in
 {
     assert(m.type & CONVERSION_GLYPH);
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    insert_atom(board, pos, VALID | BEING_PRODUCED | a, "conversion glyph output");
+    insert_atom(board, pos, VALID | BEING_PRODUCED | a);
 }
 
 static struct atom_ref_at_position get_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv)
@@ -295,7 +295,7 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 }
                 p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
                 rotate_bonds(&a, rotation);
-                insert_atom(board, p, a | BEING_PRODUCED, "conduit output");
+                insert_atom(board, p, a | BEING_PRODUCED);
             }
             base += length;
         }
@@ -1025,7 +1025,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 struct atom_at_position ap = board->moving_atoms.atoms_at_positions[atom_index++];
                 if (position_may_be_visible_to_solution(solution, ap.position))
                     ap.atom &= ~IS_CHAIN_ATOM;
-                insert_atom(board, ap.position, VALID | ap.atom, "atom moved on top of another atom");
+                insert_atom(board, ap.position, VALID | ap.atom);
             }
             uint32_t chain = m.first_chain_atom;
             while (chain != UINT32_MAX) {
@@ -1193,7 +1193,7 @@ static void spawn_inputs(struct solution *solution, struct board *board)
         for (uint32_t j = 0; j < n; ++j) {
             atom input = io->atoms[j].atom;
             struct vector p = io->atoms[j].position;
-            insert_atom(board, p, VALID | input, "overlapped inputs");
+            insert_atom(board, p, VALID | input);
         }
     }
     board->active_input_or_output = UINT32_MAX;
@@ -1736,7 +1736,7 @@ const struct vector *glyph_footprint(enum mechanism_type type)
 static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
 {
     struct vector p = mechanism_relative_position(m, du, dv, 1);
-    insert_atom(board, p, VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element, "van berlo overlap");
+    insert_atom(board, p, VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element);
 }
 
 void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)
@@ -2006,7 +2006,7 @@ atom mark_used_area(struct board *board, struct vector point)
 }
 
 __attribute__((noinline))
-static void insert_overlapped_atom(struct board *board, struct atom_at_position *existing_atom, atom atom, const char *collision_reason)
+static void insert_overlapped_atom(struct board *board, struct atom_at_position *existing_atom, atom atom)
 {
     size_t capacity = board->overlapped_atoms_capacity;
     while (board->number_of_overlapped_atoms >= capacity)
@@ -2023,11 +2023,11 @@ static void insert_overlapped_atom(struct board *board, struct atom_at_position 
     existing_atom->atom |= OVERLAPS_ATOMS;
 }
 
-void insert_atom(struct board *board, struct vector query, atom atom, const char *collision_reason)
+void insert_atom(struct board *board, struct vector query, atom atom)
 {
     struct atom_at_position *a = lookup_atom_at_position(&board->grid, query);
     if ((a->atom & VALID) && !(a->atom & REMOVED))
-        insert_overlapped_atom(board, a, atom, collision_reason);
+        insert_overlapped_atom(board, a, atom);
     else {
         a->position = query;
         if (!(a->atom & REMOVED))
