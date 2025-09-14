@@ -189,7 +189,7 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
 }
 
 __attribute__((always_inline))
-static void add_collider(struct collider_list *list, struct board *board, struct collider collider)
+static inline void add_collider(struct collider_list *list, struct board *board, struct collider collider)
 {
     if (!list->ignore_board) {
         // multiply by 10 to capture the difference between atom/board and atom/atom collision checks.
@@ -440,7 +440,7 @@ static int32_t floor_div(int32_t a, int32_t b)
 {
     if (a == 0)
         return 0;
-    else if (a < 0 == b < 0)
+    else if ((a < 0) == (b < 0))
         return labs(a) / labs(b);
     else
         return -1 - (labs(a) - 1) / labs(b);
