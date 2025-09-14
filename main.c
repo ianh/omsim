@@ -197,7 +197,7 @@ static void print_footprint_at_infinity(struct atom_grid *grid)
             if (!a)
                 printf("  ");
             else
-                printf(" %llu", a >> 1);
+                printf(" %"PRIu64, a >> 1);
         }
         printf("\n");
     }
