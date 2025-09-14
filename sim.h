@@ -39,10 +39,6 @@ typedef uint64_t atom;
 // that's only set on output atoms, whereas this bit never is.
 #define OVERLAPS_ATOMS (1ULL << 17)
 
-// conversion glyphs like animismus put this flag on their outputs until the
-// second half-cycle.  it stops their outputs from being seen by other glyphs.
-#define BEING_PRODUCED (1ULL << 18)
-
 // conduits only transport atoms that have just been dropped.
 #define BEING_DROPPED (1ULL << 19)
 
@@ -183,6 +179,9 @@ struct mechanism {
     // direction (two basis vectors).  includes length for arms.
     struct vector direction_u;
     struct vector direction_v;
+
+    // used by conversion glyphs to denote a currently ongoing conversion.
+    atom conversion;
 
     // the index of the conduit this glyph is associated with.  only meaningful
     // for mechanisms of type CONDUIT.
@@ -453,6 +452,10 @@ struct board {
     struct atom_at_position *overlapped_atoms;
     uint32_t number_of_overlapped_atoms;
     uint32_t overlapped_atoms_capacity;
+
+    struct vector *atoms_being_produced;
+    uint32_t number_of_atoms_being_produced;
+    uint32_t atoms_being_produced_capacity;
 
     // used for checking infinite products.
     struct marked_positions marked;
