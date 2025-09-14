@@ -118,6 +118,11 @@ static void print_board(struct board *board)
         }
         points[(board->grid.atoms_at_positions[i].position.u - minu) + stride * (board->grid.atoms_at_positions[i].position.v - minv)] = board->grid.atoms_at_positions[i].atom;
     }
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
+        printf("%d %d %"PRIx64, board->overlapped_atoms[i].position.u, board->overlapped_atoms[i].position.v, board->overlapped_atoms[i].atom);
+        print_atom(board->overlapped_atoms[i].atom);
+        printf("\n");
+    }
     for (int v = maxv; v >= minv; --v) {
         for (int n = minv; n < v; ++n)
             printf(" ");
