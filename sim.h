@@ -34,10 +34,16 @@ typedef uint64_t atom;
 // computation puzzles.
 #define VARIABLE_OUTPUT (1ULL << 17)
 
-// when removing this atom, replace it with one of the atoms in
-// board->overlapped_atoms.  we can reuse the bit for VARIABLE_OUTPUT because
-// that's only set on output atoms, whereas this bit never is.
+// this atom has another atom above it.
+// we can reuse the bit for VARIABLE_OUTPUT because that's only set on output
+// atoms, whereas this bit never is.
 #define OVERLAPS_ATOMS (1ULL << 17)
+
+// if this atom and an atom below it are part of molecules unbonded in the
+// same half-cycle, this atom gets to keep its own bonds.
+// without this flag, the bonds "fall down" to the bottom atom, without
+// changing which molecule any atom belongs to (aka quantum/floating bonds).
+#define QUANTUM_SAFE (1ULL << 18)
 
 // conduits only transport atoms that have just been dropped.
 #define BEING_DROPPED (1ULL << 19)
@@ -94,6 +100,8 @@ typedef uint64_t atom;
 #define TRIPLEX_K_BONDS (0x3FULL << TRIPLEX_BOND_K)
 #define TRIPLEX_BONDS (TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS)
 #define ALL_BONDS (0x3FULL * BOND_LOW_BITS)
+
+#define MAX_ATOMS_PER_HEX 6
 
 // TEMPORARY_FLAGS are reset in reset_temporary_flags().  the
 // schedule_flag_reset_if_needed() function must be called whenever one of these
@@ -225,6 +233,12 @@ struct conduit {
     uint32_t number_of_molecules;
 };
 
+struct molecule {
+    struct atom_ref_at_position *atoms;
+    size_t size;
+    size_t capacity;
+};
+
 enum input_output_type {
     INPUT = 1 << 0,
     SINGLE_OUTPUT = 1 << 1,
@@ -250,6 +264,7 @@ struct input_output {
 
     struct atom_at_position *atoms;
     uint32_t number_of_atoms;
+    uint32_t center_atom_index;
 
     // the original index of this input or output in the puzzle file.
     uint32_t puzzle_index;
