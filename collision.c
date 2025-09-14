@@ -178,11 +178,6 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
     atom a = mark_used_area(board, p);
     if (a & REMOVED)
         return;
-    if (a & BEING_PRODUCED) {
-        // atoms have a somewhat smaller collision radius as they emerge from a glyph.
-        if (!(dist < collider.radius + producedAtomRadius))
-            return;
-    }
     list->collision = true;
     if (list->collision_location)
         *list->collision_location = p;
@@ -491,7 +486,8 @@ static void mark_area_at_infinity(struct board *board, struct chain_atom_collide
 bool collision(struct solution *solution, struct board *board, float increment, struct vector *collision_location)
 {
     enum chain_mode chain_mode = board->chain_mode;
-    size_t number_of_colliders = solution->number_of_arms + solution->number_of_cabinet_walls + board->moving_atoms.length;
+    size_t number_of_colliders = solution->number_of_arms + solution->number_of_cabinet_walls
+        + board->number_of_atoms_being_produced + board->moving_atoms.length;
     size_t number_of_chain_atom_colliders = 0;
     if (chain_mode == EXTEND_CHAIN) {
         for (size_t i = 0; i < BOARD_CAPACITY(board); ++i) {
@@ -524,7 +520,7 @@ bool collision(struct solution *solution, struct board *board, float increment, 
             else {
                 add_collider(&list, board, (struct collider){
                     .center = to_xy(ap.position),
-                    .radius = (ap.atom & BEING_PRODUCED) ? producedAtomRadius : atomRadius,
+                    .radius = atomRadius,
                 });
             }
         }
@@ -570,6 +566,12 @@ bool collision(struct solution *solution, struct board *board, float increment, 
         add_collider(&list, board, (struct collider){
             .center = to_xy(solution->cabinet_walls[i]),
             .radius = armBaseRadius,
+        });
+    }
+    for (size_t i = 0; i < board->number_of_atoms_being_produced; ++i) {
+        add_collider(&list, board, (struct collider){
+            .center = to_xy(board->atoms_being_produced[i]),
+            .radius = producedAtomRadius,
         });
     }
     size_t fixed_colliders = list.length;

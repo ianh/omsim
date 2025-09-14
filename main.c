@@ -66,8 +66,6 @@ static void print_atom(atom a)
         printf(" quintessence");
     if (a & OVERLAPS_ATOMS)
         printf(" overlaps");
-    if (a & BEING_PRODUCED)
-        printf(" produced");
     if (a & BEING_DROPPED)
         printf(" dropped");
     if (a & VAN_BERLO_ATOM)

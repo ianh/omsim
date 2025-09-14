@@ -40,56 +40,55 @@ static void report_collision(struct board *board, struct vector p, const char *r
     board->collision_reason = reason;
 }
 
-static bool conversion_output(struct board *board, bool active, struct mechanism m, int32_t du, int32_t dv)
+static bool conversion_output(struct board *board, struct mechanism m, int32_t du, int32_t dv)
 {
-    assert(m.type & CONVERSION_GLYPH);
-    struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    atom *output = lookup_atom(board, pos);
-    if ((*output & VALID) && !(*output & REMOVED)) {
-        if (board->half_cycle == 2) {
-            // conversion glyph outputs appear in the second half-cycle.
-            *output &= ~BEING_PRODUCED;
-        } else if (active && (*output & BEING_PRODUCED)) {
-            report_collision(board, pos, "two conversion glyphs outputting to the same point");
-            return true;
-        } else if (active && (*output & VAN_BERLO_ATOM)) {
-            report_collision(board, pos, "conversion glyph output overlaps with van berlo's wheel");
-            return true;
-        }
-        return false;
-    }
-    return true;
+    atom *a = lookup_atom(board, mechanism_relative_position(m, du, dv, 1));
+    return !(*a & VALID) || (*a & REMOVED) || (*a & VAN_BERLO_ATOM);
 }
 
 static void produce_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom a)
 {
-    assert(m.type & CONVERSION_GLYPH);
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    insert_atom(board, pos, VALID | BEING_PRODUCED | a);
+    insert_atom(board, pos, a | VALID);
 }
 
 static struct atom_ref_at_position get_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv)
 {
     static const atom empty;
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    // conversion glyphs don't consume any inputs in the second half-cycle.
-    if ((m.type & CONVERSION_GLYPH) && board->half_cycle == 2)
-        return (struct atom_ref_at_position){ (atom *)&empty, pos };
     atom *a = lookup_atom(board, pos);
+
     if (!(*a & VALID))
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
     // arms need to see removed-but-moving atoms to perform simultaneous motion checks.
     if ((m.type & ANY_ARM) && (*a & REMOVED) && (*a & MOVED))
         return (struct atom_ref_at_position){ a, pos };
-    if ((*a & REMOVED) || ((*a & BEING_PRODUCED) && !(m.type & UNBONDING)))
+    if (*a & REMOVED)
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
     // only duplication glyphs can see the van berlo's wheel.
     if (!(m.type & (DUPLICATION | VAN_BERLO)) && (*a & VAN_BERLO_ATOM))
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
-    // conversion glyphs can't see bonded or grabbed inputs.
-    if ((m.type & CONVERSION_GLYPH) && ((*a & ALL_BONDS) || (*a & GRABBED)))
-        return (struct atom_ref_at_position){ (atom *)&empty, pos };
     return (struct atom_ref_at_position){ a, pos };
+}
+
+static struct atom_ref_at_position conversion_input(struct board *board, struct mechanism m, int32_t du, int32_t dv)
+{
+    static const atom empty;
+    struct atom_ref_at_position input = get_atom(board, m, du, dv);
+    // conversion glyphs can't see bonded or grabbed inputs.
+    if (*input.atom & (ALL_BONDS | GRABBED))
+        return (struct atom_ref_at_position){ (atom *)&empty, input.position };
+    return input;
+}
+
+static void add_collider(struct board *board, struct mechanism m, int32_t du, int32_t dv)
+{
+    if (board->number_of_atoms_being_produced >= board->atoms_being_produced_capacity) {
+        board->atoms_being_produced_capacity = (board->atoms_being_produced_capacity + 3) * 4 / 3;
+        board->atoms_being_produced = realloc(board->atoms_being_produced,
+                board->atoms_being_produced_capacity * sizeof(struct vector));
+    }
+    board->atoms_being_produced[board->number_of_atoms_being_produced++] = mechanism_relative_position(m, du, dv, 1);
 }
 
 __attribute__((noinline))
@@ -232,7 +231,6 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
     uint32_t base = 0;
 
     if (board->half_cycle == 1) {
-        int rotation = direction_for_offset(other_side.direction_u) - direction_for_offset(m.direction_u);
         for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
             uint32_t length = conduit->molecule_lengths[j];
             bool valid = true;
@@ -284,29 +282,28 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
             for (uint32_t k = 0; k < length; ++k) {
                 struct vector delta = conduit->atoms[base + k].position;
                 struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
-                atom a = conduit->atoms[base + k].atom;
-                atom *b = lookup_atom(board, p);
+                atom *a = lookup_atom(board, p);
                 if (consume) {
-                    a = *b & ~OVERLAPS_ATOMS;
-                    remove_atom(board, (struct atom_ref_at_position){ b, p });
+                    conduit->atoms[base + k].atom = *a & ~OVERLAPS_ATOMS;
+                    remove_atom(board, (struct atom_ref_at_position){ a, p });
                 } else {
                     // bonds are consumed even if the atoms aren't.
-                    *b &= ~(ALL_BONDS & ~RECENT_BONDS & a);
+                    *a &= ~(ALL_BONDS & ~RECENT_BONDS & conduit->atoms[base + k].atom);
                 }
-                p = mechanism_relative_position(other_side, delta.u, delta.v, 1);
-                rotate_bonds(&a, rotation);
-                insert_atom(board, p, a | BEING_PRODUCED);
+                add_collider(board, other_side, delta.u, delta.v);
             }
             base += length;
         }
     } else {
         conduit = &solution->conduits[other_side.conduit_index];
+        int rotation = direction_for_offset(m.direction_u) - direction_for_offset(other_side.direction_u);
         for (uint32_t j = 0; j < conduit->number_of_molecules; ++j) {
             uint32_t length = conduit->molecule_lengths[j];
             for (uint32_t k = 0; k < length; ++k) {
                 struct vector delta = conduit->atoms[base + k].position;
-                struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
-                *lookup_atom(board, p) &= ~BEING_PRODUCED;
+                atom a = conduit->atoms[base + k].atom;
+                rotate_bonds(&a, rotation);
+                produce_atom(board, m, delta.u, delta.v, a);
             }
             base += length;
         }
@@ -343,14 +340,20 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case ANIMISMUS: {
-            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
-            bool active = *a.atom & *b.atom & SALT;
-            bool c = conversion_output(board, active, m, 0, 1);
-            bool d = conversion_output(board, active, m, 1, -1);
-            if (c && d && active) {
-                remove_atom(board, a);
-                remove_atom(board, b);
+            if (board->half_cycle == 1) {
+                struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
+                struct atom_ref_at_position b = conversion_input(board, m, 1, 0);
+                if ((*a.atom & *b.atom & SALT)
+                        && conversion_output(board, m, 0, 1)
+                        && conversion_output(board, m, 1, -1)) {
+                    remove_atom(board, a);
+                    remove_atom(board, b);
+                    add_collider(board, m, 0, 1);
+                    add_collider(board, m, 1, -1);
+                    solution->glyphs[i].conversion = true;
+                }
+            } else if (m.conversion) {
+                solution->glyphs[i].conversion = false;
                 produce_atom(board, m, 0, 1, VITAE);
                 produce_atom(board, m, 1, -1, MORS);
             }
@@ -367,14 +370,22 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case DISPERSION: {
-            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            bool active = *a.atom & QUINTESSENCE;
-            bool b = conversion_output(board, active, m, 1, 0);
-            bool c = conversion_output(board, active, m, 1, -1);
-            bool d = conversion_output(board, active, m, 0, -1);
-            bool e = conversion_output(board, active, m, -1, 0);
-            if (b && c && d && e && active) {
-                remove_atom(board, a);
+            if (board->half_cycle == 1) {
+                struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
+                if ((*a.atom & QUINTESSENCE)
+                        && conversion_output(board, m, 1, 0)
+                        && conversion_output(board, m, 1, -1)
+                        && conversion_output(board, m, 0, -1)
+                        && conversion_output(board, m, -1, 0)) {
+                    remove_atom(board, a);
+                    add_collider(board, m, 1, 0);
+                    add_collider(board, m, 1, -1);
+                    add_collider(board, m, 0, -1);
+                    add_collider(board, m, -1, 0);
+                    solution->glyphs[i].conversion = true;
+                }
+            } else if (m.conversion) {
+                solution->glyphs[i].conversion = false;
                 produce_atom(board, m, 1, 0, EARTH);
                 produce_atom(board, m, 1, -1, WATER);
                 produce_atom(board, m, 0, -1, FIRE);
@@ -383,14 +394,19 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case PURIFICATION: {
-            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            struct atom_ref_at_position b = get_atom(board, m, 1, 0);
-            atom metal = *a.atom & *b.atom & ANY_METAL & ~GOLD;
-            bool c = conversion_output(board, metal, m, 0, 1);
-            if (c && metal) {
-                remove_atom(board, a);
-                remove_atom(board, b);
-                produce_atom(board, m, 0, 1, metal >> 1);
+            if (board->half_cycle == 1) {
+                struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
+                struct atom_ref_at_position b = conversion_input(board, m, 1, 0);
+                atom metal = *a.atom & *b.atom & ANY_METAL & ~GOLD;
+                if (metal && conversion_output(board, m, 0, 1)) {
+                    remove_atom(board, a);
+                    remove_atom(board, b);
+                    add_collider(board, m, 0, 1);
+                    solution->glyphs[i].conversion = metal >> 1;
+                }
+            } else if (m.conversion) {
+                produce_atom(board, m, 0, 1, m.conversion);
+                solution->glyphs[i].conversion = false;
             }
             break;
         }
@@ -403,17 +419,22 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             break;
         }
         case UNIFICATION: {
-            struct atom_ref_at_position a = get_atom(board, m, 0, 1);
-            struct atom_ref_at_position b = get_atom(board, m, -1, 1);
-            struct atom_ref_at_position c = get_atom(board, m, 0, -1);
-            struct atom_ref_at_position d = get_atom(board, m, 1, -1);
-            bool active = ((*a.atom | *b.atom | *c.atom | *d.atom) & ANY_ELEMENTAL) == ANY_ELEMENTAL;
-            bool e = conversion_output(board, active, m, 0, 0);
-            if (e && active) {
-                remove_atom(board, a);
-                remove_atom(board, b);
-                remove_atom(board, c);
-                remove_atom(board, d);
+            if (board->half_cycle == 1) {
+                struct atom_ref_at_position a = conversion_input(board, m, 0, 1);
+                struct atom_ref_at_position b = conversion_input(board, m, -1, 1);
+                struct atom_ref_at_position c = conversion_input(board, m, 0, -1);
+                struct atom_ref_at_position d = conversion_input(board, m, 1, -1);
+                if (((*a.atom | *b.atom | *c.atom | *d.atom) & ANY_ELEMENTAL) == ANY_ELEMENTAL
+                        && conversion_output(board, m, 0, 0)) {
+                    remove_atom(board, a);
+                    remove_atom(board, b);
+                    remove_atom(board, c);
+                    remove_atom(board, d);
+                    add_collider(board, m, 0, 0);
+                    solution->glyphs[i].conversion = true;
+                }
+            } else if (m.conversion) {
+                solution->glyphs[i].conversion = false;
                 produce_atom(board, m, 0, 0, QUINTESSENCE);
             }
             break;
@@ -614,7 +635,7 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
             p.u += d.u;
             p.v += d.v;
             atom *b = lookup_atom(board, p);
-            if (!(*b & VALID) || (*b & REMOVED) || (*b & BEING_PRODUCED))
+            if (!(*b & VALID) || (*b & REMOVED))
                 continue;
             move_atom(board, b, p, movement_index, &movement.first_chain_atom);
         }
@@ -1084,7 +1105,7 @@ static bool fill_conduit_molecule(struct solution *solution, struct board *board
             p.u += d.u;
             p.v += d.v;
             atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
-            if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED) || (*a & VISITED))
+            if (!(*a & VALID) || (*a & REMOVED) || (*a & VISITED))
                 continue;
             if (!(*a & CONDUIT_SHAPE) || (*a & GRABBED))
                 return false;
@@ -1121,7 +1142,7 @@ static void fill_conduits(struct solution *solution, struct board *board)
         for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
             struct vector p = conduit->positions[j];
             atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
-            if ((*a & VALID) && !(*a & REMOVED) && !(*a & BEING_PRODUCED) && (*a & BEING_DROPPED) && !(*a & GRABBED)) {
+            if ((*a & VALID) && !(*a & REMOVED) && (*a & BEING_DROPPED) && !(*a & GRABBED)) {
                 conduit->atoms[atom_next].atom = *a & ~BEING_DROPPED & ~CONDUIT_SHAPE;
                 conduit->atoms[atom_next].position = p;
                 *a |= VISITED;
@@ -1169,7 +1190,7 @@ static void flag_blocked_inputs(struct solution *solution, struct board *board)
             continue;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
             atom a = *lookup_atom(board, io->atoms[j].position);
-            if ((a & VALID) && !(a & REMOVED) && !(a & BEING_PRODUCED)) {
+            if ((a & VALID) && !(a & REMOVED)) {
                 io->type |= BLOCKED;
                 break;
             }
@@ -1225,7 +1246,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
             struct vector p = output.position;
             p.u += j * offset;
             atom a = *lookup_atom(board, p);
-            if (!(a & VALID) || (a & REMOVED) || (a & BEING_PRODUCED) || (a & IS_CHAIN_ATOM)) {
+            if (!(a & VALID) || (a & REMOVED) || (a & IS_CHAIN_ATOM)) {
                 // look for a repeating chain atom that will fill in this hex.
                 bool found_chain_atom = false;
                 for (uint32_t k = 0; k < board->number_of_chain_atoms; ++k) {
@@ -1264,7 +1285,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
 static bool mark_output_position(struct board *board, struct vector pos)
 {
     atom *a = lookup_atom(board, pos);
-    if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED))
+    if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED))
         return false;
     *a |= VISITED;
     size_t capacity = board->marked.capacity;
@@ -1301,7 +1322,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 continue;
             atom *a = lookup_atom(board, io->atoms[j].position);
             // printf("checking %d %d... ", io->atoms[j].position.u, io->atoms[j].position.v);
-            if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED)) {
+            if (!(*a & VALID) || (*a & REMOVED)) {
                 // printf("no atom\n");
                 match = false;
                 wrong_output = false;
@@ -1346,7 +1367,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
                 if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
                     continue;
                 atom *a = lookup_atom(board, io->atoms[j].position);
-                if (!(*a & VALID) || (*a & REMOVED) || (*a & BEING_PRODUCED) || (*a & GRABBED)) {
+                if (!(*a & VALID) || (*a & REMOVED) || (*a & GRABBED)) {
                     wrong_output_bonds = false;
                     break;
                 }
@@ -1513,6 +1534,7 @@ continue_with_outputs:
     }
     board->cycle++;
     board->half_cycle = 1;
+    board->number_of_atoms_being_produced = 0;
     check_completion(solution, board);
     return FINISHED_CYCLE;
 }
