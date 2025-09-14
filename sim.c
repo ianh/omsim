@@ -302,6 +302,8 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
             for (uint32_t k = 0; k < length; ++k) {
                 struct vector delta = conduit->atoms[base + k].position;
                 atom a = conduit->atoms[base + k].atom;
+                if (!(a & (0x23ULL * BOND_LOW_BITS) & ~RECENT_BONDS))
+                    a |= QUANTUM_SAFE;
                 rotate_bonds(&a, rotation);
                 produce_atom(board, m, delta.u, delta.v, a);
             }
@@ -310,19 +312,110 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
     }
 }
 
-__attribute__((noinline))
-static void unbond_overlapping_atoms(struct board *board, struct atom_ref_at_position a, struct atom_ref_at_position b, atom ab, atom ba)
+// returns the number of atoms with bond `bond` that are below `a`.
+static int get_bond_height(struct board *board, struct atom_ref_at_position a, atom ab)
 {
-    // this isn't actually correct, but just remove all relevant bonds from all overlapping atoms.
+    atom *lowest = lookup_atom(board, a.position);
+    if (lowest == a.atom)
+        return 0;
+    int height = 0;
+    if (*lowest & ab)
+        ++height;
     for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
-        struct atom_at_position overlap = board->overlapped_atoms[i];
-        if (vectors_equal(overlap.position, a.position) && (overlap.atom & ab)) {
-            board->overlapped_atoms[i].atom &= ~ab;
-            board->overlapped_atoms[i].atom |= ab & RECENT_BONDS;
+        struct atom_at_position *overlap = &board->overlapped_atoms[i];
+        if (&overlap->atom == a.atom)
+            break;
+        if (vectors_equal(overlap->position, a.position) && (overlap->atom & ab))
+            ++height;
+    }
+    return height;
+}
+
+static atom *lookup_atom_at_height(struct board *board, struct atom_ref_at_position b, atom ba, int height)
+{
+    if (*b.atom & ba)
+        if (--height < 0)
+            return b.atom;
+
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
+        struct atom_at_position *overlap = &board->overlapped_atoms[i];
+        if (vectors_equal(overlap->position, b.position) && (overlap->atom & ba))
+            if (--height < 0)
+                return &overlap->atom;
+    }
+
+    // this point is only reachable if something went wrong earlier
+    assert(board->collision);
+    return 0;
+}
+
+static void add_atom_to_molecule(struct board *board, struct molecule *molecule, struct atom_ref_at_position a)
+{
+    if (molecule->size >= molecule->capacity) {
+        molecule->capacity = molecule->capacity ? molecule->capacity * 3 / 2 : 8;
+        molecule->atoms = realloc(molecule->atoms, molecule->capacity * sizeof(struct atom_ref_at_position));
+    }
+    molecule->atoms[molecule->size++] = a;
+
+    for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
+        atom ab = (BOND_LOW_BITS & ~RECENT_BONDS) << bond_direction;
+        if (!(*a.atom & ab))
+            continue;
+        struct vector d = u_offset_for_direction(bond_direction);
+        struct vector p = { a.position.u + d.u, a.position.v + d.v };
+        struct atom_ref_at_position b = { lookup_atom(board, p), p };
+
+        if (*b.atom & VISITED)
+            continue;
+        *b.atom |= VISITED;
+
+        int height = get_bond_height(board, a, ab);
+        int opposite_direction = bond_direction + (bond_direction < 3 ? 3 : -3);
+        atom ba = (BOND_LOW_BITS & ~RECENT_BONDS) << opposite_direction;
+        b.atom = lookup_atom_at_height(board, b, ba, height);
+        if (b.atom)
+            add_atom_to_molecule(board, molecule, b);
+    }
+}
+
+// returns the molecule containing the given atom. accurate in the presence of arbitrary overlap.
+// movements don't need this, as overlapped atoms during movements cause collisions anyway.
+// TODO: use this for conduits too.
+static struct molecule *get_molecule(struct board *board, struct atom_ref_at_position a)
+{
+    static struct molecule molecule;
+
+    molecule.size = 0;
+    // VISITED goes on the bottommost atom of the hex even if it isn't part of the molecule
+    *lookup_atom(board, a.position) |= VISITED;
+    add_atom_to_molecule(board, &molecule, a);
+    for (uint32_t i = 0; i < molecule.size; ++i)
+        *lookup_atom(board, molecule.atoms[i].position) &= ~VISITED;
+    return &molecule;
+}
+
+static void remove_molecule(struct board *board, struct molecule *molecule)
+{
+    for (uint32_t i = 0; i < molecule->size; ++i) {
+        struct atom_ref_at_position a = molecule->atoms[i];
+        atom *bot = lookup_atom(board, a.position);
+        if (a.atom == bot) {
+            remove_atom(board, a);
+            continue;
         }
-        if (vectors_equal(overlap.position, b.position) && (overlap.atom & ba)) {
-            board->overlapped_atoms[i].atom &= ~ba;
-            board->overlapped_atoms[i].atom |= ba & RECENT_BONDS;
+
+        for (uint32_t j = 0; j < board->number_of_overlapped_atoms; ++j) {
+            if (&board->overlapped_atoms[j].atom == a.atom) {
+                if (!(*a.atom & OVERLAPS_ATOMS))
+                    *bot &= ~OVERLAPS_ATOMS;
+                memmove(board->overlapped_atoms + j,
+                        board->overlapped_atoms + j + 1,
+                        (board->number_of_overlapped_atoms - j - 1) * sizeof(struct atom_at_position));
+                board->number_of_overlapped_atoms--;
+                break;
+            } else if (vectors_equal(board->overlapped_atoms[j].position, a.position)) {
+                bot = &board->overlapped_atoms[j].atom;
+            }
         }
     }
 }
@@ -454,18 +547,15 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 atom ba = bond_direction(m, -1, 0);
                 // record the bond in the RECENT_BONDS bitfield to prevent the
                 // atoms from being consumed during this half-cycle.
-                if (*a.atom & ab) {
+                if ((*a.atom & ab & ~RECENT_BONDS) && (*b.atom & ba & ~RECENT_BONDS)) {
                     *a.atom &= ~ab;
                     *a.atom |= ab & RECENT_BONDS;
                     schedule_flag_reset_if_needed(board, a.atom);
-                }
-                if (*b.atom & ba) {
+
                     *b.atom &= ~ba;
                     *b.atom |= ba & RECENT_BONDS;
                     schedule_flag_reset_if_needed(board, b.atom);
                 }
-                if ((*a.atom & OVERLAPS_ATOMS) || (*b.atom & OVERLAPS_ATOMS))
-                    unbond_overlapping_atoms(board, a, b, ab, ba);
             }
             break;
         }
@@ -506,6 +596,101 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case EQUILIBRIUM:
         default:
             break;
+        }
+    }
+}
+
+static bool molecule_was_recently_unbonded(struct board *board, atom *a, struct vector pos)
+{
+    struct molecule *molecule = get_molecule(board, (struct atom_ref_at_position) { a, pos });
+    for (uint32_t i = 0; i < molecule->size; ++i)
+        if (*molecule->atoms[i].atom & RECENT_BONDS)
+            return true;
+    return false;
+}
+
+static int compare_overlapped_atoms(const void *a, const void *b)
+{
+    atom oa = *(atom *)a & OVERLAPS_ATOMS;
+    atom ob = *(atom *)b & OVERLAPS_ATOMS;
+    if (oa != ob)
+        return (oa > ob) - (oa < ob);
+    return (a > b) - (a < b);
+}
+
+static void raise_overlapped_atoms_at_position(struct board *board, struct vector pos)
+{
+    // expensive logic to handle the very rare case of 3+ atoms on the same hex
+    static atom* atoms[MAX_ATOMS_PER_HEX];
+    static atom atoms_copy[MAX_ATOMS_PER_HEX];
+
+    int count = 0;
+    bool any_unbonded = false;
+
+    atoms[count++] = lookup_atom(board, pos);
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
+        if (vectors_equal(board->overlapped_atoms[i].position, pos)) {
+            if (count >= MAX_ATOMS_PER_HEX) {
+                report_collision(board, pos, "too many atoms on the same hex");
+                return;
+            }
+            atoms[count++] = &board->overlapped_atoms[i].atom;
+        }
+    }
+
+    // temporarily reuse the OVERLAPS_ATOMS bit to mark recently unbonded molecules
+    for (uint32_t i = 0; i < count; ++i) {
+        *atoms[i] &= ~OVERLAPS_ATOMS;
+        if (molecule_was_recently_unbonded(board, atoms[i], pos)) {
+            if (any_unbonded && !(*atoms[i] & QUANTUM_SAFE))
+                report_collision(board, pos, "quantum bonds are not supported");
+            any_unbonded = true;
+            *atoms[i] |= OVERLAPS_ATOMS;
+        }
+    }
+
+    if (!any_unbonded)
+        return;
+
+    for (int i = 0; i < count; ++i)
+        atoms_copy[i] = *atoms[i];
+    qsort(atoms_copy, count, sizeof(*atoms), compare_overlapped_atoms);
+
+    for (uint32_t i = 0; i < count; ++i) {
+        atom a = atoms_copy[i] & ~OVERLAPS_ATOMS;
+        if (i < count - 1)
+            a |= OVERLAPS_ATOMS;
+        if (i > 1)
+            a |= VISITED;
+        *atoms[i] = a;
+    }
+}
+
+// overlapped atoms that are part of a recently unbonded molecule rise to the top of their hex.
+static void raise_overlapped_atoms(struct board *board)
+{
+    for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
+        atom *curr = &board->overlapped_atoms[i].atom;
+        struct vector pos = board->overlapped_atoms[i].position;
+
+        if (*curr & VISITED)
+            *curr &= ~VISITED;
+        else if (*curr & OVERLAPS_ATOMS)
+            raise_overlapped_atoms_at_position(board, pos);
+        else {
+            // fast path for the common case of 2 atoms on a hex
+            atom *bot = lookup_atom(board, pos);
+            if (!molecule_was_recently_unbonded(board, bot, pos))
+                continue;
+            if (molecule_was_recently_unbonded(board, curr, pos)) {
+                if (!(*curr & QUANTUM_SAFE))
+                    report_collision(board, pos, "quantum bonds are not supported");
+                continue;
+            }
+
+            atom tmp = *bot;
+            *bot = *curr | OVERLAPS_ATOMS;
+            *curr = tmp & ~OVERLAPS_ATOMS;
         }
     }
 }
@@ -1303,6 +1488,31 @@ static bool mark_output_position(struct board *board, struct vector pos)
     return true;
 }
 
+static void consume_output_with_overlap(struct solution *solution, struct board *board, struct input_output *io)
+{
+    struct mechanism m = { 0, io->atoms[io->center_atom_index].position };
+    struct molecule *molecule = get_molecule(board, get_atom(board, m, 0, 0));
+
+    if (molecule->size != io->number_of_atoms)
+        return;
+
+    for (uint32_t i = 0; i < molecule->size; ++i) {
+        bool match = false;
+        struct atom_ref_at_position a = molecule->atoms[i];
+        for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+            if (vectors_equal(a.position, io->atoms[j].position)) {
+                match = (*a.atom & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS) | GRABBED)) == io->atoms[j].atom;
+                break;
+            }
+        }
+        if (!match)
+            return;
+    }
+
+    remove_molecule(board, molecule);
+    io->number_of_outputs++;
+}
+
 static void consume_outputs(struct solution *solution, struct board *board)
 {
     size_t active = board->active_input_or_output;
@@ -1312,6 +1522,16 @@ static void consume_outputs(struct solution *solution, struct board *board)
         if (!(io->type & OUTPUT))
             continue;
         bool fails_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
+
+        if (board->number_of_overlapped_atoms > 0
+                && io->number_of_atoms > 1
+                && !fails_on_wrong_output
+                && !(io->type & REPEATING_OUTPUT)
+                && !(io->type & INTERRUPT)) {
+            consume_output_with_overlap(solution, board, io);
+            continue;
+        }
+
         bool wrong_output = fails_on_wrong_output;
         board->marked.length = 0;
         // first, check the entire output to see if it matches.
@@ -1527,6 +1747,8 @@ continue_with_inputs:
             return INPUT_OUTPUT;
         reset_temporary_flags(board);
         apply_glyphs(solution, board);
+        if (board->number_of_overlapped_atoms > 0)
+            raise_overlapped_atoms(board);
 continue_with_outputs:
         consume_outputs(solution, board);
         if (board->active_input_or_output != UINT32_MAX)
@@ -2003,6 +2225,15 @@ atom *lookup_atom(struct board *board, struct vector query)
     return &lookup_atom_at_position(&board->grid, query)->atom;
 }
 
+static atom *lookup_topmost_atom(struct board *board, struct atom_at_position *a)
+{
+    if (a->atom & OVERLAPS_ATOMS)
+        for (int32_t i = board->number_of_overlapped_atoms - 1; i >= 0; --i)
+            if (vectors_equal(board->overlapped_atoms[i].position, a->position))
+                return &board->overlapped_atoms[i].atom;
+    return &a->atom;
+}
+
 atom *lookup_atom_in_grid(struct atom_grid *grid, struct vector query)
 {
     return &lookup_atom_at_position(grid, query)->atom;
@@ -2041,8 +2272,8 @@ static void insert_overlapped_atom(struct board *board, struct atom_at_position 
         board->overlapped_atoms = atoms_at_positions;
         board->overlapped_atoms_capacity = capacity;
     }
+    *lookup_topmost_atom(board, existing_atom) |= OVERLAPS_ATOMS;
     board->overlapped_atoms[board->number_of_overlapped_atoms++] = (struct atom_at_position){ .atom = atom, .position = existing_atom->position };
-    existing_atom->atom |= OVERLAPS_ATOMS;
 }
 
 void insert_atom(struct board *board, struct vector query, atom atom)
