@@ -287,7 +287,7 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 atom a = conduit->atoms[base + k].atom;
                 atom *b = lookup_atom(board, p);
                 if (consume) {
-                    conduit->atoms[base + k].atom = *b;
+                    a = *b & ~OVERLAPS_ATOMS;
                     remove_atom(board, (struct atom_ref_at_position){ b, p });
                 } else {
                     // bonds are consumed even if the atoms aren't.
