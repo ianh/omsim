@@ -49,12 +49,12 @@ int main()
             buf[last_dot] = '\0';
             memcpy(puzzle->filename, buf + last_slash, last_dot - last_slash + 1);
             puzzle->pf = pf;
-            fprintf(stderr, "puzzle '%s' parsed\n", puzzle->filename);
             puzzle->next = puzzles;
             puzzles = puzzle;
         }
     }
     pclose(puzzle_list);
+    fprintf(stderr, "all puzzles parsed\n");
 
     int total_solutions = 0;
     int validated_solutions = 0;
