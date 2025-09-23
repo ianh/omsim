@@ -100,6 +100,7 @@ typedef uint64_t atom;
 #define TRIPLEX_K_BONDS (0x3FULL << TRIPLEX_BOND_K)
 #define TRIPLEX_BONDS (TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS)
 #define ALL_BONDS (0x3FULL * BOND_LOW_BITS)
+#define REAL_BONDS (ALL_BONDS & ~RECENT_BONDS)
 #define RIGHTWARD_BONDS (0x23ULL * BOND_LOW_BITS)
 
 #define MAX_ATOMS_PER_HEX 6
@@ -394,11 +395,6 @@ struct moving_atoms {
     size_t length;
     size_t cursor;
 };
-struct marked_positions {
-    struct vector *positions;
-    size_t capacity;
-    size_t length;
-};
 
 // chain atoms participate in waste chain / polymer throughput detection.
 #define CHAIN_ATOM_ROTATION 7u
@@ -464,9 +460,6 @@ struct board {
     struct vector *atoms_being_produced;
     uint32_t number_of_atoms_being_produced;
     uint32_t atoms_being_produced_capacity;
-
-    // used for checking infinite products.
-    struct marked_positions marked;
 
     bool collision;
     struct vector collision_location;
