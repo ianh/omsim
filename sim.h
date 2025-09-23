@@ -42,8 +42,8 @@ typedef uint64_t atom;
 // if this atom and an atom below it are part of molecules unbonded in the
 // same half-cycle, this atom gets to keep its own bonds.
 // without this flag, the bonds "fall down" to the bottom atom, without
-// changing which molecule any atom belongs to (aka quantum/floating bonds).
-#define QUANTUM_SAFE (1ULL << 18)
+// changing which molecule any atom belongs to (aka disjoint/floating bonds).
+#define DISJOINT_SAFE (1ULL << 18)
 
 // conduits only transport atoms that have just been dropped.
 #define BEING_DROPPED (1ULL << 19)
@@ -100,6 +100,7 @@ typedef uint64_t atom;
 #define TRIPLEX_K_BONDS (0x3FULL << TRIPLEX_BOND_K)
 #define TRIPLEX_BONDS (TRIPLEX_R_BONDS | TRIPLEX_Y_BONDS | TRIPLEX_K_BONDS)
 #define ALL_BONDS (0x3FULL * BOND_LOW_BITS)
+#define RIGHTWARD_BONDS (0x23ULL * BOND_LOW_BITS)
 
 #define MAX_ATOMS_PER_HEX 6
 
