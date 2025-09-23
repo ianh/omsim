@@ -291,7 +291,7 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                     remove_atom(board, (struct atom_ref_at_position){ a, p });
                 } else {
                     // bonds are consumed even if the atoms aren't.
-                    *a &= ~(ALL_BONDS & ~RECENT_BONDS & conduit->atoms[base + k].atom);
+                    *a &= ~(REAL_BONDS & conduit->atoms[base + k].atom);
                 }
                 add_produced_atom_collider(board, mechanism_relative_position(other_side, delta.u, delta.v, 1));
             }
@@ -1449,7 +1449,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
                 if (!found_chain_atom)
                     return;
             }
-            if ((a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output.atom)
+            if ((a & (ANY_ATOM | REAL_BONDS)) != output.atom)
                 return;
         }
     }
@@ -1458,217 +1458,96 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
         io->maximum_feed_rate = maximum_feed_rate;
 }
 
-static bool mark_output_position(struct board *board, struct vector pos)
+static bool is_ignored_output_position(struct input_output *io, struct vector pos)
 {
-    atom *a = lookup_atom(board, pos);
-    if ((*a & VISITED) || !(*a & VALID) || (*a & REMOVED))
+    // atoms cannot appear outside the vertical bounds of the
+    // infinite product.
+    if (pos.v < io->min_v || pos.v > io->max_v)
         return false;
-    *a |= VISITED;
-    size_t capacity = board->marked.capacity;
-    while (board->marked.length >= capacity)
-        capacity = 4 * (capacity + 12) / 3;
-    if (capacity != board->marked.capacity) {
-        struct vector *positions = realloc(board->marked.positions,
-         sizeof(struct movement) * capacity);
-        if (!positions)
-            abort();
-        board->marked.positions = positions;
-        board->marked.capacity = capacity;
-    }
-    board->marked.positions[board->marked.length++] = pos;
-    return true;
+    // atoms cannot appear between atoms in a row of the infinite
+    // product.  the row_min_v and row_max_v arrays track the
+    // disallowed range of positions for each row.
+    size_t row = pos.v - io->min_v;
+    return pos.u < io->row_min_u[row] || pos.u > io->row_max_u[row];
 }
 
-static void consume_output_with_overlap(struct solution *solution, struct board *board, struct input_output *io)
+static void consume_output(struct solution *solution, struct board *board, struct input_output *io, int output_index)
 {
+    bool fail_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
+    bool fail_on_wrong_bonds = board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index);
+    bool wrong_output = false;
+    bool wrong_bonds = false;
+    bool repeating = io->type & REPEATING_OUTPUT;
+
     struct mechanism m = { 0, io->atoms[io->center_atom_index].position };
     struct molecule *molecule = get_molecule(board, get_atom(board, m, 0, 0));
 
-    if (molecule->size != io->number_of_atoms)
+    if (!repeating && molecule->size != io->number_of_atoms)
+        return;
+    if (repeating && molecule->size < io->number_of_atoms - 1)
         return;
 
     for (uint32_t i = 0; i < molecule->size; ++i) {
-        bool match = false;
         struct atom_ref_at_position a = molecule->atoms[i];
+        if (repeating && is_ignored_output_position(io, a.position))
+            continue;
+        if (!repeating && (*a.atom & GRABBED))
+            return;
+        atom target = 0;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
             if (vectors_equal(a.position, io->atoms[j].position)) {
-                match = (*a.atom & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS) | GRABBED)) == io->atoms[j].atom;
+                target = io->atoms[j].atom;
                 break;
             }
         }
-        if (!match)
+        if (!target)
+            return;
+        atom differences = *a.atom ^ target;
+
+        if ((differences & REAL_BONDS) && repeating && !wrong_bonds) {
+            // bonds that lead to an ignored position are allowed
+            for (int dir = 0; dir < 6; ++dir) {
+                struct vector d = u_offset_for_direction(dir);
+                struct vector neighbor = { a.position.u + d.u, a.position.v + d.v };
+                if (is_ignored_output_position(io, neighbor))
+                    differences &= ~(BOND_LOW_BITS << dir);
+            }
+        }
+
+        wrong_output = wrong_output || ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT));
+        wrong_bonds = wrong_bonds || (differences & REAL_BONDS);
+        if (!(fail_on_wrong_output || fail_on_wrong_bonds) && (wrong_output || wrong_bonds))
             return;
     }
 
-    remove_molecule(board, molecule);
-    io->number_of_outputs++;
+    if (fail_on_wrong_output && wrong_output) {
+        report_collision(board, io->atoms[0].position, "output didn't match");
+        board->wrong_output_index = output_index;
+    }
+    if (fail_on_wrong_bonds && wrong_bonds) {
+        report_collision(board, io->atoms[0].position, "output bonds didn't match");
+        board->wrong_output_index = output_index;
+    }
+    if (wrong_output || wrong_bonds)
+        return;
+
+    // if the output is a match remove the output and increment the output counter.
+    if (repeating) {
+        io->number_of_outputs = io->number_of_repetitions * io->outputs_per_repetition;
+        if (board->chain_mode == EXTEND_CHAIN)
+            match_repeating_output_with_chain_atoms(board, io);
+    } else {
+        remove_molecule(board, molecule);
+        io->number_of_outputs++;
+    }
 }
 
 static void consume_outputs(struct solution *solution, struct board *board)
 {
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
-        if (!(io->type & OUTPUT))
-            continue;
-        bool fails_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
-
-        if (board->number_of_overlapped_atoms > 0
-                && io->number_of_atoms > 1
-                && !fails_on_wrong_output
-                && !(io->type & REPEATING_OUTPUT)) {
-            consume_output_with_overlap(solution, board, io);
-            continue;
-        }
-
-        bool wrong_output = fails_on_wrong_output;
-        board->marked.length = 0;
-        // first, check the entire output to see if it matches.
-        bool match = true;
-        for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-            atom output = io->atoms[j].atom;
-            if (output & REPEATING_OUTPUT_PLACEHOLDER)
-                continue;
-            atom *a = lookup_atom(board, io->atoms[j].position);
-            // printf("checking %d %d... ", io->atoms[j].position.u, io->atoms[j].position.v);
-            if (!(*a & VALID) || (*a & REMOVED)) {
-                // printf("no atom\n");
-                match = false;
-                wrong_output = false;
-                break;
-            }
-            // variable outputs match any atom.
-            if (output & VARIABLE_OUTPUT) {
-                output &= ~VARIABLE_OUTPUT;
-                output |= *a & ANY_ATOM;
-            }
-            if (io->type & REPEATING_OUTPUT) {
-                uint64_t bond_mask = (((output & RECENT_BONDS) >> RECENT_BOND) * BOND_LOW_BITS) & ~RECENT_BONDS;
-                if ((*a & (ANY_ATOM | bond_mask)) != (output & (ANY_ATOM | bond_mask))) {
-                    // printf("did not match at %d %d: %llx vs %llx\n", io->atoms[j].position.u, io->atoms[j].position.v, (*a & (ANY_ATOM | bond_mask)), output & (ANY_ATOM | bond_mask));
-                    match = false;
-                    break;
-                }
-                mark_output_position(board, io->atoms[j].position);
-            } else if (fails_on_wrong_output) {
-                if ((*a & (ALL_BONDS & ~RECENT_BONDS)) != (output & ALL_BONDS & ~RECENT_BONDS) || (*a & GRABBED)) {
-                    match = false;
-                    wrong_output = false;
-                    break;
-                }
-                if ((*a & ANY_ATOM) != (output & ANY_ATOM)) {
-                    match = false;
-                    // this could be a wrong output.
-                }
-            } else {
-                if ((*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))) != output || (*a & GRABBED)) {
-                    // printf("did not match at %d %d: %llx vs %llx\n", io->atoms[j].position.u, io->atoms[j].position.v, (*a & (ANY_ATOM | (ALL_BONDS & ~RECENT_BONDS))), output);
-                    match = false;
-                    break;
-                }
-            }
-            // printf("match!\n");
-        }
-        bool wrong_output_bonds = false;
-        if (board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index)) {
-            wrong_output_bonds = true;
-            for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-                if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
-                    continue;
-                atom *a = lookup_atom(board, io->atoms[j].position);
-                if (!(*a & VALID) || (*a & REMOVED) || (*a & GRABBED)) {
-                    wrong_output_bonds = false;
-                    break;
-                }
-                mark_output_position(board, io->atoms[j].position);
-            }
-            // if wrong_output_bonds is set at this point, then the molecule
-            // covers the output completely.  the goal now is to determine
-            // whether there are any bonds leading out of the output shape.  if
-            // so, the footprint doesn't match, so the output doesn't have wrong
-            // bonds.
-            for (uint32_t j = 0; !match && wrong_output_bonds && j < io->number_of_atoms; ++j) {
-                if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
-                    continue;
-                atom a = *lookup_atom(board, io->atoms[j].position);
-                for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
-                    if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
-                        continue;
-                    struct vector next = io->atoms[j].position;
-                    struct vector d = u_offset_for_direction(bond_direction);
-                    next.u += d.u;
-                    next.v += d.v;
-                    atom b = *lookup_atom(board, next);
-                    if (!(b & VISITED)) {
-                        wrong_output_bonds = false;
-                        break;
-                    }
-                }
-            }
-        }
-        // validating infinite products requires visiting all the atoms in the
-        // molecule.  that's what this loop does.
-        if (io->type & REPEATING_OUTPUT) {
-            size_t cursor = 0;
-            while (match && cursor < board->marked.length) {
-                struct vector p = board->marked.positions[cursor++];
-                atom a = *lookup_atom(board, p);
-                if (a & IS_CHAIN_ATOM && board->chain_mode == EXTEND_CHAIN) {
-                    // ensure atoms stay within the vertical region forever.
-                    struct chain_atom ca = board->chain_atoms[lookup_chain_atom(board, p)];
-                    if (ca.current_position.v - ca.original_position.v != 0) {
-                        match = false;
-                        break;
-                    }
-                }
-                for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
-                    if (!(a & (BOND_LOW_BITS << bond_direction) & ~RECENT_BONDS))
-                        continue;
-                    struct vector next = p;
-                    struct vector d = u_offset_for_direction(bond_direction);
-                    next.u += d.u;
-                    next.v += d.v;
-                    if (!mark_output_position(board, next))
-                        continue;
-                    // atoms cannot appear outside the vertical bounds of the
-                    // infinite product.
-                    if (next.v < io->min_v || next.v > io->max_v) {
-                        match = false;
-                        break;
-                    }
-                    // atoms cannot appear between atoms in a row of the infinite
-                    // product.  the row_min_v and row_max_v arrays track the
-                    // disallowed range of positions for each row.
-                    size_t row = next.v - io->min_v;
-                    if (next.u >= io->row_min_u[row] && next.u <= io->row_max_u[row]) {
-                        match = false;
-                        break;
-                    }
-                }
-            }
-        }
-        // reset the visited flag for all the marked atoms.
-        for (size_t j = 0; j < board->marked.length; ++j) {
-            atom *a = lookup_atom(board, board->marked.positions[j]);
-            *a &= ~VISITED;
-        }
-        if (match && (io->type & REPEATING_OUTPUT) && board->chain_mode == EXTEND_CHAIN)
-            match_repeating_output_with_chain_atoms(board, io);
-        // if the output is a match remove the output and increment the output counter.
-        if (match) {
-            if (io->type & REPEATING_OUTPUT)
-                io->number_of_outputs = io->number_of_repetitions * io->outputs_per_repetition;
-            else {
-                for (uint32_t j = 0; j < io->number_of_atoms; ++j)
-                    remove_atom(board, (struct atom_ref_at_position){ lookup_atom(board, io->atoms[j].position), io->atoms[j].position });
-                io->number_of_outputs++;
-            }
-        } else if (wrong_output) {
-            report_collision(board, io->atoms[0].position, "output didn't match");
-            board->wrong_output_index = i;
-        } else if (wrong_output_bonds) {
-            report_collision(board, io->atoms[0].position, "output bonds didn't match");
-            board->wrong_output_index = i;
-        }
+        if (io->type & OUTPUT)
+            consume_output(solution, board, io, i);
     }
 }
 
@@ -2061,7 +1940,6 @@ void destroy(struct solution *solution, struct board *board)
         free(board->flag_reset);
         free(board->movements.movements);
         free(board->moving_atoms.atoms_at_positions);
-        free(board->marked.positions);
         free(board->overlapped_atoms);
         free(board->chain_atoms);
         free(board->chain_atom_table);
