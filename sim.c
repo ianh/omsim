@@ -81,7 +81,7 @@ static struct atom_ref_at_position conversion_input(struct board *board, struct 
     return input;
 }
 
-static void add_collider(struct board *board, struct mechanism m, int32_t du, int32_t dv)
+static void add_produced_atom_collider(struct board *board, struct mechanism m, int32_t du, int32_t dv)
 {
     if (board->number_of_atoms_being_produced >= board->atoms_being_produced_capacity) {
         board->atoms_being_produced_capacity = (board->atoms_being_produced_capacity + 3) * 4 / 3;
@@ -290,7 +290,7 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                     // bonds are consumed even if the atoms aren't.
                     *a &= ~(ALL_BONDS & ~RECENT_BONDS & conduit->atoms[base + k].atom);
                 }
-                add_collider(board, other_side, delta.u, delta.v);
+                add_produced_atom_collider(board, other_side, delta.u, delta.v);
             }
             base += length;
         }
@@ -302,8 +302,8 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
             for (uint32_t k = 0; k < length; ++k) {
                 struct vector delta = conduit->atoms[base + k].position;
                 atom a = conduit->atoms[base + k].atom;
-                if (!(a & (0x23ULL * BOND_LOW_BITS) & ~RECENT_BONDS))
-                    a |= QUANTUM_SAFE;
+                if (!(a & RIGHTWARD_BONDS & ~RECENT_BONDS))
+                    a |= DISJOINT_SAFE;
                 rotate_bonds(&a, rotation);
                 produce_atom(board, m, delta.u, delta.v, a);
             }
@@ -333,15 +333,17 @@ static int get_bond_height(struct board *board, struct atom_ref_at_position a, a
 
 static atom *lookup_atom_at_height(struct board *board, struct atom_ref_at_position b, atom ba, int height)
 {
-    if (*b.atom & ba)
+    if (*b.atom & ba) {
         if (--height < 0)
             return b.atom;
+    }
 
     for (uint32_t i = 0; i < board->number_of_overlapped_atoms; ++i) {
         struct atom_at_position *overlap = &board->overlapped_atoms[i];
-        if (vectors_equal(overlap->position, b.position) && (overlap->atom & ba))
+        if (vectors_equal(overlap->position, b.position) && (overlap->atom & ba)) {
             if (--height < 0)
                 return &overlap->atom;
+        }
     }
 
     // this point is only reachable if something went wrong earlier
@@ -383,7 +385,7 @@ static void add_atom_to_molecule(struct board *board, struct molecule *molecule,
 // TODO: use this for conduits too.
 static struct molecule *get_molecule(struct board *board, struct atom_ref_at_position a)
 {
-    static struct molecule molecule;
+    static _Thread_local struct molecule molecule;
 
     molecule.size = 0;
     // VISITED goes on the bottommost atom of the hex even if it isn't part of the molecule
@@ -441,8 +443,8 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                         && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    add_collider(board, m, 0, 1);
-                    add_collider(board, m, 1, -1);
+                    add_produced_atom_collider(board, m, 0, 1);
+                    add_produced_atom_collider(board, m, 1, -1);
                     solution->glyphs[i].conversion = true;
                 }
             } else if (m.conversion) {
@@ -471,10 +473,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                         && conversion_output(board, m, 0, -1)
                         && conversion_output(board, m, -1, 0)) {
                     remove_atom(board, a);
-                    add_collider(board, m, 1, 0);
-                    add_collider(board, m, 1, -1);
-                    add_collider(board, m, 0, -1);
-                    add_collider(board, m, -1, 0);
+                    add_produced_atom_collider(board, m, 1, 0);
+                    add_produced_atom_collider(board, m, 1, -1);
+                    add_produced_atom_collider(board, m, 0, -1);
+                    add_produced_atom_collider(board, m, -1, 0);
                     solution->glyphs[i].conversion = true;
                 }
             } else if (m.conversion) {
@@ -494,7 +496,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 if (metal && conversion_output(board, m, 0, 1)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    add_collider(board, m, 0, 1);
+                    add_produced_atom_collider(board, m, 0, 1);
                     solution->glyphs[i].conversion = metal >> 1;
                 }
             } else if (m.conversion) {
@@ -523,7 +525,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                     remove_atom(board, b);
                     remove_atom(board, c);
                     remove_atom(board, d);
-                    add_collider(board, m, 0, 0);
+                    add_produced_atom_collider(board, m, 0, 0);
                     solution->glyphs[i].conversion = true;
                 }
             } else if (m.conversion) {
@@ -603,9 +605,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
 static bool molecule_was_recently_unbonded(struct board *board, atom *a, struct vector pos)
 {
     struct molecule *molecule = get_molecule(board, (struct atom_ref_at_position) { a, pos });
-    for (uint32_t i = 0; i < molecule->size; ++i)
+    for (uint32_t i = 0; i < molecule->size; ++i) {
         if (*molecule->atoms[i].atom & RECENT_BONDS)
             return true;
+    }
     return false;
 }
 
@@ -618,11 +621,11 @@ static int compare_overlapped_atoms(const void *a, const void *b)
     return (a > b) - (a < b);
 }
 
-static void raise_overlapped_atoms_at_position(struct board *board, struct vector pos)
+static void raise_overlapped_atoms_slow_path(struct board *board, struct vector pos)
 {
     // expensive logic to handle the very rare case of 3+ atoms on the same hex
-    static atom* atoms[MAX_ATOMS_PER_HEX];
-    static atom atoms_copy[MAX_ATOMS_PER_HEX];
+    static _Thread_local atom* atoms[MAX_ATOMS_PER_HEX];
+    static _Thread_local atom atoms_copy[MAX_ATOMS_PER_HEX];
 
     int count = 0;
     bool any_unbonded = false;
@@ -642,8 +645,8 @@ static void raise_overlapped_atoms_at_position(struct board *board, struct vecto
     for (uint32_t i = 0; i < count; ++i) {
         *atoms[i] &= ~OVERLAPS_ATOMS;
         if (molecule_was_recently_unbonded(board, atoms[i], pos)) {
-            if (any_unbonded && !(*atoms[i] & QUANTUM_SAFE))
-                report_collision(board, pos, "quantum bonds are not supported");
+            if (any_unbonded && !(*atoms[i] & DISJOINT_SAFE))
+                report_collision(board, pos, "disjoint bonds are not supported");
             any_unbonded = true;
             *atoms[i] |= OVERLAPS_ATOMS;
         }
@@ -676,15 +679,15 @@ static void raise_overlapped_atoms(struct board *board)
         if (*curr & VISITED)
             *curr &= ~VISITED;
         else if (*curr & OVERLAPS_ATOMS)
-            raise_overlapped_atoms_at_position(board, pos);
+            raise_overlapped_atoms_slow_path(board, pos);
         else {
             // fast path for the common case of 2 atoms on a hex
             atom *bot = lookup_atom(board, pos);
             if (!molecule_was_recently_unbonded(board, bot, pos))
                 continue;
             if (molecule_was_recently_unbonded(board, curr, pos)) {
-                if (!(*curr & QUANTUM_SAFE))
-                    report_collision(board, pos, "quantum bonds are not supported");
+                if (!(*curr & DISJOINT_SAFE))
+                    report_collision(board, pos, "disjoint bonds are not supported");
                 continue;
             }
 
@@ -2227,10 +2230,14 @@ atom *lookup_atom(struct board *board, struct vector query)
 
 static atom *lookup_topmost_atom(struct board *board, struct atom_at_position *a)
 {
-    if (a->atom & OVERLAPS_ATOMS)
-        for (int32_t i = board->number_of_overlapped_atoms - 1; i >= 0; --i)
-            if (vectors_equal(board->overlapped_atoms[i].position, a->position))
-                return &board->overlapped_atoms[i].atom;
+    if (!(a->atom & OVERLAPS_ATOMS))
+        return &a->atom;
+    for (int32_t i = board->number_of_overlapped_atoms - 1; i >= 0; --i) {
+        if (vectors_equal(board->overlapped_atoms[i].position, a->position))
+            return &board->overlapped_atoms[i].atom;
+    }
+    // atom tagged OVERLAPS_ATOMS, but there’s no atom above it? something went wrong
+    assert(board->collision);
     return &a->atom;
 }
 

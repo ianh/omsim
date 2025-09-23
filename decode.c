@@ -209,10 +209,12 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
     }
     // atoms with no rightward bonds in default orientation get special behavior in overlap
     atom rightward_bonds = bond_direction(m, 1, 0) | bond_direction(m, 0, 1) | bond_direction(m, 1, -1);
-    if (io->type & INPUT)
-        for (uint32_t i = 0; i < io->number_of_atoms; ++i)
+    if (io->type & INPUT) {
+        for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
             if (!(io->atoms[i].atom & rightward_bonds))
-                io->atoms[i].atom |= QUANTUM_SAFE;
+                io->atoms[i].atom |= DISJOINT_SAFE;
+        }
+    }
 }
 
 // thanks to Syx for this data
