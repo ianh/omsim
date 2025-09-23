@@ -619,8 +619,8 @@ static int compare_overlapped_atoms(const void *a, const void *b)
 static void raise_overlapped_atoms_slow_path(struct board *board, struct vector pos)
 {
     // expensive logic to handle the very rare case of 3+ atoms on the same hex
-    static _Thread_local atom* atoms[MAX_ATOMS_PER_HEX];
-    static _Thread_local atom atoms_copy[MAX_ATOMS_PER_HEX];
+    atom* atoms[MAX_ATOMS_PER_HEX];
+    atom atoms_copy[MAX_ATOMS_PER_HEX];
 
     int count = 0;
     bool any_unbonded = false;
