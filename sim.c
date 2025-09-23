@@ -46,10 +46,23 @@ static bool conversion_output(struct board *board, struct mechanism m, int32_t d
     return !(*a & VALID) || (*a & REMOVED) || (*a & VAN_BERLO_ATOM);
 }
 
+static void add_produced_atom_collider(struct board *board, struct vector pos)
+{
+    if (board->number_of_atoms_being_produced >= board->atoms_being_produced_capacity) {
+        board->atoms_being_produced_capacity = (board->atoms_being_produced_capacity + 3) * 4 / 3;
+        board->atoms_being_produced = realloc(board->atoms_being_produced,
+                board->atoms_being_produced_capacity * sizeof(struct vector));
+    }
+    board->atoms_being_produced[board->number_of_atoms_being_produced++] = pos;
+}
+
 static void produce_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom a)
 {
     struct vector pos = mechanism_relative_position(m, du, dv, 1);
-    insert_atom(board, pos, a | VALID);
+    if (board->half_cycle == 1)
+        add_produced_atom_collider(board, pos);
+    else
+        insert_atom(board, pos, a | VALID);
 }
 
 static struct atom_ref_at_position get_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv)
@@ -79,16 +92,6 @@ static struct atom_ref_at_position conversion_input(struct board *board, struct 
     if (*input.atom & (ALL_BONDS | GRABBED))
         return (struct atom_ref_at_position){ (atom *)&empty, input.position };
     return input;
-}
-
-static void add_produced_atom_collider(struct board *board, struct mechanism m, int32_t du, int32_t dv)
-{
-    if (board->number_of_atoms_being_produced >= board->atoms_being_produced_capacity) {
-        board->atoms_being_produced_capacity = (board->atoms_being_produced_capacity + 3) * 4 / 3;
-        board->atoms_being_produced = realloc(board->atoms_being_produced,
-                board->atoms_being_produced_capacity * sizeof(struct vector));
-    }
-    board->atoms_being_produced[board->number_of_atoms_being_produced++] = mechanism_relative_position(m, du, dv, 1);
 }
 
 __attribute__((noinline))
@@ -290,7 +293,7 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                     // bonds are consumed even if the atoms aren't.
                     *a &= ~(ALL_BONDS & ~RECENT_BONDS & conduit->atoms[base + k].atom);
                 }
-                add_produced_atom_collider(board, other_side, delta.u, delta.v);
+                add_produced_atom_collider(board, mechanism_relative_position(other_side, delta.u, delta.v, 1));
             }
             base += length;
         }
@@ -443,12 +446,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                         && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    add_produced_atom_collider(board, m, 0, 1);
-                    add_produced_atom_collider(board, m, 1, -1);
                     solution->glyphs[i].conversion = true;
                 }
-            } else if (m.conversion) {
-                solution->glyphs[i].conversion = false;
+            }
+            if (m.conversion) {
                 produce_atom(board, m, 0, 1, VITAE);
                 produce_atom(board, m, 1, -1, MORS);
             }
@@ -473,14 +474,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                         && conversion_output(board, m, 0, -1)
                         && conversion_output(board, m, -1, 0)) {
                     remove_atom(board, a);
-                    add_produced_atom_collider(board, m, 1, 0);
-                    add_produced_atom_collider(board, m, 1, -1);
-                    add_produced_atom_collider(board, m, 0, -1);
-                    add_produced_atom_collider(board, m, -1, 0);
                     solution->glyphs[i].conversion = true;
                 }
-            } else if (m.conversion) {
-                solution->glyphs[i].conversion = false;
+            }
+            if (m.conversion) {
                 produce_atom(board, m, 1, 0, EARTH);
                 produce_atom(board, m, 1, -1, WATER);
                 produce_atom(board, m, 0, -1, FIRE);
@@ -496,13 +493,11 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 if (metal && conversion_output(board, m, 0, 1)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    add_produced_atom_collider(board, m, 0, 1);
                     solution->glyphs[i].conversion = metal >> 1;
                 }
-            } else if (m.conversion) {
-                produce_atom(board, m, 0, 1, m.conversion);
-                solution->glyphs[i].conversion = false;
             }
+            if (m.conversion)
+                produce_atom(board, m, 0, 1, m.conversion);
             break;
         }
         case DUPLICATION: {
@@ -525,13 +520,11 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                     remove_atom(board, b);
                     remove_atom(board, c);
                     remove_atom(board, d);
-                    add_produced_atom_collider(board, m, 0, 0);
                     solution->glyphs[i].conversion = true;
                 }
-            } else if (m.conversion) {
-                solution->glyphs[i].conversion = false;
-                produce_atom(board, m, 0, 0, QUINTESSENCE);
             }
+            if (m.conversion)
+                produce_atom(board, m, 0, 0, QUINTESSENCE);
             break;
         }
         case BONDING: {
@@ -599,6 +592,8 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         default:
             break;
         }
+        if (m.conversion && board->half_cycle == 2)
+            solution->glyphs[i].conversion = false;
     }
 }
 
