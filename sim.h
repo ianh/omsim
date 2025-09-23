@@ -250,11 +250,6 @@ enum input_output_type {
 
     // flag for inputs.
     BLOCKED = 1 << 3,
-
-    // stop running and return INPUT_OUTPUT before the input spawns or the
-    // output consumes.  you can use this flag to implement dynamic inputs and
-    // outputs.
-    INTERRUPT = 1 << 4,
 };
 
 // the number of times repeating outputs repeat.
@@ -459,9 +454,6 @@ struct board {
     uint64_t cycle;
     int half_cycle;
 
-    // set whenever run() returns INPUT_OUTPUT.
-    size_t active_input_or_output;
-
     struct movement_list movements;
     struct moving_atoms moving_atoms;
 
@@ -528,18 +520,12 @@ struct board {
 void initial_setup(struct solution *solution, struct board *board,
  uint32_t intial_board_size);
 
-enum run_result {
-    FINISHED_CYCLE,
+void run(struct solution *solution, struct board *board);
 
-    // the active input/output is available in board->active_input_or_output.
-    INPUT_OUTPUT,
-};
-enum run_result run(struct solution *solution, struct board *board);
-
-// shortcut function if you aren't using dynamic inputs or outputs.
+// compatibility alias for run.
 static inline void cycle(struct solution *solution, struct board *board)
 {
-    while (run(solution, board) != FINISHED_CYCLE);
+    run(solution, board);
 }
 
 // free memory associated with the solution and board.
