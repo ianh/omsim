@@ -1383,16 +1383,10 @@ static void flag_blocked_inputs(struct solution *solution, struct board *board)
 
 static void spawn_inputs(struct solution *solution, struct board *board)
 {
-    size_t active = board->active_input_or_output;
-    size_t i = active == UINT32_MAX ? 0 : active;
-    for (; i < solution->number_of_inputs_and_outputs; ++i) {
+    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (!(io->type & INPUT) || (io->type & BLOCKED))
             continue;
-        if (i != active && (io->type & INTERRUPT)) {
-            board->active_input_or_output = i;
-            return;
-        }
         uint32_t n = io->number_of_atoms;
         for (uint32_t j = 0; j < n; ++j) {
             atom input = io->atoms[j].atom;
@@ -1400,7 +1394,6 @@ static void spawn_inputs(struct solution *solution, struct board *board)
             insert_atom(board, p, VALID | input);
         }
     }
-    board->active_input_or_output = UINT32_MAX;
 }
 
 static int32_t gcd(int32_t a, int32_t b)
@@ -1513,9 +1506,7 @@ static void consume_output_with_overlap(struct solution *solution, struct board 
 
 static void consume_outputs(struct solution *solution, struct board *board)
 {
-    size_t active = board->active_input_or_output;
-    size_t i = active == UINT32_MAX ? 0 : active;
-    for (; i < solution->number_of_inputs_and_outputs; ++i) {
+    for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (!(io->type & OUTPUT))
             continue;
@@ -1524,8 +1515,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
         if (board->number_of_overlapped_atoms > 0
                 && io->number_of_atoms > 1
                 && !fails_on_wrong_output
-                && !(io->type & REPEATING_OUTPUT)
-                && !(io->type & INTERRUPT)) {
+                && !(io->type & REPEATING_OUTPUT)) {
             consume_output_with_overlap(solution, board, io);
             continue;
         }
@@ -1663,13 +1653,8 @@ static void consume_outputs(struct solution *solution, struct board *board)
         }
         if (match && (io->type & REPEATING_OUTPUT) && board->chain_mode == EXTEND_CHAIN)
             match_repeating_output_with_chain_atoms(board, io);
-        // if the output is a match, first trigger an interrupt if necessary.
-        // then remove the output and increment the output counter.
+        // if the output is a match remove the output and increment the output counter.
         if (match) {
-            if (i != active && (io->type & INTERRUPT)) {
-                board->active_input_or_output = i;
-                return;
-            }
             if (io->type & REPEATING_OUTPUT)
                 io->number_of_outputs = io->number_of_repetitions * io->outputs_per_repetition;
             else {
@@ -1685,7 +1670,6 @@ static void consume_outputs(struct solution *solution, struct board *board)
             board->wrong_output_index = i;
         }
     }
-    board->active_input_or_output = UINT32_MAX;
 }
 
 static void reset_temporary_flags(struct board *board)
@@ -1721,16 +1705,9 @@ static void check_completion(struct solution *solution, struct board *board)
     board->number_of_output_cycles = min;
 }
 
-enum run_result run(struct solution *solution, struct board *board)
+void run(struct solution *solution, struct board *board)
 {
     for (; board->half_cycle <= 2; board->half_cycle++) {
-        uint32_t io = board->active_input_or_output;
-        if (io != UINT32_MAX) {
-            if (solution->inputs_and_outputs[io].type & INPUT)
-                goto continue_with_inputs;
-            else
-                goto continue_with_outputs;
-        }
         if (board->half_cycle == 2 && board->number_of_overlapped_atoms > 0)
             report_collision(board, board->overlapped_atoms[0].position, "overlapping atoms before motion phase");
         perform_arm_instructions(solution, board);
@@ -1739,24 +1716,17 @@ enum run_result run(struct solution *solution, struct board *board)
         mark_arm_area(solution, board);
         fill_conduits(solution, board);
         flag_blocked_inputs(solution, board);
-continue_with_inputs:
         spawn_inputs(solution, board);
-        if (board->active_input_or_output != UINT32_MAX)
-            return INPUT_OUTPUT;
         reset_temporary_flags(board);
         apply_glyphs(solution, board);
         if (board->number_of_overlapped_atoms > 0)
             raise_overlapped_atoms(board);
-continue_with_outputs:
         consume_outputs(solution, board);
-        if (board->active_input_or_output != UINT32_MAX)
-            return INPUT_OUTPUT;
     }
     board->cycle++;
     board->half_cycle = 1;
     board->number_of_atoms_being_produced = 0;
     check_completion(solution, board);
-    return FINISHED_CYCLE;
 }
 
 bool repeat_molecule(struct input_output *io, uint32_t repetitions, const char **error)
@@ -1985,7 +1955,6 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
 {
     board->overlap = solution->track_self_overlap;
     board->half_cycle = 1;
-    board->active_input_or_output = UINT32_MAX;
     board->wrong_output_index = SIZE_MAX;
     // initialize the board array / hash table.
     // this division is just to keep the hash table size from starting too big
