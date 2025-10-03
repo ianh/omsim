@@ -361,26 +361,6 @@ static void add_atom_to_molecule(struct board *board, struct molecule *molecule,
         molecule->atoms = realloc(molecule->atoms, molecule->capacity * sizeof(struct atom_ref_at_position));
     }
     molecule->atoms[molecule->size++] = a;
-
-    for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
-        atom ab = (BOND_LOW_BITS & ~RECENT_BONDS) << bond_direction;
-        if (!(*a.atom & ab))
-            continue;
-        struct vector d = u_offset_for_direction(bond_direction);
-        struct vector p = { a.position.u + d.u, a.position.v + d.v };
-        struct atom_ref_at_position b = { lookup_atom(board, p), p };
-
-        if (*b.atom & VISITED)
-            continue;
-        *b.atom |= VISITED;
-
-        int height = get_bond_height(board, a, ab);
-        int opposite_direction = bond_direction + (bond_direction < 3 ? 3 : -3);
-        atom ba = (BOND_LOW_BITS & ~RECENT_BONDS) << opposite_direction;
-        b.atom = lookup_atom_at_height(board, b, ba, height);
-        if (b.atom)
-            add_atom_to_molecule(board, molecule, b);
-    }
 }
 
 // returns the molecule containing the given atom. accurate in the presence of arbitrary overlap.
@@ -388,10 +368,33 @@ static void add_atom_to_molecule(struct board *board, struct molecule *molecule,
 // TODO: use this for conduits too.
 static struct molecule *get_molecule(struct board *board, struct atom_ref_at_position a)
 {
+    board->molecule.cursor = 0;
     board->molecule.size = 0;
     // VISITED goes on the bottommost atom of the hex even if it isn't part of the molecule
     *lookup_atom(board, a.position) |= VISITED;
     add_atom_to_molecule(board, &board->molecule, a);
+    while (board->molecule.cursor < board->molecule.size) {
+        a = board->molecule.atoms[board->molecule.cursor++];
+        for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
+            atom ab = (BOND_LOW_BITS & ~RECENT_BONDS) << bond_direction;
+            if (!(*a.atom & ab))
+                continue;
+            struct vector d = u_offset_for_direction(bond_direction);
+            struct vector p = { a.position.u + d.u, a.position.v + d.v };
+            struct atom_ref_at_position b = { lookup_atom(board, p), p };
+
+            if (*b.atom & VISITED)
+                continue;
+            *b.atom |= VISITED;
+
+            int height = get_bond_height(board, a, ab);
+            int opposite_direction = bond_direction + (bond_direction < 3 ? 3 : -3);
+            atom ba = (BOND_LOW_BITS & ~RECENT_BONDS) << opposite_direction;
+            b.atom = lookup_atom_at_height(board, b, ba, height);
+            if (b.atom)
+                add_atom_to_molecule(board, &board->molecule, b);
+        }
+    }
     for (uint32_t i = 0; i < board->molecule.size; ++i)
         *lookup_atom(board, board->molecule.atoms[i].position) &= ~VISITED;
     return &board->molecule;

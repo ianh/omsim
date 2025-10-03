@@ -237,6 +237,7 @@ struct conduit {
 
 struct molecule {
     struct atom_ref_at_position *atoms;
+    size_t cursor;
     size_t size;
     size_t capacity;
 };
