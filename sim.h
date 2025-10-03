@@ -461,6 +461,9 @@ struct board {
     uint32_t number_of_atoms_being_produced;
     uint32_t atoms_being_produced_capacity;
 
+    // to reuse allocations, each board has a single, shared molecule struct.
+    struct molecule molecule;
+
     bool collision;
     struct vector collision_location;
     const char *collision_reason;

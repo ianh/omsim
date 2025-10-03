@@ -388,15 +388,13 @@ static void add_atom_to_molecule(struct board *board, struct molecule *molecule,
 // TODO: use this for conduits too.
 static struct molecule *get_molecule(struct board *board, struct atom_ref_at_position a)
 {
-    static _Thread_local struct molecule molecule;
-
-    molecule.size = 0;
+    board->molecule.size = 0;
     // VISITED goes on the bottommost atom of the hex even if it isn't part of the molecule
     *lookup_atom(board, a.position) |= VISITED;
-    add_atom_to_molecule(board, &molecule, a);
-    for (uint32_t i = 0; i < molecule.size; ++i)
-        *lookup_atom(board, molecule.atoms[i].position) &= ~VISITED;
-    return &molecule;
+    add_atom_to_molecule(board, &board->molecule, a);
+    for (uint32_t i = 0; i < board->molecule.size; ++i)
+        *lookup_atom(board, board->molecule.atoms[i].position) &= ~VISITED;
+    return &board->molecule;
 }
 
 static void remove_molecule(struct board *board, struct molecule *molecule)
