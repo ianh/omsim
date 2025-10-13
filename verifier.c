@@ -980,6 +980,8 @@ double verifier_evaluate_approximate_metric(void *verifier, const char *metric)
         return v->throughput_measurements.throughput_quadratic_area;
     } else if (!strcmp(metric, "width")) {
         return verifier_evaluate_metric(verifier, "width*2") / 2.0;
+    } else if (!strcmp(metric, "steady state width")) {
+        return verifier_evaluate_metric(verifier, "steady state width*2") / 2.0;
     } else
         return verifier_evaluate_metric(verifier, metric);
 }
