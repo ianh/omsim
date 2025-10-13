@@ -984,6 +984,8 @@ double verifier_evaluate_approximate_metric(void *verifier, const char *metric)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_quadratic_area;
+    } else if (!strcmp(metric, "width")) {
+        return verifier_evaluate_metric(verifier, "width*2") / 2.0;
     } else
         return verifier_evaluate_metric(verifier, metric);
 }
