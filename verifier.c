@@ -468,7 +468,7 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
         return -1;
     if (!strcmp(metric, "cycles"))
         return measurements->cycles;
-    else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
+    else if (!strcmp(metric, "area"))
         return measurements->area;
     else if (!strcmp(metric, "height at 0 degrees"))
         return measurements->height_0;
@@ -798,12 +798,12 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             return 0;
         else
             return 1;
-    } else if (!strcmp(metric, "per repetition cycles") || !strcmp(metric, "throughput cycles")) {
+    } else if (!strcmp(metric, "per repetition cycles")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_cycles;
-    } else if (!strcmp(metric, "per repetition outputs") || !strcmp(metric, "throughput outputs")) {
+    } else if (!strcmp(metric, "per repetition outputs")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
@@ -817,7 +817,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             return -1;
         }
         return v->throughput_measurements.throughput_linear_area;
-    } else if (!strcmp(metric, "throughput waste")) {
+    } else if (!strcmp(metric, "per repetition waste")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
