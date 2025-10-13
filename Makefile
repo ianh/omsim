@@ -15,7 +15,7 @@ HEADER=collision.h decode.h parse.h sim.h steady-state.h verifier.h
 SOURCE=collision.c decode.c parse.c sim.c steady-state.c verifier.c
 
 omsim: $(HEADER) $(SOURCE) Makefile main.c
-	$(CC) $(CFLAGS) -g -o $@ $(SOURCE) main.c $(LDLIBS)
+	$(CC) $(CFLAGS) -g -D_DEFAULT_SOURCE -o $@ $(SOURCE) main.c $(LDLIBS)
 
 libverify.so libverify.dll: $(HEADER) $(SOURCE) Makefile
 	$(CC) $(CFLAGS) -g -shared -fpic -o $@ $(SOURCE) $(LDLIBS)
