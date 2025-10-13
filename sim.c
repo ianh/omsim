@@ -1,7 +1,6 @@
 #include "sim.h"
 
 #include "collision.h"
-#include "parse.h"
 #include <assert.h>
 #include <inttypes.h>
 #include <math.h>
@@ -1948,6 +1947,7 @@ void destroy(struct solution *solution, struct board *board)
         for (uint32_t i = 0; i < board->number_of_area_directions; ++i)
             free(board->area_directions[i].footprint_at_infinity.atoms_at_positions);
         free(board->area_directions);
+        free(board->molecule.atoms);
         memset(board, 0, sizeof(*board));
     }
 }
