@@ -301,12 +301,6 @@ static void check_wrong_output_and_destroy(struct verifier *v, struct solution *
         destroy(solution, board);
 }
 
-void verifier_set_throughput_margin(void *verifier, int margin)
-{
-    // this doesn't do anything since there's no throughput margin any more.
-    return;
-}
-
 struct area_dimension {
     int64_t u;
     int64_t v;

@@ -53,10 +53,6 @@ int verifier_wrong_output_atom(void *verifier, int u, int v);
 // return -1 until another wrong output is detected.
 void verifier_wrong_output_clear(void *verifier);
 
-// this function is a no-op.  it used to set the size of the area used for
-// throughput loop detection.
-void verifier_set_throughput_margin(void *verifier, int margin);
-
 // returns a string describing any error that occurred during solution parsing,
 // decoding, or verification.  if there haven't been any errors, returns a null
 // pointer.  returned strings are valid for the lifetime of the program and
