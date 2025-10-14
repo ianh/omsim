@@ -83,6 +83,7 @@ struct per_cycle_measurements {
     int instruction_executions[NUMBER_OF_INSTRUCTIONS];
     int atom_grabs[NUMBER_OF_ATOM_TYPES];
     int maximum_absolute_arm_rotation;
+    int number_of_atoms[NUMBER_OF_ATOM_TYPES];
     struct error error;
     bool valid;
 };
@@ -324,6 +325,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .atom_grabs = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .maximum_absolute_arm_rotation = -1,
+        .number_of_atoms = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
         .valid = true,
     };
     if (board->collision) {
@@ -336,6 +338,13 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         error_measurements.error.description = "solution did not complete within cycle limit";
         return error_measurements;
     }
+    struct per_cycle_measurements m = {
+        .cycles = (int)board->cycle,
+        .area = used_area(board),
+        .executed_instructions = 0,
+        .maximum_absolute_arm_rotation = solution ? solution->maximum_absolute_arm_rotation : -1,
+        .valid = true,
+    };
     struct area_dimension dimensions[] = {
         // height
         { 0, -1, INT32_MIN, INT32_MAX },
@@ -365,14 +374,13 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
                 return error_measurements;
             }
         }
+        if (!(a & REMOVED) && !(a & VAN_BERLO_ATOM)) {
+            for (int j = 0; j < NUMBER_OF_ATOM_TYPES; ++j) {
+                if (board->grid.atoms_at_positions[i].atom & ATOM_OF_TYPE(j))
+                    m.number_of_atoms[j]++;
+            }
+        }
     }
-    struct per_cycle_measurements m = {
-        .cycles = (int)board->cycle,
-        .area = used_area(board),
-        .executed_instructions = 0,
-        .maximum_absolute_arm_rotation = solution ? solution->maximum_absolute_arm_rotation : -1,
-        .valid = true,
-    };
     for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
         m.atom_grabs[i] = (int)board->atom_grabs[i];
     if (has_atoms) {
@@ -529,6 +537,20 @@ static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, 
             const char *name = name_for_atom_type(i);
             if (name && !strcmp(metric, name))
                 return measurements->atom_grabs[i];
+        }
+        *error = (struct error){ .description = "unknown atom type" };
+        return -1;
+    } else if (!strcmp(metric, "number of atoms")) {
+        int value = 0;
+        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
+            value += measurements->number_of_atoms[i];
+        return value;
+    } else if (!strncmp("number of atoms of type ", metric, strlen("number of atoms of type "))) {
+        metric += strlen("number of atoms of type ");
+        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i) {
+            const char *name = name_for_atom_type(i);
+            if (name && !strcmp(metric, name))
+                return measurements->number_of_atoms[i];
         }
         *error = (struct error){ .description = "unknown atom type" };
         return -1;
