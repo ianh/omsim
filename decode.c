@@ -757,10 +757,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     // production-only pass: enforce production constraints
     if (pf->production_info) {
         *error = check_production_constraints(solution, pf->production_info);
-        if (*error)
+        if (*error) {
+            destroy(solution, 0);
             return false;
+        }
     } else if (solution->number_of_conduits > 0) {
         *error = "solution contains a conduit not defined in the puzzle file";
+        destroy(solution, 0);
         return false;
     }
     // decode arm tapes in one final pass.  this has to be another pass because
