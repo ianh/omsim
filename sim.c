@@ -42,7 +42,7 @@ static void report_collision(struct board *board, struct vector p, const char *r
 static bool conversion_output(struct board *board, struct mechanism m, int32_t du, int32_t dv)
 {
     atom *a = lookup_atom(board, mechanism_relative_position(m, du, dv, 1));
-    return !(*a & VALID) || (*a & REMOVED) || (*a & VAN_BERLO_ATOM);
+    return !(*a & VALID) || (*a & REMOVED) || (*a & WHEEL_ATOM);
 }
 
 static void add_produced_atom_collider(struct board *board, struct vector pos)
@@ -77,8 +77,8 @@ static struct atom_ref_at_position get_atom(struct board *board, struct mechanis
         return (struct atom_ref_at_position){ a, pos };
     if (*a & REMOVED)
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
-    // only duplication glyphs can see the van berlo's wheel.
-    if (!(m.type & (DUPLICATION | VAN_BERLO)) && (*a & VAN_BERLO_ATOM))
+    // only duplication and proliferation glyphs can see wheel atoms.
+    if (!(m.type & (DUPLICATION | PROLIFERATION | ANY_WHEEL)) && (*a & WHEEL_ATOM))
         return (struct atom_ref_at_position){ (atom *)&empty, pos };
     return (struct atom_ref_at_position){ a, pos };
 }
@@ -155,6 +155,7 @@ int angular_distance_between_grabbers(enum mechanism_type type)
         return 2;
     case SIX_ARM:
     case VAN_BERLO:
+    case RAVARI:
     default:
         return 1;
     }
@@ -504,7 +505,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
             struct atom_ref_at_position b = get_atom(board, m, 1, 0);
             atom elemental = *a.atom & ANY_ELEMENTAL;
-            if (elemental && (*b.atom & SALT) && !(*b.atom & VAN_BERLO_ATOM))
+            if (elemental && (*b.atom & SALT) && !(*b.atom & WHEEL_ATOM))
                 transform_atom(b.atom, elemental);
             break;
         }
@@ -583,6 +584,50 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
             if (*a.atom && !(*a.atom & ALL_BONDS) && !(*a.atom & GRABBED))
                 remove_atom(board, a);
+            break;
+        }
+        case REJECTION: {
+            struct atom_ref_at_position a = get_atom(board, m, 0, 0);
+            atom metal = *a.atom & ANY_METAL & ~LEAD;
+            if (metal && conversion_output(board, m, 1, 0)) {
+                insert_atom(board, mechanism_relative_position(m, 1, 0, 1), QUICKSILVER | VALID);
+                transform_atom(a.atom, metal << 1);
+            }
+            break;
+        }
+        case DIVISION: {
+            if (board->half_cycle == 1) {
+                struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
+                atom metal = *a.atom & ANY_METAL & ~LEAD;
+                if (metal && conversion_output(board, m, 1, 0) && conversion_output(board, m, -1, 0)) {
+                    remove_atom(board, a);
+                    solution->glyphs[i].conversion = metal;
+                }
+            }
+            if (m.conversion) {
+                atom a = m.conversion << 1;
+                atom b = LEAD;
+                while (a < b) {
+                    a <<= 1;
+                    b >>= 1;
+                }
+                produce_atom(board, m, 1, 0, a);
+                produce_atom(board, m, -1, 0, b);
+            }
+            break;
+        }
+        case PROLIFERATION: {
+            if (board->half_cycle == 1) {
+                struct atom_ref_at_position a = get_atom(board, m, -1, 1);
+                struct atom_ref_at_position q = conversion_input(board, m, 1, 1);
+                atom metal = *a.atom & ANY_METAL;
+                if (metal && (*q.atom & QUICKSILVER) && conversion_output(board, m, 1, -1)) {
+                    remove_atom(board, q);
+                    solution->glyphs[i].conversion = metal;
+                }
+            }
+            if (m.conversion)
+                produce_atom(board, m, 1, -1, m.conversion);
             break;
         }
         case CONDUIT:
@@ -914,13 +959,13 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         // first, validate the instruction.
         if (inst == 'r') {
             // if the arm is already grabbing, grabbing again does nothing.
-            // additionally, van berlo's wheel doesn't grab or release.
-            if ((m->type & GRABBING) || (m->type & VAN_BERLO))
+            // additionally, wheels don't grab or release.
+            if ((m->type & GRABBING) || (m->type & ANY_WHEEL))
                 continue;
         } else if (inst == 'f') {
             // if the arm isn't grabbing, then releasing does nothing.
-            // additionally, van berlo's wheel doesn't grab or release.
-            if (!(m->type & GRABBING) || (m->type & VAN_BERLO))
+            // additionally, wheels don't grab or release.
+            if (!(m->type & GRABBING) || (m->type & ANY_WHEEL))
                 continue;
         } else if ((inst == 'w' || inst == 's') && !(m->type & PISTON)) {
             report_collision(board, m->position, "trying to extend/retract a non-piston arm");
@@ -1812,6 +1857,32 @@ static struct footprint footprints[] = {
             { 0, 0 },
         }
     },
+    {
+        .type = REJECTION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = DIVISION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { -1, 0 },
+            { 0, 0 },
+        }
+    },
+    {
+        .type = PROLIFERATION,
+        .hexes = (const struct vector[]){
+            { 1, 0 },
+            { 1, -1 },
+            { 0, 1 },
+            { -1, 1 },
+            { 1, 1 },
+            { 0, 0 },
+        }
+    },
 };
 
 const struct vector *glyph_footprint(enum mechanism_type type)
@@ -1824,10 +1895,10 @@ const struct vector *glyph_footprint(enum mechanism_type type)
     return trivial_footprint;
 }
 
-static void create_van_berlo_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
+static void create_wheel_atom(struct board *board, struct mechanism m, int32_t du, int32_t dv, atom element)
 {
     struct vector p = mechanism_relative_position(m, du, dv, 1);
-    insert_atom(board, p, VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element);
+    insert_atom(board, p, VALID | GRABBED_ONCE | WHEEL_ATOM | element);
 }
 
 void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)
@@ -1888,16 +1959,25 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
     for (size_t i = 0; i < solution->number_of_arms; ++i)
         *lookup_atom(board, solution->arms[i].position) &= ~VISITED;
     for (size_t i = 0; i < solution->number_of_arms; ++i) {
-        if (!(solution->arms[i].type & VAN_BERLO))
+        if (!(solution->arms[i].type & ANY_WHEEL))
             continue;
         solution->arms[i].type |= GRABBING;
         solution->arms[i].type |= GRABBING_EVERYTHING;
-        create_van_berlo_atom(board, solution->arms[i], 1, 0, SALT);
-        create_van_berlo_atom(board, solution->arms[i], 0, 1, WATER);
-        create_van_berlo_atom(board, solution->arms[i], -1, 1, AIR);
-        create_van_berlo_atom(board, solution->arms[i], -1, 0, SALT);
-        create_van_berlo_atom(board, solution->arms[i], 0, -1, FIRE);
-        create_van_berlo_atom(board, solution->arms[i], 1, -1, EARTH);
+        if (solution->arms[i].type & VAN_BERLO) {
+            create_wheel_atom(board, solution->arms[i], 1, 0, SALT);
+            create_wheel_atom(board, solution->arms[i], 0, 1, WATER);
+            create_wheel_atom(board, solution->arms[i], -1, 1, AIR);
+            create_wheel_atom(board, solution->arms[i], -1, 0, SALT);
+            create_wheel_atom(board, solution->arms[i], 0, -1, FIRE);
+            create_wheel_atom(board, solution->arms[i], 1, -1, EARTH);
+        } else if (solution->arms[i].type & RAVARI) {
+            create_wheel_atom(board, solution->arms[i], 1, 0, TIN);
+            create_wheel_atom(board, solution->arms[i], 0, 1, LEAD);
+            create_wheel_atom(board, solution->arms[i], -1, 1, GOLD);
+            create_wheel_atom(board, solution->arms[i], -1, 0, SILVER);
+            create_wheel_atom(board, solution->arms[i], 0, -1, COPPER);
+            create_wheel_atom(board, solution->arms[i], 1, -1, IRON);
+        }
     }
     mark_arm_area(solution, board);
     // van berlo's wheel can block inputs.

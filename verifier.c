@@ -374,7 +374,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
                 return error_measurements;
             }
         }
-        if (!(a & REMOVED) && !(a & VAN_BERLO_ATOM)) {
+        if (!(a & REMOVED) && !(a & WHEEL_ATOM)) {
             for (int j = 0; j < NUMBER_OF_ATOM_TYPES; ++j) {
                 if (board->grid.atoms_at_positions[i].atom & ATOM_OF_TYPE(j))
                     m.number_of_atoms[j]++;

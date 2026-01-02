@@ -85,6 +85,14 @@ static enum mechanism_type decode_mechanism_type(struct byte_string part_name)
         return PISTON;
     else if (byte_string_is(part_name, "baron"))
         return VAN_BERLO;
+    else if (byte_string_is(part_name, "glyph-rejection"))
+        return REJECTION;
+    else if (byte_string_is(part_name, "glyph-division"))
+        return DIVISION;
+    else if (byte_string_is(part_name, "glyph-proliferation"))
+        return PROLIFERATION;
+    else if (byte_string_is(part_name, "ravari"))
+        return RAVARI;
     else
         return 0;
 }
@@ -131,6 +139,14 @@ static uint64_t parts_available_bits_for_part_name(struct byte_string part_name)
         return 1ull << 28;
     else if (byte_string_is(part_name, "track"))
         return 1ull << 3;
+    else if (byte_string_is(part_name, "glyph-rejection"))
+        return 1ull << 19;
+    else if (byte_string_is(part_name, "glyph-division"))
+        return 1ull << 20;
+    else if (byte_string_is(part_name, "glyph-proliferation"))
+        return 1ull << 21;
+    else if (byte_string_is(part_name, "ravari"))
+        return 1ull << 29;
     else
         return 0;
 }
@@ -1023,6 +1039,14 @@ uint64_t solution_file_cost(struct solution_file *sf)
             cost += 30;
         else if (byte_string_is(part_name, "track"))
             cost += sf->parts[i].number_of_track_hexes * 5;
+        else if (byte_string_is(part_name, "glyph-rejection"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-division"))
+            cost += 20;
+        else if (byte_string_is(part_name, "glyph-proliferation"))
+            cost += 40;
+        else if (byte_string_is(part_name, "ravari"))
+            cost += 30;
     }
     return cost;
 }

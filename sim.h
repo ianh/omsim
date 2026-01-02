@@ -48,8 +48,8 @@ typedef uint64_t atom;
 // conduits only transport atoms that have just been dropped.
 #define BEING_DROPPED (1ULL << 19)
 
-// is this atom part of a van berlo's wheel?
-#define VAN_BERLO_ATOM (1ULL << 20)
+// is this atom part of a van berlo's or ravari's wheel?
+#define WHEEL_ATOM (1ULL << 20)
 
 // the motion of this atom is being tracked in a side table.  the flag and the
 // atom's motion data will be cleared if the atom enters the board's bounding
@@ -135,7 +135,8 @@ enum mechanism_type {
     SIX_ARM = 1 << 17,
     PISTON = 1 << 18,
 
-    VAN_BERLO = 1 << 20,
+    VAN_BERLO = 1 << 19,
+    RAVARI = 1 << 20,
 
     // what is this arm grabbing?  each of the 6 possible grabbing directions
     // are tracked using a separate bit.
@@ -146,18 +147,21 @@ enum mechanism_type {
 
     // were the grabbed atoms moved this cycle?
     MOVED_GRABBED_ATOMS = 1 << 28,
+
+    PROLIFERATION = 1 << 29,
+    DIVISION = 1 << 30,
+    REJECTION = 1 << 31,
 };
 
 static const enum mechanism_type GRABBING_EVERYTHING = 0x3FULL * GRABBING_LOW_BIT;
 
 static const enum mechanism_type ANY_GLYPH = CALCIFICATION | ANIMISMUS |
  PROJECTION | DISPERSION | PURIFICATION | DUPLICATION | UNIFICATION | BONDING |
- UNBONDING | TRIPLEX_BONDING | MULTI_BONDING | DISPOSAL | EQUILIBRIUM | CONDUIT;
-static const enum mechanism_type CONVERSION_GLYPH = ANIMISMUS | DISPERSION |
- PURIFICATION | UNIFICATION;
-
+ UNBONDING | TRIPLEX_BONDING | MULTI_BONDING | DISPOSAL | EQUILIBRIUM |
+ PROLIFERATION | DIVISION | REJECTION | CONDUIT;
 static const enum mechanism_type ANY_ARM = ARM | TWO_ARM | THREE_ARM | SIX_ARM |
- PISTON | VAN_BERLO;
+ PISTON | VAN_BERLO | RAVARI;
+static const enum mechanism_type ANY_WHEEL = VAN_BERLO | RAVARI;
 
 struct vector {
     int32_t u;
