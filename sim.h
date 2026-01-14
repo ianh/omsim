@@ -316,8 +316,11 @@ struct solution {
     char **arm_tape;
     // the lengths of these tape arrays.
     size_t *arm_tape_length;
-    // the cycles on which to begin reading instructions from each tape.
+    // the cycle on which to begin reading instructions from each tape.
     int64_t *arm_tape_start_cycle;
+    // the instruction index after which to halt execution of each tape.  set to
+    // SIZE_MAX if the arm never halts.
+    int64_t *arm_tape_halt_index;
     size_t number_of_arms;
 
     // the maximum absolute value of all arm rotation amounts over all cycles.

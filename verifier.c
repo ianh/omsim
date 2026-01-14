@@ -411,9 +411,15 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
                 continue;
             int number_of_times_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) / solution->tape_period;
             int progress_through_tape = (board->cycle - solution->arm_tape_start_cycle[i]) % solution->tape_period;
+            if (solution->arm_tape_halt_index[i] != SIZE_MAX) {
+                number_of_times_through_tape = 0;
+                progress_through_tape = board->cycle - solution->arm_tape_start_cycle[i];
+            }
             for (size_t j = 0; j < solution->arm_tape_length[i]; ++j) {
                 if (solution->arm_tape[i][j] == ' ' || solution->arm_tape[i][j] == '\0')
                     continue;
+                if (solution->arm_tape[i][j] == 'b')
+                    break;
                 if (j < board->cycle - solution->arm_tape_start_cycle[i])
                     m.executed_instructions++;
                 m.instruction_executions[instruction_index(solution->arm_tape[i][j])] += j < progress_through_tape ? number_of_times_through_tape + 1 : number_of_times_through_tape;
@@ -626,7 +632,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.steady_state.executed_instructions = solution_instructions(&solution);
         for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
             for (size_t j = 0; j < solution.arm_tape_length[i]; ++j) {
-                if (solution.arm_tape[i][j] == ' ' || solution.arm_tape[i][j] == '\0')
+                if (solution.arm_tape[i][j] == ' ' || solution.arm_tape[i][j] == '\0' || solution.arm_tape[i][j] == 'b')
                     continue;
                 m.steady_state.instruction_executions[instruction_index(solution.arm_tape[i][j])] = -1;
             }

@@ -20,6 +20,7 @@ static char decode_instruction(char inst)
     case 'a': return 't';
     case 'C': abort(); // repeat and reset instructions are handled separately.
     case 'X': abort();
+    case 'B': return 'b';
     case 'O': return ' ';
     case ' ': return ' ';
     default: return ' ';
@@ -586,6 +587,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     solution->arm_tape = calloc(solution->number_of_arms, sizeof(char *));
     solution->arm_tape_length = calloc(solution->number_of_arms, sizeof(size_t));
     solution->arm_tape_start_cycle = calloc(solution->number_of_arms, sizeof(int64_t));
+    solution->arm_tape_halt_index = calloc(solution->number_of_arms, sizeof(size_t));
 
     solution->conduits = calloc(solution->number_of_conduits, sizeof(struct conduit));
 
@@ -793,6 +795,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             arm_index++;
             continue;
         }
+        solution->arm_tape_halt_index[arm_index] = SIZE_MAX;
         qsort(part.instructions, part.number_of_instructions,
          sizeof(part.instructions[0]), compare_instructions_by_index);
         int32_t min_tape = part.instructions[0].index;
@@ -831,6 +834,8 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 return false;
             }
             int32_t n = inst.index - min_tape;
+            if (inst.instruction == 'B' && solution->arm_tape_halt_index[arm_index] == SIZE_MAX)
+                solution->arm_tape_halt_index[arm_index] = n;
             if (inst.instruction == 'C') { // repeat
                 if (last_repeat < -min_tape)
                     last_repeat = -min_tape;
@@ -981,7 +986,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         printf("\n");
 #endif
         solution->arm_tape_length[arm_index] = tape_length;
-        if (tape_length > solution->tape_period)
+        if (solution->arm_tape_halt_index[arm_index] == SIZE_MAX && tape_length > solution->tape_period)
             solution->tape_period = tape_length;
         arm_index++;
     }
@@ -1056,7 +1061,7 @@ uint64_t solution_instructions(struct solution *solution)
     uint64_t instructions = 0;
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
         for (uint32_t j = 0; j < solution->arm_tape_length[i]; ++j) {
-            if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0')
+            if (solution->arm_tape[i][j] != ' ' && solution->arm_tape[i][j] != '\0' && solution->arm_tape[i][j] != 'b')
                 instructions++;
         }
     }

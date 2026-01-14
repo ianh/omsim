@@ -245,6 +245,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
     uint64_t next_snapshot_cycle = check_period * (1 + (board->cycle + check_period - 1) / check_period);
     uint64_t snapshot_period = next_snapshot_cycle;
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
+        if (solution->arm_tape_halt_index[i] != SIZE_MAX && solution->arm_tape_start_cycle[i] + solution->arm_tape_halt_index[i] > next_snapshot_cycle)
+            next_snapshot_cycle = solution->arm_tape_start_cycle[i] + solution->arm_tape_halt_index[i];
         uint64_t period_aligned_start_cycle = check_period * ((solution->arm_tape_start_cycle[i] + check_period - 1) / check_period);
         if (period_aligned_start_cycle > next_snapshot_cycle)
             next_snapshot_cycle = period_aligned_start_cycle;

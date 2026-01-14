@@ -929,8 +929,6 @@ static int compare_movements_by_number_of_atoms(const void *a, const void *b)
 
 static void perform_arm_instructions(struct solution *solution, struct board *board)
 {
-    if (solution->tape_period == 0)
-        return;
     board->moving_atoms.length = 0;
     board->moving_atoms.cursor = 0;
     board->movements.length = 0;
@@ -943,8 +941,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
         if (board->cycle < (uint64_t)solution->arm_tape_start_cycle[i])
             continue;
         size_t index = board->cycle - (uint64_t)solution->arm_tape_start_cycle[i];
-        index %= solution->tape_period;
-        if (index >= solution->arm_tape_length[i])
+        if (solution->arm_tape_halt_index[i] == SIZE_MAX && solution->tape_period != 0)
+            index %= solution->tape_period;
+        if (index >= solution->arm_tape_length[i] || index >= solution->arm_tape_halt_index[i])
             continue;
         char inst = solution->arm_tape[i][index];
         if (inst == ' ' || inst == '\0')
@@ -1995,6 +1994,7 @@ void destroy(struct solution *solution, struct board *board)
         free(solution->arm_tape);
         free(solution->arm_tape_length);
         free(solution->arm_tape_start_cycle);
+        free(solution->arm_tape_halt_index);
         free(solution->track_positions);
         free(solution->track_plus_motions);
         free(solution->track_minus_motions);
