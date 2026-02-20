@@ -887,6 +887,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             case 's':
             case 't':
             case 'w':
+            case 'b':
                 break;
             default:
                 v->error.description = "invalid instruction hotkey in 'instructions with hotkey' metric";
