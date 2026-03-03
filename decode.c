@@ -370,6 +370,8 @@ static char* check_production_constraints(struct solution *solution, struct puzz
 
     // check conduits
     bool swapped = false;
+    if (solution->number_of_conduits != 2 * info->number_of_conduits)
+        return "solution contains the wrong number of conduits";
     for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
         struct conduit *conduit = &solution->conduits[i];
         uint32_t conduit_index = conduit->id - 100; // conduit ids start at 100
