@@ -1258,6 +1258,8 @@ static void mark_arm_area(struct solution *solution, struct board *board)
         int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
             struct vector offset = u_offset_for_direction(direction);
+            if (solution->production && !cabinet_for_position(solution, mechanism_relative_position(*m, offset.u, offset.v, 1)))
+                report_collision(board, mechanism_relative_position(*m, offset.u, offset.v, 1), "grabber went outside cabinet wall");
             struct vector saved_u = m->direction_u;
             struct vector saved_v = m->direction_v;
             while (true) {
@@ -1828,6 +1830,15 @@ static void create_van_berlo_atom(struct board *board, struct mechanism m, int32
 {
     struct vector p = mechanism_relative_position(m, du, dv, 1);
     insert_atom(board, p, VALID | GRABBED_ONCE | VAN_BERLO_ATOM | element);
+}
+
+uint8_t cabinet_for_position(struct solution *solution, struct vector position)
+{
+    int32_t u = position.u + (CABINET_MAP_SIZE >> 1);
+    int32_t v = position.v + (CABINET_MAP_SIZE >> 1);
+    if (u >= 0 && u < CABINET_MAP_SIZE && v >= 0 && v < CABINET_MAP_SIZE)
+        return solution->cabinet_map[u][v];
+    return 0;
 }
 
 void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)

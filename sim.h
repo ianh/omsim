@@ -303,6 +303,8 @@ struct input_output {
     int32_t *row_max_u;
 };
 
+#define CABINET_MAP_SIZE 32
+
 struct solution {
     struct mechanism *glyphs;
     size_t number_of_glyphs;
@@ -338,8 +340,11 @@ struct solution {
     struct conduit *conduits;
     size_t number_of_conduits;
 
+    bool production;
     struct vector *cabinet_walls;
     size_t number_of_cabinet_walls;
+    // map u,v coordinates => cabinet id + 1 (0 means no cabinet)
+    uint8_t cabinet_map[CABINET_MAP_SIZE][CABINET_MAP_SIZE];
 
     // whether it's an input or an output is determined by the type.
     struct input_output *inputs_and_outputs;
@@ -537,6 +542,7 @@ struct atom_at_position *lookup_atom_at_position(struct atom_grid *grid, struct 
 atom mark_used_area(struct board *board, struct vector point);
 
 bool lookup_track(struct solution *solution, struct vector query, uint32_t *index);
+uint8_t cabinet_for_position(struct solution *solution, struct vector position);
 
 uint32_t used_area(struct board *board);
 
