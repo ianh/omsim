@@ -467,12 +467,19 @@ static char* check_production_constraints(struct solution *solution, struct puzz
 
     return NULL;
 }
+static void set_tape(char *tape, int n, int inst, const char **error)
+{
+    if (tape[n])
+        *error = "solution contains an instruction conflict";
+    tape[n] = inst;
+}
 
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
 {
     const char *ignored_error;
     if (!error)
         error = &ignored_error;
+    *error = NULL;
     for (uint32_t i = 0; i < pf->number_of_inputs; ++i) {
         if (pf->inputs[i].number_of_atoms == 0) {
             *error = "puzzle file contains a reagent with no atoms";
@@ -886,9 +893,9 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     }
                 }
                 if (grab > 0)
-                    tape[n++] = 'f';
+                    set_tape(tape, n++, 'f', error);
                 while (piston > part.size) {
-                    tape[n++] = 's';
+                    set_tape(tape, n++, 's', error);
                     piston--;
                 }
                 while (rotation > 3)
@@ -896,11 +903,11 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 while (rotation < -3)
                     rotation += 6;
                 while (rotation > 0) {
-                    tape[n++] = 'd';
+                    set_tape(tape, n++, 'd', error);
                     rotation--;
                 }
                 while (rotation < 0) {
-                    tape[n++] = 'a';
+                    set_tape(tape, n++, 'a', error);
                     rotation++;
                 }
                 if (track_steps != 0) {
@@ -932,28 +939,32 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                     }
                 }
                 while (track_steps > 0) {
-                    tape[n++] = 't';
+                    set_tape(tape, n++, 't', error);
                     track_steps--;
                 }
                 while (track_steps < 0) {
-                    tape[n++] = 'g';
+                    set_tape(tape, n++, 'g', error);
                     track_steps++;
                 }
                 while (piston < part.size) {
-                    tape[n++] = 'w';
+                    set_tape(tape, n++, 'w', error);
                     piston++;
                 }
                 // reset instructions add a blank instruction if they don't do
                 // anything -- this is important if they're repeated.
                 if (n == inst.index - min_tape)
-                    tape[n++] = ' ';
+                    set_tape(tape, n++, ' ', error);
                 reset_from = n;
                 if (n > tape_length)
                     tape_length = n;
                 last_end = n;
             } else {
-                tape[n] = decode_instruction(inst.instruction);
+                set_tape(tape, n, decode_instruction(inst.instruction), error);
                 last_end = n + 1;
+            }
+            if (*error) {
+                destroy(solution, 0);
+                return false;
             }
         }
 #if 0
