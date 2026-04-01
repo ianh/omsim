@@ -150,7 +150,7 @@ enum mechanism_type {
 
     PROLIFERATION = 1 << 29,
     DIVISION = 1 << 30,
-    REJECTION = 1 << 31,
+    REJECTION = (int)(1u << 31),
 };
 
 static const enum mechanism_type GRABBING_EVERYTHING = 0x3FULL * GRABBING_LOW_BIT;
