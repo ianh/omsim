@@ -81,9 +81,9 @@ static struct vector from_xy(struct xy_vector xy)
     float u = xy.x / hexSizeX - 0.5f * xy.y / hexSizeY;
     float v = xy.y / hexSizeY;
     float w = 0.f - u - v;
-    int ui = (int)round(u);
-    int vi = (int)round(v);
-    int wi = (int)round(w);
+    int ui = (int)roundf(u);
+    int vi = (int)roundf(v);
+    int wi = (int)roundf(w);
     // the original code uses double-precision fabs, but since the argument is
     // single-precision, fabsf should return the same result.  it's faster not
     // to have to convert to double and back.
@@ -106,11 +106,11 @@ static struct xy_vector xy_sub(struct xy_vector a, struct xy_vector b)
 }
 static float xy_len(struct xy_vector xy)
 {
-    return (float)sqrt(xy_len2(xy));
+    return sqrtf(xy_len2(xy));
 }
-static float xy_dist(struct xy_vector a, struct xy_vector b)
+static bool check_dist(struct xy_vector a, struct xy_vector b, float dist)
 {
-    return xy_len(xy_sub(a, b));
+    return xy_len2(xy_sub(a, b)) < dist * dist;
 }
 static float to_radians(int32_t r)
 {
@@ -171,8 +171,7 @@ static void mark_area_and_check_board(struct collider_list *list, struct board *
 {
     struct vector p = { u, v };
     struct xy_vector center = to_xy(p);
-    float dist = xy_dist(collider.center, center);
-    if (!(dist < collider.radius + atomRadius))
+    if (!check_dist(collider.center, center, collider.radius + atomRadius))
         return;
     // mark area.  also, this *could* be a collision.
     atom a = mark_used_area(board, p);
@@ -206,7 +205,7 @@ static inline void add_collider(struct collider_list *list, struct board *board,
     board->collision_checks += list->cursor;
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
-        if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
+        if (!check_dist(other.center, collider.center, other.radius + collider.radius))
             continue;
         list->collision = true;
         struct vector p = from_xy(collider.center);
@@ -355,7 +354,7 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
                     continue;
                 struct collider b = list->colliders[j];
                 int32_t period = minimum_approach_period(motion_ax, motion_ay, origin_a, b.center);
-                if (xy_dist(b.center, chain_atom_center_for_period(a, period)) < b.radius + atomRadius) {
+                if (check_dist(b.center, chain_atom_center_for_period(a, period), b.radius + atomRadius)) {
                     list->collision = true;
                     if (list->collision_location)
                         *list->collision_location = from_xy(b.center);
@@ -374,7 +373,7 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
             if (!a.in_repeating_segment && !b.in_repeating_segment) {
                 // if neither atom is in a repeating segment, subtracting their motions reduces this to the stationary case.
                 int32_t period = minimum_approach_period(motion_ax - motion_bx, motion_ay - motion_by, origin_a, origin_b);
-                if (xy_dist(chain_atom_center_for_period(a, period), chain_atom_center_for_period(b, period)) < atomRadius + atomRadius) {
+                if (check_dist(chain_atom_center_for_period(a, period), chain_atom_center_for_period(b, period), atomRadius + atomRadius)) {
                     list->collision = true;
                     if (list->collision_location)
                         *list->collision_location = from_xy(chain_atom_center_for_period(a, period));
@@ -419,7 +418,7 @@ static void resolve_chain_atom_collisions(struct collider_list *list)
                         period = k + a.extra_periods;
                     if (!a.in_repeating_segment && b.in_repeating_segment && period < k - b.extra_periods)
                         period = k - b.extra_periods;
-                    if (xy_dist(origin_b_at_period, chain_atom_center_for_period(a, period)) < atomRadius + atomRadius) {
+                    if (check_dist(origin_b_at_period, chain_atom_center_for_period(a, period), atomRadius + atomRadius)) {
                         list->collision = true;
                         if (list->collision_location)
                             *list->collision_location = from_xy(origin_b_at_period);
@@ -445,8 +444,7 @@ static void mark_area_at_infinity_in_direction(struct linear_area_direction *d, 
 {
     struct vector p = { u, v };
     struct xy_vector grid_center = to_xy(p);
-    float dist = xy_dist(center, grid_center);
-    if (!(dist < atomRadius + atomRadius))
+    if (!check_dist(center, grid_center, atomRadius + atomRadius))
         return;
     int32_t period = 0;
     if (d->direction.u != 0)
