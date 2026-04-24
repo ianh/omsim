@@ -208,6 +208,27 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
         if (c.atoms[i].offset[0] == 0 && c.atoms[i].offset[1] == 0)
             io->center_atom_index = i;
     }
+
+    
+    io->qbonds = calloc(c.number_of_atoms, sizeof(io->qbonds[0]));
+    if (c.number_of_atoms == 0) {
+        // single atoms have no qbonds.
+        io->number_of_qbonds = 0;
+    } else {
+        // make qbonds in a ring consisting of every atom in the molecule.
+        // this is wildly inefficient.
+        // todo: change this.
+        io->number_of_qbonds = c.number_of_atoms;
+        for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
+            io->qbonds[i].from_position = io->atoms[i].position;
+            io->atoms[i].atom |= HAS_QBOND;
+            if (i == c.number_of_atoms - 1) {
+                io->qbonds[i].to_position = io->atoms[0].position;
+            } else {
+                io->qbonds[i].to_position = io->atoms[i+1].position;
+            }
+        }
+    }
     for (uint32_t i = 0; i < c.number_of_bonds; ++i) {
         struct puzzle_bond b = c.bonds[i];
         atom bonds = decode_bond_type(c.bonds[i].type);

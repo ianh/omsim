@@ -56,6 +56,9 @@ typedef uint64_t atom;
 // box.
 #define IS_CHAIN_ATOM (1ULL << 21)
 
+// does this atom have quantum bonds which must be looked up?
+#define HAS_QBOND (1ULL << 22)
+
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
@@ -266,6 +269,9 @@ struct input_output {
     uint32_t number_of_atoms;
     uint32_t center_atom_index;
 
+    struct qbond *qbonds;
+    uint32_t number_of_qbonds;
+
     // the original index of this input or output in the puzzle file.
     uint32_t puzzle_index;
     // the original index of this input or output in the solution file.
@@ -441,6 +447,24 @@ struct linear_area_direction {
     struct vector direction;
     struct atom_grid footprint_at_infinity;
 };
+
+// qbonds are a representation of disjoint molecules. 
+struct qbond {
+
+    // linked list variables
+    struct qbond *prev;
+    struct qbond *next;
+
+    // position of atom at start of qbond. does not change during movement.
+    struct vector lookup_position;
+
+    // position of atom at start of qbond, changes during movement
+    struct vector from_position;
+
+    // position of atom at end of qbond, changes during movement
+    struct vector to_position;
+};
+
 struct board {
     struct atom_grid grid;
 
@@ -500,6 +524,9 @@ struct board {
     struct linear_area_direction *area_directions;
     uint32_t number_of_area_directions;
 
+    // linked list of quantum bonds. todo: make this not a linked list
+    struct qbond *qbonds;
+
     // records each cycle the output count increases toward completion.
     // a cycle on which the output count increased multiple times will appear
     // that number of times in the list.
@@ -552,6 +579,10 @@ static inline bool position_may_be_visible_to_solution(struct solution *solution
 void add_chain_atom_to_table(struct board *board, uint32_t chain_atom_index);
 uint32_t lookup_chain_atom(struct board *board, struct vector query);
 void move_chain_atom_to_list(struct board *board, uint32_t chain_atom_index, uint32_t *list);
+
+void insert_qbond(struct board *board, struct vector from_position, struct vector to_position);
+struct qbond* lookup_qbond(struct board *board, struct vector from_position);
+void delete_qbond(struct board *board, struct vector from_position);
 
 // the origin is always the last vector in the footprint of a glyph.
 const struct vector *glyph_footprint(uint32_t mechanism_type);
