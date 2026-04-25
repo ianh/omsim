@@ -797,9 +797,15 @@ static void raise_overlapped_atoms(struct board *board)
 static void update_disjoint_bonds(struct board *board) 
 {
     struct disjoint_bond *q = board->disjoint_bonds;
+    uint32_t count = 0;
     while (q != NULL) {
         memcpy(&q->lookup_position, &q->from_position, sizeof(q->from_position));
         q = q->next;
+        count++;
+        if (count > 2000) {
+            report_collision(board, zero_vector, "too many disjoint bonds");
+            break;
+        }
     }
 }
 
