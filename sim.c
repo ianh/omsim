@@ -34,6 +34,14 @@ struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_
     };
 }
 
+struct vector anti_mechanism_relative_position(struct mechanism m, int32_t u, int32_t v, int32_t w)
+{
+    return (struct vector){
+        (u - m.position.u * w) * m.direction_v.v - (v - m.position.v * w) * m.direction_v.u, 
+        (v - m.position.v * w) * m.direction_u.u - (u - m.position.u * w) * m.direction_u.v,
+    };
+}
+
 struct vector polymer_position_from_global_position(struct input_output *io, struct vector p)
 {
     return (struct vector){
@@ -300,10 +308,10 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
                 atom *a = lookup_atom(board, p);
                 if (*a & HAS_QBOND) {
-                    // just delete qbonds when going through conduits.
-                    // todo: make this actually work lol
-                    delete_qbond(board, p);
-                    *a &= ~HAS_QBOND;
+                    struct qbond *q = lookup_qbond(board, p);
+                    q->from_position = mechanism_relative_position(other_side, delta.u, delta.v, 1);
+                    struct vector to_delta = anti_mechanism_relative_position(m, q->to_position.u, q->to_position.v, 1);
+                    q->to_position = mechanism_relative_position(other_side, to_delta.u, to_delta.v, 1);
                 }
                 if (consume) {
                     conduit->atoms[base + k].atom = *a & ~OVERLAPS_ATOMS;
@@ -415,13 +423,11 @@ static struct molecule *get_molecule(struct board *board, struct atom_ref_at_pos
         }
         if (*a.atom & HAS_QBOND) {
             struct qbond *qbond = lookup_qbond(board, a.position);
-            if (qbond != NULL) {
-                struct vector p = qbond->to_position;
-                struct atom_ref_at_position b = { lookup_atom(board, p), p };
-                if (!(*b.atom & VISITED)) {
-                    *b.atom |= VISITED;
-                    add_atom_to_molecule(board, &board->molecule, b);
-                }
+            struct vector p = qbond->to_position;
+            struct atom_ref_at_position b = { lookup_atom(board, p), p };
+            if (!(*b.atom & VISITED)) {
+                *b.atom |= VISITED;
+                add_atom_to_molecule(board, &board->molecule, b);
             }
         }
     }
@@ -935,12 +941,10 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
         }
         if (m.atom & HAS_QBOND) {
             struct qbond *qbond = lookup_qbond(board, m.position);
-            if (qbond != NULL) {
-                struct vector p = qbond->to_position;
-                atom *b = lookup_atom(board, p);
-                if ((*b & VALID) && !(*b & REMOVED))
-                move_atom(board, b, p, movement_index, &movement.first_chain_atom);
-            }
+            struct vector p = qbond->to_position;
+            atom *b = lookup_atom(board, p);
+            if ((*b & VALID) && !(*b & REMOVED))
+            move_atom(board, b, p, movement_index, &movement.first_chain_atom);
         }
         board->moving_atoms.cursor++;
     }
@@ -1288,10 +1292,8 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 // move qbond if the atom has one
                 if (ap->atom & HAS_QBOND) {
                     struct qbond *q = lookup_qbond(board, ap->position);
-                    if (q != NULL) {
-                        apply_movement_to_position(base, m->translation, u, v, &q->from_position);
-                        apply_movement_to_position(base, m->translation, u, v, &q->to_position);
-                    }
+                    apply_movement_to_position(base, m->translation, u, v, &q->from_position);
+                    apply_movement_to_position(base, m->translation, u, v, &q->to_position);
                 }
                 apply_movement_to_position(base, m->translation, u, v, &ap->position);
                 if (m->rotation != 0) {
@@ -1426,14 +1428,14 @@ static bool fill_conduit_molecule(struct solution *solution, struct board *board
             *a |= VISITED;
         }
         if (ap.atom & HAS_QBOND) {
-            struct qbond *qbond = lookup_qbond(board, ap.position);
-            if (qbond != NULL) {
-                struct vector p = qbond->to_position;
-                atom *a = lookup_atom(board, mechanism_relative_position(m, p.u, p.v, 1));
+            struct qbond *q = lookup_qbond(board, mechanism_relative_position(m, ap.position.u, ap.position.v, 1));
+            if (q != NULL) {
+                atom *a = lookup_atom(board, q->to_position);
                 if ((*a & VALID) && !(*a & REMOVED) && !(*a & VISITED)) {  
                     if (!(*a & CONDUIT_SHAPE) || (*a & GRABBED))
                         return false;
                     conduit->atoms[*atom_next].atom = *a & ~BEING_DROPPED & ~CONDUIT_SHAPE;
+                    struct vector p = anti_mechanism_relative_position(m, q->to_position.u, q->to_position.v, 1);
                     conduit->atoms[*atom_next].position = p;
                     (*atom_next)++;
                     *a |= VISITED;
@@ -2068,8 +2070,10 @@ void destroy(struct solution *solution, struct board *board)
         free(solution->conduits);
         free(solution->cabinet_walls);
         for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
-            if (solution->inputs_and_outputs[i].original_atoms != solution->inputs_and_outputs[i].atoms)
+            if (solution->inputs_and_outputs[i].original_atoms != solution->inputs_and_outputs[i].atoms) {
                 free(solution->inputs_and_outputs[i].original_atoms);
+                free(solution->inputs_and_outputs[i].qbonds);
+            }
             free(solution->inputs_and_outputs[i].atoms);
             free(solution->inputs_and_outputs[i].row_min_u);
             free(solution->inputs_and_outputs[i].row_max_u);
@@ -2088,6 +2092,12 @@ void destroy(struct solution *solution, struct board *board)
         free(board->output_cycles);
         for (uint32_t i = 0; i < board->number_of_area_directions; ++i)
             free(board->area_directions[i].footprint_at_infinity.atoms_at_positions);
+        struct qbond *q = board->qbonds;
+        while (q != NULL) {
+            struct qbond *r = q->next;
+            free(q);
+            q = r;
+        }
         free(board->area_directions);
         free(board->molecule.atoms);
         memset(board, 0, sizeof(*board));
@@ -2191,7 +2201,7 @@ void insert_qbond(struct board *board, struct vector from_position, struct vecto
 
 struct qbond* lookup_qbond(struct board *board, struct vector position) {
     struct qbond *q = board->qbonds;
-    if (q == NULL)
+    if (q == NULL) 
         return NULL;
     while (!vectors_equal(position, q->lookup_position)) {
         q = q->next;

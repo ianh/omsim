@@ -209,26 +209,6 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
             io->center_atom_index = i;
     }
 
-    
-    io->qbonds = calloc(c.number_of_atoms, sizeof(io->qbonds[0]));
-    if (c.number_of_atoms == 0) {
-        // single atoms have no qbonds.
-        io->number_of_qbonds = 0;
-    } else {
-        // make qbonds in a ring consisting of every atom in the molecule.
-        // this is wildly inefficient.
-        // todo: change this.
-        io->number_of_qbonds = c.number_of_atoms;
-        for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
-            io->qbonds[i].from_position = io->atoms[i].position;
-            io->atoms[i].atom |= HAS_QBOND;
-            if (i == c.number_of_atoms - 1) {
-                io->qbonds[i].to_position = io->atoms[0].position;
-            } else {
-                io->qbonds[i].to_position = io->atoms[i+1].position;
-            }
-        }
-    }
     for (uint32_t i = 0; i < c.number_of_bonds; ++i) {
         struct puzzle_bond b = c.bonds[i];
         atom bonds = decode_bond_type(c.bonds[i].type);
@@ -245,6 +225,71 @@ static void decode_molecule(struct puzzle_molecule c, struct mechanism m, struct
                 io->atoms[j].atom |= b2;
         }
     }
+
+    if (io->type & INPUT) {
+        // create qbonds
+        uint32_t *qbond_path = calloc(c.number_of_atoms, sizeof(uint32_t));
+        io->number_of_qbonds = 0;
+        uint32_t cursor = 0;
+        uint32_t visited_count = 0;
+        struct atom_at_position *a, *b;
+        while (visited_count < c.number_of_atoms) {
+            // search for an unvisited atom
+            for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
+                a = &io->atoms[i];
+                // visit and add it to the qbond path
+                if (!(a->atom & VISITED)) {
+                    a->atom |= VISITED;
+                    visited_count++;
+                    qbond_path[io->number_of_qbonds++] = i;
+                    break;
+                }
+            }
+            // floodfill the connected atoms
+            while (cursor < visited_count) {
+                a = &io->atoms[cursor++];
+                for (int bond_direction = 0; bond_direction < 6; ++bond_direction) {
+                    atom ab = (BOND_LOW_BITS & ~RECENT_BONDS) << bond_direction;
+                    if (!(a->atom & ab))
+                        continue;
+                    struct vector d = u_offset_for_direction(bond_direction);
+                    struct vector p = { a->position.u + d.u, a->position.v + d.v };
+                    for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
+                        b = &io->atoms[i];
+                        if (vectors_equal(b->position, p)) {
+                            if (!(b->atom & VISITED)) {
+                                b->atom |= VISITED;
+                                visited_count++;
+                            }
+                            break;
+                        }
+                    } 
+                }
+            }
+        }
+
+        if (io->number_of_qbonds == 1) {
+            // if the molecule is fully connected, no qbonds
+            io->number_of_qbonds = 0;
+        }
+
+        // make qbonds in a ring consisting of one atom in each disjoint component.
+        io->qbonds = calloc(io->number_of_qbonds, sizeof(io->qbonds[0]));
+        for (uint32_t i = 0; i < io->number_of_qbonds; ++i) {
+            io->qbonds[i].from_position = io->atoms[qbond_path[i]].position;
+            io->atoms[qbond_path[i]].atom |= HAS_QBOND;
+            if (i == io->number_of_qbonds - 1) {
+                io->qbonds[i].to_position = io->atoms[qbond_path[0]].position;
+            } else {
+                io->qbonds[i].to_position = io->atoms[qbond_path[i+1]].position;
+            }
+        }
+        for (uint32_t i = 0; i < c.number_of_atoms; ++i) {
+            io->atoms[i].atom &= ~VISITED;
+        }
+        free(qbond_path);
+    }
+
     // atoms with no rightward bonds in default orientation get special behavior in overlap
     atom rightward_bonds = bond_direction(m, 1, 0) | bond_direction(m, 0, 1) | bond_direction(m, 1, -1);
     if (io->type & INPUT) {

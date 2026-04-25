@@ -56,7 +56,7 @@ typedef uint64_t atom;
 // box.
 #define IS_CHAIN_ATOM (1ULL << 21)
 
-// does this atom have quantum bonds which must be looked up?
+// does this atom have qbonds which must be looked up?
 #define HAS_QBOND (1ULL << 22)
 
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
@@ -234,7 +234,7 @@ struct conduit {
     // while positions are transformed into the conduit glyph's coordinate
     // space.
     struct atom_at_position *atoms;
-
+    
     // the number of atoms in each molecule in the conduit.
     uint32_t *molecule_lengths;
     uint32_t number_of_molecules;
