@@ -109,7 +109,7 @@ static struct atom_ref_at_position conversion_input(struct board *board, struct 
     static const atom empty;
     struct atom_ref_at_position input = get_atom(board, m, du, dv);
     // conversion glyphs can't see bonded or grabbed inputs.
-    if (*input.atom & (ALL_BONDS | HAS_QBOND | GRABBED))
+    if (*input.atom & (ALL_BONDS | HAS_DISJOINT_BOND | GRABBED))
         return (struct atom_ref_at_position){ (atom *)&empty, input.position };
     return input;
 }
@@ -307,8 +307,8 @@ static void apply_conduit(struct solution *solution, struct board *board, struct
                 struct vector delta = conduit->atoms[base + k].position;
                 struct vector p = mechanism_relative_position(m, delta.u, delta.v, 1);
                 atom *a = lookup_atom(board, p);
-                if (*a & HAS_QBOND) {
-                    struct qbond *q = lookup_qbond(board, p);
+                if (*a & HAS_DISJOINT_BOND) {
+                    struct disjoint_bond *q = lookup_disjoint_bond(board, p);
                     q->from_position = mechanism_relative_position(other_side, delta.u, delta.v, 1);
                     struct vector to_delta = anti_mechanism_relative_position(m, q->to_position.u, q->to_position.v, 1);
                     q->to_position = mechanism_relative_position(other_side, to_delta.u, to_delta.v, 1);
@@ -421,9 +421,9 @@ static struct molecule *get_molecule(struct board *board, struct atom_ref_at_pos
             if (b.atom)
                 add_atom_to_molecule(board, &board->molecule, b);
         }
-        if (*a.atom & HAS_QBOND) {
-            struct qbond *qbond = lookup_qbond(board, a.position);
-            struct vector p = qbond->to_position;
+        if (*a.atom & HAS_DISJOINT_BOND) {
+            struct disjoint_bond *disjoint_bond = lookup_disjoint_bond(board, a.position);
+            struct vector p = disjoint_bond->to_position;
             struct atom_ref_at_position b = { lookup_atom(board, p), p };
             if (!(*b.atom & VISITED)) {
                 *b.atom |= VISITED;
@@ -496,7 +496,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             struct atom_ref_at_position q = get_atom(board, m, 0, 0);
             struct atom_ref_at_position a = get_atom(board, m, 1, 0);
             atom metal = *a.atom & ANY_METAL & ~GOLD;
-            if (metal && !(*q.atom & ALL_BONDS) && !(*q.atom & HAS_QBOND) && !(*q.atom & GRABBED) && (*q.atom & QUICKSILVER)) {
+            if (metal && !(*q.atom & ALL_BONDS) && !(*q.atom & HAS_DISJOINT_BOND) && !(*q.atom & GRABBED) && (*q.atom & QUICKSILVER)) {
                 remove_atom(board, q);
                 transform_atom(a.atom, metal >> 1);
             }
@@ -588,9 +588,9 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                     struct molecule *molecule = get_molecule(board, a);
                     for (uint32_t i = 0; i < molecule->size; ++i) {
                         struct atom_ref_at_position p = molecule->atoms[i];
-                        if (*p.atom & HAS_QBOND) {
-                            delete_qbond(board, p.position);
-                            *p.atom &= ~HAS_QBOND;
+                        if (*p.atom & HAS_DISJOINT_BOND) {
+                            delete_disjoint_bond(board, p.position);
+                            *p.atom &= ~HAS_DISJOINT_BOND;
                         }
                     }
 
@@ -601,9 +601,9 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                     molecule = get_molecule(board, b);
                     for (uint32_t i = 0; i < molecule->size; ++i) {
                         struct atom_ref_at_position p = molecule->atoms[i];
-                        if (*p.atom & HAS_QBOND) {
-                            delete_qbond(board, p.position);
-                            *p.atom &= ~HAS_QBOND;
+                        if (*p.atom & HAS_DISJOINT_BOND) {
+                            delete_disjoint_bond(board, p.position);
+                            *p.atom &= ~HAS_DISJOINT_BOND;
                         }
                     }
 
@@ -638,7 +638,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case DISPOSAL: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            if (*a.atom && !(*a.atom & ALL_BONDS) && !(*a.atom & HAS_QBOND) && !(*a.atom & GRABBED))
+            if (*a.atom && !(*a.atom & ALL_BONDS) && !(*a.atom & HAS_DISJOINT_BOND) && !(*a.atom & GRABBED))
                 remove_atom(board, a);
             break;
         }
@@ -794,9 +794,9 @@ static void raise_overlapped_atoms(struct board *board)
     }
 }
 
-static void update_qbonds(struct board *board) 
+static void update_disjoint_bonds(struct board *board) 
 {
-    struct qbond *q = board->qbonds;
+    struct disjoint_bond *q = board->disjoint_bonds;
     while (q != NULL) {
         memcpy(&q->lookup_position, &q->from_position, sizeof(q->from_position));
         q = q->next;
@@ -939,9 +939,9 @@ static void move_atoms(struct board *board, atom *a, struct movement movement)
                 continue;
             move_atom(board, b, p, movement_index, &movement.first_chain_atom);
         }
-        if (m.atom & HAS_QBOND) {
-            struct qbond *qbond = lookup_qbond(board, m.position);
-            struct vector p = qbond->to_position;
+        if (m.atom & HAS_DISJOINT_BOND) {
+            struct disjoint_bond *disjoint_bond = lookup_disjoint_bond(board, m.position);
+            struct vector p = disjoint_bond->to_position;
             atom *b = lookup_atom(board, p);
             if ((*b & VALID) && !(*b & REMOVED))
             move_atom(board, b, p, movement_index, &movement.first_chain_atom);
@@ -1289,9 +1289,9 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
             struct vector v = v_offset_for_direction(m->rotation);
             for (size_t j = 0; j < m->number_of_atoms; ++j) {
                 struct atom_at_position *ap = &board->moving_atoms.atoms_at_positions[atom_index++];
-                // move qbond if the atom has one
-                if (ap->atom & HAS_QBOND) {
-                    struct qbond *q = lookup_qbond(board, ap->position);
+                // move disjoint bond if the atom has one
+                if (ap->atom & HAS_DISJOINT_BOND) {
+                    struct disjoint_bond *q = lookup_disjoint_bond(board, ap->position);
                     apply_movement_to_position(base, m->translation, u, v, &q->from_position);
                     apply_movement_to_position(base, m->translation, u, v, &q->to_position);
                 }
@@ -1427,8 +1427,8 @@ static bool fill_conduit_molecule(struct solution *solution, struct board *board
             (*atom_next)++;
             *a |= VISITED;
         }
-        if (ap.atom & HAS_QBOND) {
-            struct qbond *q = lookup_qbond(board, mechanism_relative_position(m, ap.position.u, ap.position.v, 1));
+        if (ap.atom & HAS_DISJOINT_BOND) {
+            struct disjoint_bond *q = lookup_disjoint_bond(board, mechanism_relative_position(m, ap.position.u, ap.position.v, 1));
             if (q != NULL) {
                 atom *a = lookup_atom(board, q->to_position);
                 if ((*a & VALID) && !(*a & REMOVED) && !(*a & VISITED)) {  
@@ -1538,10 +1538,10 @@ static void spawn_inputs(struct solution *solution, struct board *board)
             struct vector p = io->atoms[j].position;
             insert_atom(board, p, VALID | input);
         }
-        n = io->number_of_qbonds;
+        n = io->number_of_disjoint_bonds;
         for (uint32_t j = 0; j < n; ++j) {
-            struct qbond *q = &io->qbonds[j];
-            insert_qbond(board, q->from_position, q->to_position);
+            struct disjoint_bond *q = &io->disjoint_bonds[j];
+            insert_disjoint_bond(board, q->from_position, q->to_position);
         }
     }
 }
@@ -1722,8 +1722,8 @@ static void consume_output(struct solution *solution, struct board *board, struc
     } else {
         for (uint32_t i = 0; i < molecule->size; ++i) {
             struct atom_ref_at_position a = molecule->atoms[i];
-            if (*a.atom & HAS_QBOND) {
-                delete_qbond(board, a.position);
+            if (*a.atom & HAS_DISJOINT_BOND) {
+                delete_disjoint_bond(board, a.position);
             }
         }
         remove_molecule(board, molecule);
@@ -1786,7 +1786,7 @@ void run(struct solution *solution, struct board *board)
         flag_blocked_inputs(solution, board);
         spawn_inputs(solution, board);
         reset_temporary_flags(board);
-        update_qbonds(board);
+        update_disjoint_bonds(board);
         apply_glyphs(solution, board);
         if (board->number_of_overlapped_atoms > 0)
             raise_overlapped_atoms(board);
@@ -1978,7 +1978,7 @@ void initial_setup(struct solution *solution, struct board *board, uint32_t init
         initial_hashtable_size = 99999;
     board->grid.board = board;
     rehash(&board->grid, initial_hashtable_size);
-    board->qbonds = NULL;
+    board->disjoint_bonds = NULL;
     // place cabinet walls first; wall-wall overlap isn't counted.
     for (uint32_t i = 0; i < solution->number_of_cabinet_walls; ++i)
         mark_used_area(board, solution->cabinet_walls[i]);
@@ -2072,7 +2072,7 @@ void destroy(struct solution *solution, struct board *board)
         for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
             if (solution->inputs_and_outputs[i].original_atoms != solution->inputs_and_outputs[i].atoms) {
                 free(solution->inputs_and_outputs[i].original_atoms);
-                free(solution->inputs_and_outputs[i].qbonds);
+                free(solution->inputs_and_outputs[i].disjoint_bonds);
             }
             free(solution->inputs_and_outputs[i].atoms);
             free(solution->inputs_and_outputs[i].row_min_u);
@@ -2092,9 +2092,9 @@ void destroy(struct solution *solution, struct board *board)
         free(board->output_cycles);
         for (uint32_t i = 0; i < board->number_of_area_directions; ++i)
             free(board->area_directions[i].footprint_at_infinity.atoms_at_positions);
-        struct qbond *q = board->qbonds;
+        struct disjoint_bond *q = board->disjoint_bonds;
         while (q != NULL) {
-            struct qbond *r = q->next;
+            struct disjoint_bond *r = q->next;
             free(q);
             q = r;
         }
@@ -2178,29 +2178,29 @@ uint32_t lookup_chain_atom(struct board *board, struct vector query)
     return index;
 }
 
-//qbond linked list functions; will be replaced later
-void insert_qbond(struct board *board, struct vector from_position, struct vector to_position) 
+// disjoint bond linked list functions; will be replaced later
+void insert_disjoint_bond(struct board *board, struct vector from_position, struct vector to_position) 
 {   
-    struct qbond *new_qbond = malloc(sizeof(struct qbond));
-    new_qbond->from_position = from_position;
-    memcpy(&new_qbond->lookup_position, &new_qbond->from_position, sizeof(new_qbond->from_position));
-    new_qbond->to_position = to_position;
-    new_qbond->next = NULL;
-    struct qbond *q = board->qbonds;
+    struct disjoint_bond *new_disjoint_bond = malloc(sizeof(struct disjoint_bond));
+    new_disjoint_bond->from_position = from_position;
+    memcpy(&new_disjoint_bond->lookup_position, &new_disjoint_bond->from_position, sizeof(new_disjoint_bond->from_position));
+    new_disjoint_bond->to_position = to_position;
+    new_disjoint_bond->next = NULL;
+    struct disjoint_bond *q = board->disjoint_bonds;
     if (q == NULL) {
-        board->qbonds = new_qbond;
-        new_qbond->prev = NULL;
+        board->disjoint_bonds = new_disjoint_bond;
+        new_disjoint_bond->prev = NULL;
         return;
     }
     while (q->next != NULL) {
         q = q->next;
     }
-    q->next = new_qbond;
-    new_qbond->prev = q;
+    q->next = new_disjoint_bond;
+    new_disjoint_bond->prev = q;
 }
 
-struct qbond* lookup_qbond(struct board *board, struct vector position) {
-    struct qbond *q = board->qbonds;
+struct disjoint_bond* lookup_disjoint_bond(struct board *board, struct vector position) {
+    struct disjoint_bond *q = board->disjoint_bonds;
     if (q == NULL) 
         return NULL;
     while (!vectors_equal(position, q->lookup_position)) {
@@ -2211,15 +2211,15 @@ struct qbond* lookup_qbond(struct board *board, struct vector position) {
     return q;
 }
 
-void delete_qbond(struct board *board, struct vector position)
+void delete_disjoint_bond(struct board *board, struct vector position)
 {
-    struct qbond *q = lookup_qbond(board, position);
+    struct disjoint_bond *q = lookup_disjoint_bond(board, position);
     if (q == NULL) 
         return;
     if (q->prev != NULL)
         q->prev->next = q->next;
     else
-        board->qbonds = q->next;
+        board->disjoint_bonds = q->next;
     if (q->next != NULL)
         q->next->prev = q->prev;
     free(q);

@@ -15,7 +15,6 @@ documentation).
 
 the following aren't implemented yet:
 - "spooky action at a distance" via conduit cloning
-- "quantum bonds"
 
 the following issues are known:
 - track reset is different from the game in certain situations (see
