@@ -580,32 +580,26 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 // record the bond in the RECENT_BONDS bitfield to prevent the
                 // atoms from being consumed during this half-cycle.
                 if ((*a.atom & ab & ~RECENT_BONDS) && (*b.atom & ba & ~RECENT_BONDS)) {
-                    *a.atom &= ~ab;
-                    *a.atom |= ab & RECENT_BONDS;
-                    schedule_flag_reset_if_needed(board, a.atom);
 
                     // remove disjoint bonds when debonding
-                    struct molecule *molecule = get_molecule(board, a);
-                    for (uint32_t i = 0; i < molecule->size; ++i) {
-                        struct atom_ref_at_position p = molecule->atoms[i];
-                        if (*p.atom & HAS_DISJOINT_BOND) {
-                            delete_disjoint_bond(board, p.position);
-                            *p.atom &= ~HAS_DISJOINT_BOND;
+                    if (board->disjoint_bonds != NULL) {
+                        struct molecule *molecule = get_molecule(board, a);
+                        for (uint32_t i = 0; i < molecule->size; ++i) {
+                            struct atom_ref_at_position p = molecule->atoms[i];
+                            if (*p.atom & HAS_DISJOINT_BOND) {
+                                remove_disjoint_bond(board, p.position);
+                                *p.atom &= ~HAS_DISJOINT_BOND;
+                            }
                         }
                     }
+
+                    *a.atom &= ~ab;
+                    *a.atom |= ab & RECENT_BONDS;
+                    schedule_flag_reset_if_needed(board, a.atom);  
 
                     *b.atom &= ~ba;
                     *b.atom |= ba & RECENT_BONDS;
                     schedule_flag_reset_if_needed(board, b.atom);
-
-                    molecule = get_molecule(board, b);
-                    for (uint32_t i = 0; i < molecule->size; ++i) {
-                        struct atom_ref_at_position p = molecule->atoms[i];
-                        if (*p.atom & HAS_DISJOINT_BOND) {
-                            delete_disjoint_bond(board, p.position);
-                            *p.atom &= ~HAS_DISJOINT_BOND;
-                        }
-                    }
 
                 }
             }
@@ -1729,7 +1723,7 @@ static void consume_output(struct solution *solution, struct board *board, struc
         for (uint32_t i = 0; i < molecule->size; ++i) {
             struct atom_ref_at_position a = molecule->atoms[i];
             if (*a.atom & HAS_DISJOINT_BOND) {
-                delete_disjoint_bond(board, a.position);
+                remove_disjoint_bond(board, a.position);
             }
         }
         remove_molecule(board, molecule);
@@ -2217,7 +2211,7 @@ struct disjoint_bond* lookup_disjoint_bond(struct board *board, struct vector po
     return q;
 }
 
-void delete_disjoint_bond(struct board *board, struct vector position)
+void remove_disjoint_bond(struct board *board, struct vector position)
 {
     struct disjoint_bond *q = lookup_disjoint_bond(board, position);
     if (q == NULL) 

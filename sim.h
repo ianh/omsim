@@ -524,7 +524,7 @@ struct board {
     struct linear_area_direction *area_directions;
     uint32_t number_of_area_directions;
 
-    // linked list of quantum bonds. todo: make this not a linked list
+    // linked list of disjoint bonds. todo: make this not a linked list
     struct disjoint_bond *disjoint_bonds;
 
     // records each cycle the output count increases toward completion.
@@ -582,7 +582,7 @@ void move_chain_atom_to_list(struct board *board, uint32_t chain_atom_index, uin
 
 void insert_disjoint_bond(struct board *board, struct vector from_position, struct vector to_position);
 struct disjoint_bond* lookup_disjoint_bond(struct board *board, struct vector from_position);
-void delete_disjoint_bond(struct board *board, struct vector from_position);
+void remove_disjoint_bond(struct board *board, struct vector from_position);
 
 // the origin is always the last vector in the footprint of a glyph.
 const struct vector *glyph_footprint(uint32_t mechanism_type);
