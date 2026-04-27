@@ -2182,8 +2182,8 @@ uint32_t lookup_chain_atom(struct board *board, struct vector query)
 void insert_disjoint_bond(struct board *board, struct vector from_position, struct vector to_position) 
 {   
     struct disjoint_bond *new_disjoint_bond = malloc(sizeof(struct disjoint_bond));
+    new_disjoint_bond->lookup_position = from_position;
     new_disjoint_bond->from_position = from_position;
-    memcpy(&new_disjoint_bond->lookup_position, &new_disjoint_bond->from_position, sizeof(new_disjoint_bond->from_position));
     new_disjoint_bond->to_position = to_position;
     new_disjoint_bond->next = NULL;
     struct disjoint_bond *q = board->disjoint_bonds;
@@ -2199,11 +2199,12 @@ void insert_disjoint_bond(struct board *board, struct vector from_position, stru
     new_disjoint_bond->prev = q;
 }
 
-struct disjoint_bond* lookup_disjoint_bond(struct board *board, struct vector position) {
+struct disjoint_bond* lookup_disjoint_bond(struct board *board, struct vector query) 
+{
     struct disjoint_bond *q = board->disjoint_bonds;
     if (q == NULL) 
         return NULL;
-    while (!vectors_equal(position, q->lookup_position)) {
+    while (!vectors_equal(query, q->lookup_position)) {
         q = q->next;
         if (q == NULL)
             return NULL;
@@ -2211,9 +2212,9 @@ struct disjoint_bond* lookup_disjoint_bond(struct board *board, struct vector po
     return q;
 }
 
-void remove_disjoint_bond(struct board *board, struct vector position)
+void remove_disjoint_bond(struct board *board, struct vector query)
 {
-    struct disjoint_bond *q = lookup_disjoint_bond(board, position);
+    struct disjoint_bond *q = lookup_disjoint_bond(board, query);
     if (q == NULL) 
         return;
     if (q->prev != NULL)
