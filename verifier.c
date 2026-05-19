@@ -926,6 +926,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         int arms = solution.number_of_arms;
         destroy(&solution, &board);
         return arms;
+    } else if (!strcmp(metric, "cabinet violations")) {
+        int cabinet_violations = solution.cabinet_violations;
+        destroy(&solution, &board);
+        return cabinet_violations;
     }
     initial_setup(&solution, &board, v->sf->area);
     if (!v->disable_limits)
