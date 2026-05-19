@@ -364,6 +364,8 @@ struct solution {
     // map u,v coordinates => cabinet id + 1 (0 means no cabinet)
     uint8_t cabinet_map[CABINET_MAP_SIZE][CABINET_MAP_SIZE];
 
+    uint32_t cabinet_violations;
+
     // whether it's an input or an output is determined by the type.
     struct input_output *inputs_and_outputs;
     size_t number_of_inputs_and_outputs;
