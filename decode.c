@@ -626,6 +626,16 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     return true;
 }
 
+static int32_t gcd(int32_t a, int32_t b)
+{
+    while (b != 0) {
+        int32_t t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
 bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct solution_file *sf, const char **error)
 {
     const char *ignored_error;
@@ -887,8 +897,16 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->atoms = 0;
             io->number_of_atoms = 0;
             io->repetition_origin = m.position;
-            io->repetition_direction_u = m.direction_u;
-            io->repetition_direction_v = m.direction_v;
+            io->repetition_direction_u = (struct vector){ placeholder->position.u - m.position.u, placeholder->position.v - m.position.v };
+            int32_t divisor = gcd(io->repetition_direction_u.u, io->repetition_direction_u.v);
+            if (divisor == 0) {
+                *error = "solution contains a repetition placeholder at the origin";
+                destroy(solution, 0);
+                return false;
+            }
+            io->repetition_direction_u.u /= divisor;
+            io->repetition_direction_u.v /= divisor;
+            io->repetition_direction_v = (struct vector){ io->repetition_direction_u.v, io->repetition_direction_u.u - io->repetition_direction_u.v };
             io->outputs_per_repetition = pf->output_scale;
             if (!repeat_molecule(io, error)) {
                 destroy(solution, 0);
