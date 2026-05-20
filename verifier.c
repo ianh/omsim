@@ -808,6 +808,21 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             }
         }
         return gap2 > INT_MAX ? INT_MAX : (int)gap2;
+    } else if (!strcmp(metric, "maximum absolute part coordinate")) {
+        long long max_distance = 0;
+        for (uint32_t i = 0; i < v->sf->number_of_parts; ++i) {
+            struct solution_part p = v->sf->parts[i];
+            long long q = llabs(p.position[0]);
+            long long r = llabs(p.position[1]);
+            long long s = llabs(-(long long)p.position[0] - (long long)p.position[1]);
+            if (q > max_distance)
+                max_distance = q;
+            if (r > max_distance)
+                max_distance = r;
+            if (s > max_distance)
+                max_distance = s;
+        }
+        return max_distance > INT_MAX ? INT_MAX : (int)max_distance;
     }
     if (!v->pf) {
         v->error.description = "invalid puzzle file";
