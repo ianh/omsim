@@ -906,7 +906,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
             io->repetition_direction_u.u /= divisor;
             io->repetition_direction_u.v /= divisor;
-            io->repetition_direction_v = (struct vector){ io->repetition_direction_u.v, io->repetition_direction_u.u - io->repetition_direction_u.v };
+            io->repetition_direction_v = (struct vector){ -io->repetition_direction_u.v, io->repetition_direction_u.u + io->repetition_direction_u.v };
             io->outputs_per_repetition = pf->output_scale;
             if (!repeat_molecule(io, error)) {
                 destroy(solution, 0);
