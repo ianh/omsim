@@ -569,10 +569,10 @@ static bool repeat_molecule(struct input_output *io, const char **error)
 
     io->min_v = INT32_MAX;
     io->max_v = INT32_MIN;
-    for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-        if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+    for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
+        if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
-        struct vector p = polymer_position_from_global_position(io, io->atoms[j].position);
+        struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
         if (p.v < io->min_v)
             io->min_v = p.v;
         if (p.v > io->max_v)
@@ -585,43 +585,19 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     size_t rows = io->max_v - io->min_v + 1;
     io->row_min_u = realloc(io->row_min_u, rows * sizeof(int32_t));
     io->row_max_u = realloc(io->row_max_u, rows * sizeof(int32_t));
-    for (size_t j = 0; j < rows; ++j) {
-        io->row_min_u[j] = INT32_MAX;
-        io->row_max_u[j] = INT32_MIN;
+    for (size_t i = 0; i < rows; ++i) {
+        io->row_min_u[i] = INT32_MAX;
+        io->row_max_u[i] = INT32_MIN;
     }
-    for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-        if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+    for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
+        if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
-        struct vector p = polymer_position_from_global_position(io, io->atoms[j].position);
+        struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
         size_t row = p.v - io->min_v;
         if (p.u < io->row_min_u[row])
             io->row_min_u[row] = p.u;
         if (p.u > io->row_max_u[row])
             io->row_max_u[row] = p.u;
-    }
-    for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-        if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
-            continue;
-        struct vector p = polymer_position_from_global_position(io, io->atoms[j].position);
-        size_t row = p.v - io->min_v;
-        if (p.u + 1 <= io->row_max_u[row])
-            io->atoms[j].atom |= 1ULL << (RECENT_BOND + 0);
-        if (p.v != io->max_v) {
-            size_t neighbor = p.v + 1 - io->min_v;
-            if (p.u >= io->row_min_u[neighbor] && p.u <= io->row_max_u[neighbor])
-                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 1);
-            if (p.u - 1 >= io->row_min_u[neighbor] && p.u - 1 <= io->row_max_u[neighbor])
-                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 2);
-        }
-        if (p.u - 1 >= io->row_min_u[row])
-            io->atoms[j].atom |= 1ULL << (RECENT_BOND + 3);
-        if (p.v != io->min_v) {
-            size_t neighbor = p.v - 1 - io->min_v;
-            if (p.u >= io->row_min_u[neighbor] && p.u <= io->row_max_u[neighbor])
-                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 4);
-            if (p.u + 1 >= io->row_min_u[neighbor] && p.u + 1 <= io->row_max_u[neighbor])
-                io->atoms[j].atom |= 1ULL << (RECENT_BOND + 5);
-        }
     }
     return true;
 }
