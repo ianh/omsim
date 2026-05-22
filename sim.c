@@ -27,11 +27,6 @@ static void remove_disjoint_bond(struct disjoint_bond_table *table, struct vecto
 static const struct disjoint_bond uninitialized_disjoint_bond;
 static const struct disjoint_bond removed_disjoint_bond = { { 0, 1 }, { 0, 1 } };
 
-static uint32_t vector_hexicab_length(struct vector p)
-{
-    return (abs(p.u) + abs(p.v) + abs(p.u + p.v)) / 2;
-}
-
 struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w)
 {
     return (struct vector){

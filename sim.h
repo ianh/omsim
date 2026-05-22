@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef uint64_t atom;
@@ -179,6 +180,10 @@ static inline uint32_t vector_hash(struct vector p)
     hash += 0xc0c594dd042705fbull * (uint32_t)p.u;
     hash += 0x93b45776c46130c1ull * (uint32_t)p.v;
     return hash >> 32;
+}
+static inline uint32_t vector_hexicab_length(struct vector p)
+{
+    return (abs(p.u) + abs(p.v) + abs(p.u + p.v)) / 2;
 }
 
 struct atom_at_position {

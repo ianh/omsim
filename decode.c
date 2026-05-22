@@ -592,6 +592,27 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
         if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
+        for (uint32_t j = i; j < io->number_of_atoms; ++j) {
+            struct vector d = { io->atoms[j].position.u - io->atoms[i].position.u, io->atoms[j].position.v - io->atoms[i].position.v };
+            if (vector_hexicab_length(d) != 1)
+                continue;
+            // draw a line between adjacent atoms, marking all rows the line crosses.
+            struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
+            struct vector q = polymer_position_from_global_position(io, io->atoms[j].position);
+            if (p.v > q.v) {
+                struct vector tmp = p;
+                p = q;
+                q = tmp;
+            }
+            for (int32_t v = p.v + 1; v < q.v; ++v) {
+                size_t row = v - io->min_v;
+                int32_t u = p.u + ((q.u - p.u) * (v - p.v)) / (q.v - p.v);
+                if (u < io->row_min_u[row])
+                    io->row_min_u[row] = u;
+                if (u > io->row_max_u[row])
+                    io->row_max_u[row] = u;
+            }
+        }
         struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
         size_t row = p.v - io->min_v;
         if (p.u < io->row_min_u[row])
