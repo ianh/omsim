@@ -833,18 +833,23 @@ static void record_swing_area(struct solution *solution, struct board *board, st
         offset = (struct vector){ offset.u + offset.v, -offset.u };
     int32_t arm_length = abs(offset.u) | abs(offset.v);
     offset = normalize_axis(offset);
+    if (solution->production) {
+        // gripper cabinet wall collisions
+        uint8_t original_cabinet = cabinet_for_position(solution, (struct vector){ base.u + arm_length * offset.u, base.v + arm_length * offset.v});
+        if (cabinet_for_position(solution, (struct vector){ base.u - arm_length * offset.v, base.v + arm_length * (offset.u + offset.v)}) != original_cabinet) {
+            report_collision(board, (struct vector){ base.u - arm_length * offset.v, base.v + arm_length * (offset.u + offset.v)}, "grabber went outside cabinet wall");
+            return;
+        }
+        if (arm_length == 3 && cabinet_for_position(solution, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v }) != original_cabinet) {
+            report_collision(board, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v }, "grabber went outside cabinet wall");
+            return;
+        }
+    }
     switch (arm_length) {
     case 3:
         mark_used_area(board, (struct vector){ base.u + 3 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 4 * offset.v });
         mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v });
         mark_used_area(board, (struct vector){ base.u + 1 * offset.u - 3 * offset.v, base.v + 3 * offset.u + 4 * offset.v });
-        // length 3 cabinet wall collision
-        if (solution->production) {
-            if (!cabinet_for_position(solution, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v })) {
-                report_collision(board, (struct vector){ base.u + 2 * offset.u - 2 * offset.v, base.v + 2 * offset.u + 4 * offset.v }, "grabber went outside cabinet wall");
-                return;
-            }
-        }
         // fall through
     case 2:
         mark_used_area(board, (struct vector){ base.u + 2 * offset.u - 1 * offset.v, base.v + 1 * offset.u + 3 * offset.v });
@@ -1393,7 +1398,7 @@ static void mark_arm_area(struct solution *solution, struct board *board)
         int step = angular_distance_between_grabbers(m->type);
         for (int direction = 0; direction < 6; direction += step) {
             struct vector offset = u_offset_for_direction(direction);
-            if (solution->production && !cabinet_for_position(solution, mechanism_relative_position(*m, offset.u, offset.v, 1)))
+            if (solution->production && cabinet_for_position(solution, mechanism_relative_position(*m, offset.u, offset.v, 1)) == 255)
                 report_collision(board, mechanism_relative_position(*m, offset.u, offset.v, 1), "grabber went outside cabinet wall");
             struct vector saved_u = m->direction_u;
             struct vector saved_v = m->direction_v;

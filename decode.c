@@ -323,6 +323,24 @@ static size_t number_of_walls_for_cabinet_type(struct byte_string type)
         return 0;
 }
 
+static struct vector* get_walls_for_cabinet_type(struct byte_string type)
+{
+    if (byte_string_is(type, "Small"))
+        return cabinet_walls_Small;
+    else if (byte_string_is(type, "SmallWide"))
+        return cabinet_walls_SmallWide;
+    else if (byte_string_is(type, "SmallWider"))
+        return cabinet_walls_SmallWider;
+    else if (byte_string_is(type, "Medium"))
+        return cabinet_walls_Medium;
+    else if (byte_string_is(type, "MediumWide"))
+        return cabinet_walls_MediumWide;
+    else if (byte_string_is(type, "Large"))
+        return cabinet_walls_Large;
+    else
+        return 0;
+}
+
 static size_t copy_walls_for_cabinet_type(struct byte_string type, struct vector *dest, int32_t u, int32_t v)
 {
     struct vector *src;
@@ -426,6 +444,14 @@ static void check_production_constraints(struct solution *solution, struct puzzl
             if (u >= 0 && u < CABINET_MAP_SIZE && v >= 0 && v < CABINET_MAP_SIZE)
                 solution->cabinet_map[u][v] = i + 1;
         }
+        src = get_walls_for_cabinet_type(info->cabinets[i].type);
+        n = number_of_walls_for_cabinet_type(info->cabinets[i].type);
+        for (size_t j = 0; j < n; ++j) {
+            int32_t u = info->cabinets[i].position[0] + src[j].u + (CABINET_MAP_SIZE >> 1);
+            int32_t v = info->cabinets[i].position[1] + src[j].v + (CABINET_MAP_SIZE >> 1);
+            if (u >= 0 && u < CABINET_MAP_SIZE && v >= 0 && v < CABINET_MAP_SIZE)
+                solution->cabinet_map[u][v] = 255;
+        }
     }
 
     // check conduits
@@ -482,7 +508,8 @@ static void check_production_constraints(struct solution *solution, struct puzzl
         const struct vector *footprint = glyph_footprint(m->type);
         for (int j = 0; ; ++j) {
             struct vector pos = mechanism_relative_position(*m, footprint[j].u, footprint[j].v, 1);
-            if (cabinet_for_position(solution, pos) == 0) {
+            uint8_t cabinet = cabinet_for_position(solution, pos);
+            if (cabinet == 0 || cabinet == 255) {
                 solution->cabinet_violations |= GLYPH_VIOLATED;
                 break;
             }
@@ -495,7 +522,7 @@ static void check_production_constraints(struct solution *solution, struct puzzl
     for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
         struct mechanism *m = &solution->arms[i];
         uint8_t base_cabinet = cabinet_for_position(solution, m->position);
-        if (base_cabinet == 0) {
+        if (base_cabinet == 0 || base_cabinet == 255) {
             solution->cabinet_violations |= ARM_VIOLATED;
             break;
         }
@@ -504,7 +531,7 @@ static void check_production_constraints(struct solution *solution, struct puzzl
             struct vector offset = u_offset_for_direction(direction);
             struct vector pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
             uint8_t cabinet = cabinet_for_position(solution, pos);
-            if (cabinet == 0) {
+            if (cabinet == 0 || cabinet == 255) {
                 solution->cabinet_violations |= ARM_VIOLATED;
                 break;
             }
@@ -520,7 +547,8 @@ static void check_production_constraints(struct solution *solution, struct puzzl
         struct vector position = solution->track_positions[i];
         if (position.u == INT32_MIN && position.v == INT32_MIN)
             continue;
-        if (cabinet_for_position(solution, position) == 0) {
+        uint8_t cabinet = cabinet_for_position(solution, position);
+        if (cabinet == 0 || cabinet == 255) {
             solution->cabinet_violations |= TRACK_VIOLATED;
             break;
         }
@@ -530,7 +558,8 @@ static void check_production_constraints(struct solution *solution, struct puzzl
     for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
-            if (cabinet_for_position(solution, io->atoms[j].position) == 0) {
+            uint8_t cabinet = cabinet_for_position(solution, io->atoms[j].position);
+            if (cabinet == 0 || cabinet == 255) {
                 solution->cabinet_violations |= INPUT_OUTPUT_VIOLATED;
                 break;
             }
