@@ -535,6 +535,21 @@ static void set_tape(char *tape, int n, int inst, const char **error)
     tape[n] = inst;
 }
 
+static int compare_vectors(const void *aa, const void *bb)
+{
+    struct vector a = *(const struct vector *)aa;
+    struct vector b = *(const struct vector *)bb;
+    if (a.u < b.u)
+        return -1;
+    else if (a.u > b.u)
+        return 1;
+    else if (a.v < b.v)
+        return -1;
+    else if (a.v > b.v)
+        return 1;
+    return 0;
+}
+
 static bool repeat_molecule(struct input_output *io, const char **error)
 {
     if (io->number_of_original_atoms == 0) {
@@ -547,25 +562,58 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     offset.v -= io->repetition_origin.v;
     placeholder.position.u += offset.u * (REPEATING_OUTPUT_REPETITIONS - 1);
     placeholder.position.v += offset.v * (REPEATING_OUTPUT_REPETITIONS - 1);
-    struct atom_at_position *atoms = calloc((io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1,
-     sizeof(io->atoms[0]));
+    // figure out where placeholders should go.
+    struct vector *placeholders = calloc(io->number_of_original_atoms * 6, sizeof(struct vector));
+    io->number_of_placeholders = 1;
+    placeholders[0] = placeholder.position;
+    for (uint32_t i = 0; i < io->number_of_original_atoms - 1; ++i) {
+        struct vector p = io->original_atoms[i].position;
+        for (int j = 0; j < 6; ++j) {
+            if (!(io->original_atoms[i].atom & (BOND_LOW_BITS << j)))
+                continue;
+            struct vector bond_offset = u_offset_for_direction(j);
+            struct vector target_position = { p.u + bond_offset.u - offset.u, p.v + bond_offset.v - offset.v };
+            for (uint32_t k = 0; k < io->number_of_original_atoms - 1; ++k) {
+                struct vector q = io->original_atoms[k].position;
+                if (vectors_equal(target_position, q)) {
+                    q.u += offset.u * REPEATING_OUTPUT_REPETITIONS;
+                    q.v += offset.v * REPEATING_OUTPUT_REPETITIONS;
+                    placeholders[io->number_of_placeholders++] = q;
+                    break;
+                }
+            }
+        }
+    }
+    // remove duplicates from the placeholders list.
+    qsort(placeholders, io->number_of_placeholders, sizeof(struct vector), compare_vectors);
+    uint32_t removed_duplicates = 0;
+    for (uint32_t i = 0; i < io->number_of_placeholders; ++i) {
+        if (i > 0 && vectors_equal(placeholders[i - 1], placeholders[i]))
+            removed_duplicates++;
+        else
+            placeholders[i - removed_duplicates] = placeholders[i];
+    }
+    io->number_of_placeholders -= removed_duplicates;
+    struct atom_at_position *atoms = calloc((io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS +
+     io->number_of_placeholders, sizeof(io->atoms[0]));
     for (uint32_t i = 0; i < REPEATING_OUTPUT_REPETITIONS; ++i) {
         for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
             struct atom_at_position *a = &atoms[(io->number_of_original_atoms - 1) * i + j];
             *a = io->original_atoms[j];
-            bool origin = vectors_equal(a->position, io->repetition_origin);
             a->position.u += i * offset.u;
             a->position.v += i * offset.v;
             a->atom = io->original_atoms[j].atom;
-            // add the incoming bonds from the previous monomer.
-            if (origin && i > 0)
-                a->atom |= placeholder.atom & ALL_BONDS;
         }
     }
-    atoms[(io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS] = placeholder;
+    for (uint32_t i = 0; i < io->number_of_placeholders; ++i) {
+        struct atom_at_position *a = &atoms[(io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + i];
+        a->atom = REPEATING_OUTPUT_PLACEHOLDER;
+        a->position = placeholders[i];
+    }
+    free(placeholders);
     free(io->atoms);
     io->atoms = atoms;
-    io->number_of_atoms = (io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + 1;
+    io->number_of_atoms = (io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + io->number_of_placeholders;
 
     io->min_v = INT32_MAX;
     io->max_v = INT32_MIN;
@@ -592,10 +640,15 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
         if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
-        for (uint32_t j = i; j < io->number_of_atoms; ++j) {
-            struct vector d = { io->atoms[j].position.u - io->atoms[i].position.u, io->atoms[j].position.v - io->atoms[i].position.v };
-            if (vector_hexicab_length(d) != 1)
+        for (uint32_t j = i + 1; j < io->number_of_atoms; ++j) {
+            if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
                 continue;
+            struct vector d = { io->atoms[j].position.u - io->atoms[i].position.u, io->atoms[j].position.v - io->atoms[i].position.v };
+            int direction = direction_for_offset(d);
+            if (direction < 0)
+                continue;
+            // fix up bonds between adjacent atoms.
+            io->atoms[j].atom |= rotate_bond_bits(io->atoms[i].atom & (BOND_LOW_BITS << direction), 3);
             // draw a line between adjacent atoms, marking all rows the line crosses.
             struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
             struct vector q = polymer_position_from_global_position(io, io->atoms[j].position);

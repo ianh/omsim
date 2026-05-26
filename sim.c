@@ -212,23 +212,27 @@ static int normalize_direction(int direction)
     return direction < 0 ? direction + 6 : direction;
 }
 
-// rotate an atom's bonds by rotating the bits which represent those bonds.
-static void rotate_bonds(atom *a, int rotation)
+atom rotate_bond_bits(atom bond_bits, int rotation)
 {
     rotation = normalize_direction(rotation);
     if (rotation == 0)
-        return;
+        return bond_bits;
     // first, shift the bond bits by the rotation amount.
-    atom bonds = *a & ALL_BONDS;
-    bonds <<= rotation;
+    bond_bits &= ALL_BONDS;
+    bond_bits <<= rotation;
     // take the overflow bits that were shifted off the end...
     atom mask = 0x3FULL >> (6 - rotation);
-    atom overflow = bonds & ((mask * BOND_LOW_BITS) << 6);
-    bonds &= ~overflow;
+    atom overflow = bond_bits & ((mask * BOND_LOW_BITS) << 6);
+    bond_bits &= ~overflow;
     // ...and shift them back around to the other side.
-    bonds |= overflow >> 6;
+    bond_bits |= overflow >> 6;
+    return bond_bits;
+}
+static void rotate_bonds(atom *a, int rotation)
+{
+    atom bond_bits = rotate_bond_bits(*a & ALL_BONDS, rotation);
     *a &= ~ALL_BONDS;
-    *a |= bonds;
+    *a |= bond_bits;
 }
 
 struct vector u_offset_for_direction(int direction)
@@ -1661,7 +1665,7 @@ static void consume_output(struct solution *solution, struct board *board, struc
 
     if (!repeating && molecule->size != io->number_of_atoms)
         return;
-    int ignorable_atoms = repeating ? molecule->size - (io->number_of_atoms - 1) : 0;
+    int ignorable_atoms = repeating ? molecule->size - (io->number_of_atoms - io->number_of_placeholders) : 0;
     if (ignorable_atoms < 0)
         return;
 

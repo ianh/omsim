@@ -286,6 +286,7 @@ struct input_output {
 
     struct atom_at_position *atoms;
     uint32_t number_of_atoms;
+    uint32_t number_of_placeholders;
     uint32_t center_atom_index;
 
     struct disjoint_bond *disjoint_bonds;
@@ -596,6 +597,7 @@ int direction_for_offset(struct vector d);
 int angular_distance_between_grabbers(uint32_t mechanism_type);
 struct vector mechanism_relative_position(struct mechanism m, int32_t du, int32_t dv, int32_t w);
 atom bond_direction(struct mechanism m, int32_t du, int32_t dv);
+atom rotate_bond_bits(atom bond_bits, int rotation);
 
 struct vector polymer_position_from_global_position(struct input_output *io, struct vector p);
 int32_t polymer_feed_rate_divisor(struct input_output *io);
