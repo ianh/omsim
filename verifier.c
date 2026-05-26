@@ -929,7 +929,19 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     } else if (!strcmp(metric, "cabinet violations")) {
         int cabinet_violations = solution.cabinet_violations;
         destroy(&solution, &board);
-        return cabinet_violations;
+        if (cabinet_violations == 0) {
+            return 0;
+        } else {
+            return 1;
+        }
+    } else if (!strcmp(metric, "conduit violations")) {
+        int conduit_violations = solution.cabinet_violations & (CONDUIT_ALTERED | CONDUIT_IN_FREESPACE);
+        destroy(&solution, &board);
+        if (conduit_violations == 0) {
+            return 0;
+        } else {
+            return 1;
+        }
     }
     initial_setup(&solution, &board, v->sf->area);
     if (!v->disable_limits)
