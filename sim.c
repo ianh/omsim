@@ -1579,9 +1579,9 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
         return;
     int32_t maximum_feed_rate = 0;
     for (uint32_t i = 0; i < io->number_of_original_atoms - 1; ++i) {
-        struct atom_at_position output = io->original_atoms[i];
-        if (vectors_equal(output.position, io->repetition_origin))
-            output.atom |= placeholder.atom & ALL_BONDS;
+        // look at the atom in the second monomer so the bonds are correct.
+        // relies on io->atoms and io->original_atoms having the same order.
+        struct atom_at_position output = io->atoms[i + io->number_of_original_atoms - 1];
         uint32_t repeats_after = UINT32_MAX;
         for (uint32_t j = REPEATING_OUTPUT_REPETITIONS; j < repeats_after; ++j) {
             struct vector p = output.position;
