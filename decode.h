@@ -4,13 +4,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define CONDUIT_VIOLATED (1UL << 0)
-#define GLYPH_VIOLATED (1UL << 1)
-#define ARM_VIOLATED (1UL << 2)
-#define CROSS_WALL_VIOLATED (1UL << 3)
-#define INPUT_OUTPUT_VIOLATED (1UL << 4)
-#define TRACK_VIOLATED (1UL << 5)
-#define ISOLATION_VIOLATED (1UL << 6)
+#define GLYPH_OUTSIDE_CABINET (1UL << 0)
+#define ARM_OUTSIDE_CABINET (1UL << 1)
+#define ARM_REACHES_ACROSS_WALL (1UL << 2)
+#define INPUT_OUTPUT_OUTSIDE_CABINET (1UL << 3)
+#define TRACK_OUTSIDE_CABINET (1UL << 4)
+#define ISOLATION_VIOLATED (1UL << 5)
+#define CONDUIT_IN_WRONG_CABINET (1UL << 6)
+#define CONDUIT_ALTERED (1UL << 7)
+#define CONDUIT_IN_FREESPACE (1UL << 8)
 
 struct puzzle_file;
 struct solution;

@@ -457,19 +457,19 @@ static void check_production_constraints(struct solution *solution, struct puzzl
     // check conduits
     bool swapped = false;
     if (solution->number_of_conduits != 2 * info->number_of_conduits) {
-        solution->cabinet_violations |= CONDUIT_VIOLATED;
+        solution->cabinet_violations |= CONDUIT_ALTERED;
     } else {
         for (uint32_t i = 0; i < solution->number_of_conduits; ++i) {
             struct conduit *conduit = &solution->conduits[i];
             uint32_t conduit_index = conduit->id - 100; // conduit ids start at 100
             if (conduit_index >= info->number_of_conduits) {
-                solution->cabinet_violations |= CONDUIT_VIOLATED;
+                solution->cabinet_violations |= CONDUIT_ALTERED;
                 break;
             }
 
             struct puzzle_conduit *puzzle_conduit = &info->conduits[conduit_index];
             if (conduit->number_of_positions != puzzle_conduit->number_of_hexes) {
-                solution->cabinet_violations |= CONDUIT_VIOLATED;
+                solution->cabinet_violations |= CONDUIT_ALTERED;
                 break;
             }
 
@@ -483,20 +483,19 @@ static void check_production_constraints(struct solution *solution, struct puzzl
             }
             struct mechanism *m = &solution->glyphs[swapped ? conduit->other_side_glyph_index : conduit->glyph_index];
 
+            if (cabinet_for_position(solution, m->position) != expected_cabinet) {
+                solution->cabinet_violations |= CONDUIT_IN_WRONG_CABINET;
+                break;
+            }
+
             for (uint32_t j = 0; j < conduit->number_of_positions; ++j) {
                 struct vector pos = conduit->positions[j];
                 if (!vectors_equal(pos, decode_position(puzzle_conduit->hexes[j].offset))) {
-                    solution->cabinet_violations |= CONDUIT_VIOLATED;
-                    break;
-                }
-                pos = mechanism_relative_position(*m, pos.u, pos.v, 1);
-                if (cabinet_for_position(solution, pos) != expected_cabinet) {
-                    solution->cabinet_violations |= CONDUIT_VIOLATED;
+                    solution->cabinet_violations |= CONDUIT_ALTERED;
                     break;
                 }
             }
-            if (solution->cabinet_violations & CONDUIT_VIOLATED)
-                break;
+
         }
     }
 
@@ -510,7 +509,7 @@ static void check_production_constraints(struct solution *solution, struct puzzl
             struct vector pos = mechanism_relative_position(*m, footprint[j].u, footprint[j].v, 1);
             uint8_t cabinet = cabinet_for_position(solution, pos);
             if (cabinet == 0 || cabinet == 255) {
-                solution->cabinet_violations |= GLYPH_VIOLATED;
+                solution->cabinet_violations |= GLYPH_OUTSIDE_CABINET;
                 break;
             }
             if (vectors_equal(footprint[j], zero_vector))
@@ -523,7 +522,7 @@ static void check_production_constraints(struct solution *solution, struct puzzl
         struct mechanism *m = &solution->arms[i];
         uint8_t base_cabinet = cabinet_for_position(solution, m->position);
         if (base_cabinet == 0 || base_cabinet == 255) {
-            solution->cabinet_violations |= ARM_VIOLATED;
+            solution->cabinet_violations |= ARM_OUTSIDE_CABINET;
             break;
         }
         int step = angular_distance_between_grabbers(m->type);
@@ -532,11 +531,11 @@ static void check_production_constraints(struct solution *solution, struct puzzl
             struct vector pos = mechanism_relative_position(*m, offset.u, offset.v, 1);
             uint8_t cabinet = cabinet_for_position(solution, pos);
             if (cabinet == 0 || cabinet == 255) {
-                solution->cabinet_violations |= ARM_VIOLATED;
+                solution->cabinet_violations |= ARM_OUTSIDE_CABINET;
                 break;
             }
             else if (cabinet != base_cabinet) {
-                solution->cabinet_violations |= CROSS_WALL_VIOLATED;
+                solution->cabinet_violations |= ARM_REACHES_ACROSS_WALL;
                 break;
             }
         }
@@ -549,7 +548,7 @@ static void check_production_constraints(struct solution *solution, struct puzzl
             continue;
         uint8_t cabinet = cabinet_for_position(solution, position);
         if (cabinet == 0 || cabinet == 255) {
-            solution->cabinet_violations |= TRACK_VIOLATED;
+            solution->cabinet_violations |= TRACK_OUTSIDE_CABINET;
             break;
         }
     }
@@ -560,7 +559,7 @@ static void check_production_constraints(struct solution *solution, struct puzzl
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
             uint8_t cabinet = cabinet_for_position(solution, io->atoms[j].position);
             if (cabinet == 0 || cabinet == 255) {
-                solution->cabinet_violations |= INPUT_OUTPUT_VIOLATED;
+                solution->cabinet_violations |= INPUT_OUTPUT_OUTSIDE_CABINET;
                 break;
             }
         }
@@ -1046,7 +1045,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         solution->production = true;
         check_production_constraints(solution, pf->production_info);
     } else if (solution->number_of_conduits > 0) {
-        solution->cabinet_violations |= CONDUIT_VIOLATED;
+        solution->cabinet_violations |= CONDUIT_IN_FREESPACE;
     }
     // decode arm tapes in one final pass.  this has to be another pass because
     // reset instructions depend on where track has been placed.
