@@ -308,24 +308,26 @@ struct area_dimension {
     int64_t min;
 };
 
+static const struct per_cycle_measurements unset_measurements = {
+    .cycles = -1,
+    .area = -1,
+    .height_0 = -1,
+    .height_60 = -1,
+    .height_120 = -1,
+    .width2_0 = -1,
+    .width2_60 = -1,
+    .width2_120 = -1,
+    .minimum_hexagon = -1,
+    .executed_instructions = -1,
+    .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    .atom_grabs = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    .number_of_atoms = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    .valid = true,
+};
+
 static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v, struct solution *solution, struct board *board, bool check_completion)
 {
-    struct per_cycle_measurements error_measurements = {
-        .cycles = -1,
-        .area = -1,
-        .height_0 = -1,
-        .height_60 = -1,
-        .height_120 = -1,
-        .width2_0 = -1,
-        .width2_60 = -1,
-        .width2_120 = -1,
-        .minimum_hexagon = -1,
-        .executed_instructions = -1,
-        .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-        .atom_grabs = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-        .number_of_atoms = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
-        .valid = true,
-    };
+    struct per_cycle_measurements error_measurements = unset_measurements;
     if (board->collision) {
         error_measurements.error.description = board->collision_reason;
         error_measurements.error.cycle = (int)board->cycle;
@@ -473,7 +475,7 @@ static const char *name_for_atom_type(int atom_type)
     }
 }
 
-static int lookup_per_cycle_metric(struct per_cycle_measurements *measurements, const char *metric, struct error *error)
+static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurements, const char *metric, struct error *error)
 {
     if (!measurements->valid)
         return -1;
@@ -1017,6 +1019,13 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             v->error = (struct error){ .description = "metric doesn't reach a steady state" };
         return value;
     } else {
+        // check for errors in the query itself before measuring anything.
+        struct error error = { 0 };
+        lookup_per_cycle_metric(&unset_measurements, metric, &error);
+        if (error.description) {
+            v->error = error;
+            return -1;
+        }
         if (!v->completion.valid) {
             while ((v->disable_limits || board.cycle < v->cycle_limit) && !board.complete && !board.collision)
                 cycle(&solution, &board);
