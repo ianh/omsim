@@ -25,6 +25,7 @@ const char *verifier_find_puzzle_name_in_solution_bytes(const char *solution_byt
 
 struct error {
     const char *description;
+    const char *source;
     int cycle;
     int location_u;
     int location_v;
@@ -144,11 +145,13 @@ void *verifier_create(const char *puzzle_filename, const char *solution_filename
     v->pf = parse_puzzle_file(puzzle_filename);
     if (!v->pf) {
         v->error.description = "invalid puzzle file";
+        v->error.source = verifier_error_source_puzzle_file;
         return v;
     }
     v->sf = parse_solution_file(solution_filename);
     if (!v->sf) {
         v->error.description = "invalid solution file";
+        v->error.source = verifier_error_source_solution_file;
         return v;
     }
     return v;
@@ -181,11 +184,13 @@ void *verifier_create_from_bytes_without_copying(const char *puzzle_bytes, int p
     v->pf = parse_puzzle_byte_string((struct byte_string){ (unsigned char *)puzzle_bytes, puzzle_length });
     if (!v->pf) {
         v->error.description = "invalid puzzle file";
+        v->error.source = verifier_error_source_puzzle_file;
         return v;
     }
     v->sf = parse_solution_byte_string((struct byte_string){ (unsigned char *)solution_bytes, solution_length });
     if (!v->sf) {
         v->error.description = "invalid solution file";
+        v->error.source = verifier_error_source_solution_file;
         return v;
     }
     return v;
@@ -214,6 +219,17 @@ int verifier_error_location_v(void *verifier)
     struct verifier *v = verifier;
     return v->error.location_v;
 }
+
+const char *verifier_error_source(void *verifier)
+{
+    struct verifier *v = verifier;
+    return v->error.source;
+}
+
+const char *verifier_error_source_puzzle_file = "puzzle file";
+const char *verifier_error_source_solution_file = "solution file";
+const char *verifier_error_source_metric = "metric";
+const char *verifier_error_source_simulation = "simulation";
 
 void verifier_error_clear(void *verifier)
 {
@@ -333,12 +349,15 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         error_measurements.error.cycle = (int)board->cycle;
         error_measurements.error.location_u = (int)board->collision_location.u;
         error_measurements.error.location_v = (int)board->collision_location.v;
+        error_measurements.error.source = verifier_error_source_simulation;
         return error_measurements;
     } else if (!board->complete && check_completion) {
         error_measurements.error.description = "solution did not complete within cycle limit";
+        error_measurements.error.source = verifier_error_source_simulation;
         return error_measurements;
     } else if (board->cycle > (uint64_t)INT_MAX) {
         error_measurements.error.description = "solution did not complete within cycle integer limit";
+        error_measurements.error.source = verifier_error_source_simulation;
         return error_measurements;
     }
     struct per_cycle_measurements m = {
@@ -373,6 +392,7 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
                 dimensions[j].max = value;
             if (dimensions[j].max - dimensions[j].min + 2 > INT_MAX) {
                 error_measurements.error.description = "solution bounding box is too large to compute width and height";
+                error_measurements.error.source = verifier_error_source_simulation;
                 return error_measurements;
             }
         }
@@ -521,7 +541,7 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
     } else if (!strncmp("instruction executions with hotkey ", metric, strlen("instruction executions with hotkey "))) {
         metric += strlen("instruction executions with hotkey ");
         if (!*metric) {
-            *error = (struct error){ .description = "no hotkeys specified in 'instruction executions with hotkey' metric" };
+            *error = (struct error){ .description = "no hotkeys specified in 'instruction executions with hotkey' metric", .source = verifier_error_source_metric };
             return -1;
         }
         int value = 0;
@@ -530,7 +550,7 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
             if (idx >= 0)
                 value += measurements->instruction_executions[idx];
             else {
-                *error = (struct error){ .description = "invalid instruction hotkey in 'instruction executions with hotkey' metric" };
+                *error = (struct error){ .description = "invalid instruction hotkey in 'instruction executions with hotkey' metric", .source = verifier_error_source_metric };
                 return -1;
             }
         }
@@ -547,7 +567,7 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
             if (name && !strcmp(metric, name))
                 return measurements->atom_grabs[i];
         }
-        *error = (struct error){ .description = "unknown atom type" };
+        *error = (struct error){ .description = "unknown atom type", .source = verifier_error_source_metric };
         return -1;
     } else if (!strcmp(metric, "number of atoms")) {
         int value = 0;
@@ -561,10 +581,10 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
             if (name && !strcmp(metric, name))
                 return measurements->number_of_atoms[i];
         }
-        *error = (struct error){ .description = "unknown atom type" };
+        *error = (struct error){ .description = "unknown atom type", .source = verifier_error_source_metric };
         return -1;
     } else {
-        *error = (struct error){ .description = "unknown metric" };
+        *error = (struct error){ .description = "unknown metric", .source = verifier_error_source_metric };
         return -1;
     }
 }
@@ -582,8 +602,10 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
     v->output_intervals_repeat_after = -1;
     struct solution solution = { 0 };
     struct board board = { 0 };
-    if (!decode_solution(&solution, v->pf, v->sf, &m.error.description))
+    if (!decode_solution(&solution, v->pf, v->sf, &m.error.description)) {
+        m.error.source = verifier_error_source_solution_file;
         return m;
+    }
     initial_setup(&solution, &board, v->sf->area);
     if (!v->disable_limits)
         board.collision_check_limit = v->collision_check_limit;
@@ -596,6 +618,7 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.error.cycle = (int)board.cycle;
         m.error.location_u = (int)board.collision_location.u;
         m.error.location_v = (int)board.collision_location.v;
+        m.error.source = verifier_error_source_simulation;
     } else if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
         m.throughput_cycles = steady_state.number_of_cycles;
         m.throughput_outputs = steady_state.number_of_outputs;
@@ -643,8 +666,10 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         // xx these are unsupported right now.
         for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
             m.steady_state.atom_grabs[i] = -1;
-    } else
+    } else {
         m.error.description = "solution did not converge on a throughput";
+        m.error.source = verifier_error_source_simulation;
+    }
 
     // output intervals are currently unsupported for puzzles with polymers.
     bool output_intervals_supported = true;
@@ -788,6 +813,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             if (index >= n) {
                 duplicates = -1;
                 v->error.description = "solution refers to a reagent or product that doesn't exist in the puzzle";
+                v->error.source = verifier_error_source_solution_file;
                 break;
             }
             if (seen[index])
@@ -828,6 +854,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     if (!v->pf) {
         v->error.description = "invalid puzzle file";
+        v->error.source = verifier_error_source_puzzle_file;
         return -1;
     }
     if (!strcmp(metric, "reaches steady state")) {
@@ -852,7 +879,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         if (v->throughput_measurements.area_growth_order == GROWTH_QUADRATIC) {
-            v->error = (struct error){ .description = "metric doesn't have a consistent per-repetition value" };
+            v->error = (struct error){ .description = "metric doesn't have a consistent per-repetition value", .source = verifier_error_source_simulation };
             return -1;
         }
         return v->throughput_measurements.throughput_linear_area;
@@ -879,8 +906,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
     }
     struct solution solution = { 0 };
     struct board board = { 0 };
-    if (!decode_solution(&solution, v->pf, v->sf, &v->error.description))
+    if (!decode_solution(&solution, v->pf, v->sf, &v->error.description)) {
+        v->error.source = verifier_error_source_solution_file;
         return -1;
+    }
     if (!strcmp(metric, "instructions")) {
         int instructions = solution_instructions(&solution);
         destroy(&solution, &board);
@@ -891,6 +920,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         if (!*metric) {
             value = -1;
             v->error.description = "no hotkeys specified in 'instructions with hotkey' metric";
+            v->error.source = verifier_error_source_metric;
         }
         for (; *metric; ++metric) {
             switch (tolower(*metric)) {
@@ -908,6 +938,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
                 break;
             default:
                 v->error.description = "invalid instruction hotkey in 'instructions with hotkey' metric";
+                v->error.source = verifier_error_source_metric;
                 destroy(&solution, &board);
                 return -1;
             }
@@ -963,11 +994,13 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         long product_count = strtol(metric, &endptr, 10);
         if (product_count < 0 || endptr == metric) {
             v->error.description = "invalid product count";
+            v->error.source = verifier_error_source_metric;
             destroy(&solution, &board);
             return -1;
         }
         if (*endptr != ' ') {
             v->error.description = "product count must be followed by a metric";
+            v->error.source = verifier_error_source_metric;
             destroy(&solution, &board);
             return -1;
         }
@@ -987,11 +1020,13 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         long cycle_count = strtol(metric, &endptr, 10);
         if (cycle_count < 0 || endptr == metric) {
             v->error.description = "invalid cycle count";
+            v->error.source = verifier_error_source_metric;
             destroy(&solution, &board);
             return -1;
         }
         if (*endptr != ' ') {
             v->error.description = "cycle count must be followed by a metric";
+            v->error.source = verifier_error_source_metric;
             destroy(&solution, &board);
             return -1;
         }
@@ -1016,7 +1051,7 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         v->error = v->throughput_measurements.steady_state.error;
         int value = lookup_per_cycle_metric(&v->throughput_measurements.steady_state, metric, &v->error);
         if (value < 0 && !v->error.description)
-            v->error = (struct error){ .description = "metric doesn't reach a steady state" };
+            v->error = (struct error){ .description = "metric doesn't reach a steady state", .source = verifier_error_source_simulation };
         return value;
     } else {
         // check for errors in the query itself before measuring anything.
