@@ -30,4 +30,4 @@ llvm-fuzz: $(HEADER) $(SOURCE) Makefile llvm-fuzz.c
 	$(LLVMCC) $(CFLAGS) -g -fsanitize=fuzzer,address -o $@ llvm-fuzz.c $(SOURCE) $(LDLIBS)
 
 clean:
-	-rm omsim libverify.so libverify.wasm run-tests llvm-fuzz
+	-rm -f omsim libverify.so libverify.dll libverify.wasm run-tests llvm-fuzz
