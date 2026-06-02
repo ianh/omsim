@@ -71,10 +71,10 @@ int verifier_error_location_v(void *verifier);
 // during simulation.  verifier_error_source() will return either NULL (if there
 // is no error set) or one of the strings named below.
 const char *verifier_error_source(void *verifier);
-const char *verifier_error_source_puzzle_file;
-const char *verifier_error_source_solution_file;
-const char *verifier_error_source_metric;
-const char *verifier_error_source_simulation;
+extern const char *verifier_error_source_puzzle_file;
+extern const char *verifier_error_source_solution_file;
+extern const char *verifier_error_source_metric;
+extern const char *verifier_error_source_simulation;
 
 // after calling this function, verifier_error() will return null again.
 void verifier_error_clear(void *verifier);
