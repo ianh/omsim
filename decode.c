@@ -726,6 +726,15 @@ static bool repeat_molecule(struct input_output *io, const char **error)
         if (p.u > io->row_max_u[row])
             io->row_max_u[row] = p.u;
     }
+    // If a row is entirely empty, swap the bounds so that the row is considered to be infinitely wide.
+    // This models vanilla OM behavior where garbage is only cleared in rows with at least one atom; atoms in empty rows always invalidate the polymer.
+    // This case only occurs in disjoint polymers, as otherwise every row will be occupied by at least one atom.
+    for (size_t i = 0; i < rows; ++i) {
+        if (io->row_min_u[i] == INT32_MAX && io->row_max_u[i] == INT32_MIN) {
+            io->row_min_u[i] = INT32_MIN;
+            io->row_max_u[i] = INT32_MAX;
+        }
+    }
     return true;
 }
 
