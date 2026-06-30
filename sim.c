@@ -1657,32 +1657,17 @@ static bool is_ignored_output_position(struct input_output *io, struct vector po
     return pos.u < io->row_min_u[row] || pos.u > io->row_max_u[row];
 }
 
-static void consume_output(struct solution *solution, struct board *board, struct input_output *io, int output_index)
+static void consume_single_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, bool fail_on_wrong_output, bool fail_on_wrong_bonds, struct mechanism m, struct molecule *molecule)
 {
-    bool fail_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
-    bool fail_on_wrong_bonds = board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index);
     bool wrong_output = false;
     bool wrong_bonds = false;
-    bool repeating = io->type & REPEATING_OUTPUT;
 
-    struct mechanism m = { 0, io->atoms[io->center_atom_index].position };
-    struct molecule *molecule = get_molecule(board, get_atom(board, m, 0, 0));
-
-    if (!repeating && molecule->size != io->number_of_atoms)
-        return;
-    int ignorable_atoms = repeating ? molecule->size - (io->number_of_atoms - io->number_of_placeholders) : 0;
-    if (ignorable_atoms < 0)
+    if (molecule->size != io->number_of_atoms)
         return;
 
     for (uint32_t i = 0; i < molecule->size; ++i) {
         struct atom_ref_at_position a = molecule->atoms[i];
-        if (repeating && is_ignored_output_position(io, a.position)) {
-            --ignorable_atoms;
-            if (ignorable_atoms < 0)
-                return;
-            continue;
-        }
-        if (!repeating && (*a.atom & GRABBED))
+        if (*a.atom & GRABBED)
             return;
         atom target = 0;
         for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
@@ -1695,7 +1680,62 @@ static void consume_output(struct solution *solution, struct board *board, struc
             return;
         atom differences = *a.atom ^ target;
 
-        if ((differences & REAL_BONDS) && repeating && !wrong_bonds) {
+        wrong_output = wrong_output || ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT));
+        wrong_bonds = wrong_bonds || (differences & REAL_BONDS);
+        if (!(fail_on_wrong_output || fail_on_wrong_bonds) && (wrong_output || wrong_bonds))
+            return;
+    }
+
+    if (fail_on_wrong_output && wrong_output) {
+        report_collision(board, io->atoms[0].position, "output didn't match");
+        board->wrong_output_index = output_index;
+    }
+    if (fail_on_wrong_bonds && wrong_bonds) {
+        report_collision(board, io->atoms[0].position, "output bonds didn't match");
+        board->wrong_output_index = output_index;
+    }
+    if (wrong_output || wrong_bonds)
+        return;
+
+    // if the output is a match remove the output and increment the output counter.
+    for (uint32_t i = 0; i < molecule->size; ++i) {
+        struct atom_ref_at_position a = molecule->atoms[i];
+        if (*a.atom & HAS_DISJOINT_BOND)
+            remove_disjoint_bond(&board->disjoint_bond_table, a.position);
+    }
+    remove_molecule(board, molecule);
+    io->number_of_outputs++;
+}
+
+static void check_repeating_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, bool fail_on_wrong_output, bool fail_on_wrong_bonds, struct mechanism m, struct molecule *molecule)
+{
+    bool wrong_output = false;
+    bool wrong_bonds = false;
+
+    int ignorable_atoms = molecule->size - (io->number_of_atoms - io->number_of_placeholders);
+    if (ignorable_atoms < 0)
+        return;
+
+    for (uint32_t i = 0; i < molecule->size; ++i) {
+        struct atom_ref_at_position a = molecule->atoms[i];
+        if (is_ignored_output_position(io, a.position)) {
+            --ignorable_atoms;
+            if (ignorable_atoms < 0)
+                return;
+            continue;
+        }
+        atom target = 0;
+        for (uint32_t j = 0; j < io->number_of_atoms; ++j) {
+            if (vectors_equal(a.position, io->atoms[j].position)) {
+                target = io->atoms[j].atom;
+                break;
+            }
+        }
+        if (!target)
+            return;
+        atom differences = *a.atom ^ target;
+
+        if ((differences & REAL_BONDS) && !wrong_bonds) {
             // bonds that lead to an ignored position are allowed
             for (int dir = 0; dir < 6; ++dir) {
                 struct vector d = u_offset_for_direction(dir);
@@ -1722,19 +1762,26 @@ static void consume_output(struct solution *solution, struct board *board, struc
     if (wrong_output || wrong_bonds)
         return;
 
-    // if the output is a match remove the output and increment the output counter.
+    // if the polymer output is fully matched (all 6 monomers) set the output count to the target output count
+    io->number_of_outputs = REPEATING_OUTPUT_REPETITIONS * io->outputs_per_repetition;
+    // and match looping chains for infinite polymers
+    if (board->chain_mode == EXTEND_CHAIN)
+        match_repeating_output_with_chain_atoms(board, io);
+}
+
+static void consume_output(struct solution *solution, struct board *board, struct input_output *io, int output_index)
+{
+    bool fail_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
+    bool fail_on_wrong_bonds = board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index);
+    bool repeating = io->type & REPEATING_OUTPUT;
+
+    struct mechanism m = { 0, io->atoms[io->center_atom_index].position };
+    struct molecule *molecule = get_molecule(board, get_atom(board, m, 0, 0));
+
     if (repeating) {
-        io->number_of_outputs = REPEATING_OUTPUT_REPETITIONS * io->outputs_per_repetition;
-        if (board->chain_mode == EXTEND_CHAIN)
-            match_repeating_output_with_chain_atoms(board, io);
+        check_repeating_output(solution, board, io, output_index, fail_on_wrong_output, fail_on_wrong_bonds, m, molecule);
     } else {
-        for (uint32_t i = 0; i < molecule->size; ++i) {
-            struct atom_ref_at_position a = molecule->atoms[i];
-            if (*a.atom & HAS_DISJOINT_BOND)
-                remove_disjoint_bond(&board->disjoint_bond_table, a.position);
-        }
-        remove_molecule(board, molecule);
-        io->number_of_outputs++;
+        consume_single_output(solution, board, io, output_index, fail_on_wrong_output, fail_on_wrong_bonds, m, molecule);
     }
 }
 
