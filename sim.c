@@ -1659,8 +1659,10 @@ static bool is_ignored_output_position(struct input_output *io, struct vector po
     return pos.u < io->row_min_u[row] || (io->row_max_u[row] != INT32_MAX && pos.u > (io->row_max_u[row] + (monomer_count-1) * io->monomer_width));
 }
 
-static void consume_single_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, bool fail_on_wrong_output, bool fail_on_wrong_bonds, struct mechanism m, struct molecule *molecule)
+static void consume_single_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, struct molecule *molecule)
 {
+    bool fail_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
+    bool fail_on_wrong_bonds = board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index);
     bool wrong_output = false;
     bool wrong_bonds = false;
 
@@ -1709,11 +1711,8 @@ static void consume_single_output(struct solution *solution, struct board *board
     io->number_of_outputs++;
 }
 
-static void check_repeating_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, bool fail_on_wrong_output, bool fail_on_wrong_bonds, struct mechanism m, struct molecule *molecule)
+static void check_repeating_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, struct molecule *molecule)
 {
-    bool wrong_output = false;
-    bool wrong_bonds = false;
-
     // How many repetitions of the polymer we're matching against
     // Current highest number of validated monomers is equal to io->number_of_outputs / io->outputs_per_repetition
     // we start checking from one above the current highest validated count
@@ -1770,7 +1769,7 @@ static void check_repeating_output(struct solution *solution, struct board *boar
                 return;
             atom differences = *a.atom ^ target;
 
-            if ((differences & REAL_BONDS) && !wrong_bonds) {
+            if (differences & REAL_BONDS) {
                 // bonds that lead to an ignored position are allowed
                 // This currently doesn't validate surg polymers properly, since we incorrectly expect floating bonds to empty but non-ignored positions
                 // (corresponding to atoms in monomers before and after the first and last expected monomer)
@@ -1782,23 +1781,11 @@ static void check_repeating_output(struct solution *solution, struct board *boar
                 }
             }
 
-            wrong_output = wrong_output || ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT));
-            wrong_bonds = wrong_bonds || (differences & REAL_BONDS);
-            if (!(fail_on_wrong_output || fail_on_wrong_bonds) && (wrong_output || wrong_bonds))
+            if ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT))
+                return;
+            if (differences & REAL_BONDS)
                 return;
         }
-
-        if (fail_on_wrong_output && wrong_output) {
-            report_collision(board, io->atoms[0].position, "output didn't match");
-            board->wrong_output_index = output_index;
-        }
-        if (fail_on_wrong_bonds && wrong_bonds) {
-            report_collision(board, io->atoms[0].position, "output bonds didn't match");
-            board->wrong_output_index = output_index;
-        }
-        if (wrong_output || wrong_bonds)
-            return;
-
         // if we validated an extra monomer, set the output count
         io->number_of_outputs = monomer_count * io->outputs_per_repetition;
     }
@@ -1806,18 +1793,12 @@ static void check_repeating_output(struct solution *solution, struct board *boar
 
 static void consume_output(struct solution *solution, struct board *board, struct input_output *io, int output_index)
 {
-    bool fail_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
-    bool fail_on_wrong_bonds = board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index);
-    bool repeating = io->type & REPEATING_OUTPUT;
-
     struct mechanism m = { 0, io->atoms[io->center_atom_index].position };
     struct molecule *molecule = get_molecule(board, get_atom(board, m, 0, 0));
-
-    if (repeating) {
-        check_repeating_output(solution, board, io, output_index, fail_on_wrong_output, fail_on_wrong_bonds, m, molecule);
-    } else {
-        consume_single_output(solution, board, io, output_index, fail_on_wrong_output, fail_on_wrong_bonds, m, molecule);
-    }
+    if (io->type & REPEATING_OUTPUT)
+        check_repeating_output(solution, board, io, output_index, molecule);
+    else
+        consume_single_output(solution, board, io, output_index, molecule);
 }
 
 static void consume_outputs(struct solution *solution, struct board *board)

@@ -721,6 +721,7 @@ static bool repeat_molecule(struct input_output *io, const char **error)
             // skip non-adjacent atoms
             if (direction < 0)
                 continue;
+            // draw a line between adjacent atoms, marking all rows the line crosses.
             struct vector p = polymer_position_from_global_position(io, io->original_atoms[i].position);
             struct vector q = polymer_position_from_global_position(io, io->original_atoms[j].position);
             if (p.v > q.v) {
