@@ -1659,7 +1659,7 @@ static bool is_ignored_output_position(struct input_output *io, struct vector po
     return pos.u < io->row_min_u[row] || (io->row_max_u[row] != INT32_MAX && pos.u > (io->row_max_u[row] + (monomer_count-1) * io->monomer_width));
 }
 
-static void consume_single_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, struct molecule *molecule)
+static void consume_single_output(struct board *board, struct input_output *io, int output_index, struct molecule *molecule)
 {
     bool fail_on_wrong_output = board->fails_on_wrong_output_mask & (1ULL << io->puzzle_index);
     bool fail_on_wrong_bonds = board->fails_on_wrong_output_bonds_mask & (1ULL << io->puzzle_index);
@@ -1711,7 +1711,7 @@ static void consume_single_output(struct solution *solution, struct board *board
     io->number_of_outputs++;
 }
 
-static bool check_repeating_output_at_size(struct solution *solution, struct board *board, struct input_output *io, int output_index, struct molecule *molecule, uint32_t monomer_count)
+static bool check_repeating_output_at_monomer_count(struct board *board, struct input_output *io, struct molecule *molecule, uint32_t monomer_count)
 {
     // The number of atoms above the target molecule size
     // we decrement if an atom isn't part of the target molecule, and if it's ever below 0 then the molecule is too small
@@ -1775,7 +1775,7 @@ static bool check_repeating_output_at_size(struct solution *solution, struct boa
     return true;
 }
 
-static void check_repeating_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, struct molecule *molecule)
+static void check_repeating_output(struct board *board, struct input_output *io, struct molecule *molecule)
 {
     // How many repetitions of the polymer we're matching against
     // Current highest number of validated monomers is equal to io->number_of_outputs / io->outputs_per_repetition
@@ -1784,27 +1784,27 @@ static void check_repeating_output(struct solution *solution, struct board *boar
 
     // match looping chains for infinite polymers if the first 6 products have been completed and are present this cycle
     // TODO does checking this every cycle degrade performance? also does not checking this on the first cycle a polymer completes cause any issues?
-    if (board->chain_mode == EXTEND_CHAIN && monomer_count >= REPEATING_OUTPUT_REPETITIONS+1 && check_repeating_output_at_size(solution, board, io, output_index, molecule, REPEATING_OUTPUT_REPETITIONS))
+    if (board->chain_mode == EXTEND_CHAIN && monomer_count >= REPEATING_OUTPUT_REPETITIONS+1 && check_repeating_output_at_monomer_count(board, io, molecule, REPEATING_OUTPUT_REPETITIONS))
         match_repeating_output_with_chain_atoms(board, io);
 
     // Repeatedly check increasing number of monomers until a match fails
     // This currently doesn't handle an edge case in surg polymer validation
     // where the game will run all of the first 6 monomer checks even if some fail, resulting in surg polymers validating in-game when they otherwise wouldn't
-    while (check_repeating_output_at_size(solution, board, io, output_index, molecule, monomer_count)) {
+    while (check_repeating_output_at_monomer_count(board, io, molecule, monomer_count)) {
         // if we validated an extra monomer, set the output count
         io->number_of_outputs = monomer_count * io->outputs_per_repetition;
         monomer_count++;
     }
 }
 
-static void consume_output(struct solution *solution, struct board *board, struct input_output *io, int output_index)
+static void consume_output(struct board *board, struct input_output *io, int output_index)
 {
     struct mechanism m = { 0, io->atoms[io->center_atom_index].position };
     struct molecule *molecule = get_molecule(board, get_atom(board, m, 0, 0));
     if (io->type & REPEATING_OUTPUT)
-        check_repeating_output(solution, board, io, output_index, molecule);
+        check_repeating_output(board, io, molecule);
     else
-        consume_single_output(solution, board, io, output_index, molecule);
+        consume_single_output(board, io, output_index, molecule);
 }
 
 static void consume_outputs(struct solution *solution, struct board *board)
@@ -1812,7 +1812,7 @@ static void consume_outputs(struct solution *solution, struct board *board)
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (io->type & OUTPUT)
-            consume_output(solution, board, io, i);
+            consume_output(board, io, i);
     }
 }
 
