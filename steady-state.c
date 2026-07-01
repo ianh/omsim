@@ -378,20 +378,16 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                     repeating_periods = divisor;
                 }
             }
-            uint64_t original_number_of_cycles = result.number_of_cycles;
+            uint64_t additional_cycles_to_run = 0;
             if (repeating_outputs < result.number_of_outputs * repeating_periods) {
                 uint64_t d = gcd(repeating_outputs, repeating_periods);
                 repeating_outputs /= d;
                 repeating_periods /= d;
                 result.number_of_outputs = repeating_outputs;
+                additional_cycles_to_run = result.number_of_cycles * (repeating_periods - 1);
                 result.number_of_cycles *= repeating_periods;
                 if (repeating_periods % 2 == 0)
                     result.pivot_parity = false;
-            }
-            // Run additional cycles up to the new cycle-per-loop count if it increased, to ensure polymer output cycles are properly recorded post-looping for output_intervals
-            for (uint64_t i = original_number_of_cycles; i < result.number_of_cycles && !board->collision; ++i) {
-                // printf("last sim cycle %llu (%llu / %llu)\n", board->cycle, i, result.number_of_cycles);
-                cycle(solution, board);
             }
             if (board->area_growth_order == GROWTH_LINEAR) {
                 uint64_t linear_area_growth = 0;
@@ -487,6 +483,9 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 double cycles_scale_factor = result.number_of_cycles / repetition_period_length;
                 result.quadratic_area_growth *= cycles_scale_factor * cycles_scale_factor;
             }
+            // Run additional cycles up to the new cycle-per-loop count if it increased, to ensure polymer output cycles are properly recorded post-looping for output_intervals
+            for (uint64_t i = 0; i < additional_cycles_to_run && !board->collision; ++i)
+                cycle(solution, board);
             destroy_snapshot(&snapshot);
             return result;
         }
