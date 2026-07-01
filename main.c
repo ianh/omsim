@@ -168,6 +168,8 @@ int main(int argc, char *argv[])
                 printf("output intervals: ");
                 int n = verifier_number_of_output_intervals(verifier);
                 int r = verifier_output_intervals_repeat_after(verifier);
+                if (r < 0)
+                    r = n;
                 if (verifier_error(verifier)) {
                     print_verifier_error(verifier);
                     retval = -1;
