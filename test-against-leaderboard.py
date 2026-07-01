@@ -95,4 +95,4 @@ for path in leaderboard.rglob('*.json'):
         else:
             print(puzzle_path, solution_path, metric, measured, expected)
     lv.verifier_destroy(c_void_p(v))
-print(f'{valid}/{total} leaderboard solutions match libverify measurements')
+print(f'{valid}/{total} recorded metrics match libverify measurements')
