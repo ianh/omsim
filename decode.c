@@ -610,6 +610,9 @@ static bool repeat_molecule(struct input_output *io, const char **error)
         return false;
     }
     struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
+
+    io->monomer_width = polymer_position_from_global_position(io, placeholder.position).u;
+
     struct vector offset = placeholder.position;
     offset.u -= io->repetition_origin.u;
     offset.v -= io->repetition_origin.v;
@@ -690,6 +693,7 @@ static bool repeat_molecule(struct input_output *io, const char **error)
         io->row_min_u[i] = INT32_MAX;
         io->row_max_u[i] = INT32_MIN;
     }
+    // Fix up bonds between adjacent atoms in different monomers
     for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
         if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
             continue;
@@ -698,13 +702,27 @@ static bool repeat_molecule(struct input_output *io, const char **error)
                 continue;
             struct vector d = { io->atoms[j].position.u - io->atoms[i].position.u, io->atoms[j].position.v - io->atoms[i].position.v };
             int direction = direction_for_offset(d);
+            // skip non-adjacent atoms
             if (direction < 0)
                 continue;
             // fix up bonds between adjacent atoms.
             io->atoms[j].atom |= rotate_bond_bits(io->atoms[i].atom & (BOND_LOW_BITS << direction), 3);
-            // draw a line between adjacent atoms, marking all rows the line crosses.
-            struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
-            struct vector q = polymer_position_from_global_position(io, io->atoms[j].position);
+        }
+    }
+    // Determine min/max u within the first monomer for each row
+    for (uint32_t i = 0; i < io->number_of_original_atoms-1; ++i) {
+        if (io->original_atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            continue;
+        for (uint32_t j = i + 1; j < io->number_of_original_atoms-1; ++j) {
+            if (io->original_atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+                continue;
+            struct vector d = { io->original_atoms[j].position.u - io->original_atoms[i].position.u, io->original_atoms[j].position.v - io->original_atoms[i].position.v };
+            int direction = direction_for_offset(d);
+            // skip non-adjacent atoms
+            if (direction < 0)
+                continue;
+            struct vector p = polymer_position_from_global_position(io, io->original_atoms[i].position);
+            struct vector q = polymer_position_from_global_position(io, io->original_atoms[j].position);
             if (p.v > q.v) {
                 struct vector tmp = p;
                 p = q;
@@ -719,7 +737,7 @@ static bool repeat_molecule(struct input_output *io, const char **error)
                     io->row_max_u[row] = u;
             }
         }
-        struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
+        struct vector p = polymer_position_from_global_position(io, io->original_atoms[i].position);
         size_t row = p.v - io->min_v;
         if (p.u < io->row_min_u[row])
             io->row_min_u[row] = p.u;
@@ -1010,7 +1028,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->number_of_atoms = 0;
             io->repetition_origin = m.position;
             io->repetition_direction_u = (struct vector){ placeholder->position.u - m.position.u, placeholder->position.v - m.position.v };
-            int32_t divisor = gcd(io->repetition_direction_u.u, io->repetition_direction_u.v);
+            int32_t divisor = abs(gcd(io->repetition_direction_u.u, io->repetition_direction_u.v));
             if (divisor == 0) {
                 *error = "solution contains a repetition placeholder at the origin";
                 destroy(solution, 0);

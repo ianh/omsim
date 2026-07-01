@@ -324,8 +324,13 @@ struct input_output {
     // these arrays each have length (max_v - min_v + 1).  row_min_u[i] is the
     // minimum output u coordinate for the row where v = min_v + i, and
     // row_max_u[i] is the corresponding maximum coordinate for that row.
+    // these coordinates are relative to the first monomer,
+    // so the maximum coordinates must be offset by monomer_width * the number of additional monomers that are present.
     int32_t *row_min_u;
     int32_t *row_max_u;
+
+    // size of one monomer on the u axis.
+    int32_t monomer_width;
 };
 
 #define CABINET_MAP_SIZE 32
