@@ -671,64 +671,54 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.error.source = verifier_error_source_simulation;
     }
 
-    // output intervals are currently unsupported for puzzles with polymers.
-    bool output_intervals_supported = true;
-    for (size_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
-        if (solution.inputs_and_outputs[i].type & REPEATING_OUTPUT) {
-            output_intervals_supported = false;
-            break;
+    v->output_intervals = calloc(board.number_of_output_cycles, sizeof(uint64_t));
+    for (uint64_t i = 0; i < board.number_of_output_cycles; ++i)
+        v->output_intervals[i] = board.output_cycles[i];
+    v->number_of_output_intervals = board.number_of_output_cycles;
+
+    // if the solution enters a steady state, outputs repeat during the steady state period.
+    if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
+        for (size_t i = 0; i < v->number_of_output_intervals; ++i) {
+            if (v->output_intervals[i] > steady_state.outputs_repeat_after_cycle) {
+                v->output_intervals_repeat_after = i;
+                break;
+            }
         }
     }
-    if (output_intervals_supported) {
-        v->output_intervals = calloc(board.number_of_output_cycles, sizeof(uint64_t));
-        for (uint64_t i = 0; i < board.number_of_output_cycles; ++i)
-            v->output_intervals[i] = board.output_cycles[i];
-        v->number_of_output_intervals = board.number_of_output_cycles;
 
-        // if the solution enters a steady state, outputs repeat during the steady state period.
-        if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
-            for (size_t i = 0; i < v->number_of_output_intervals; ++i) {
-                if (v->output_intervals[i] > steady_state.outputs_repeat_after_cycle) {
-                    v->output_intervals_repeat_after = i;
+    // during measurement, the intervals are actually absolute cycles.  fix that
+    // up here as a post-processing pass.
+    int last = 0;
+    for (int i = 0; i < v->number_of_output_intervals; ++i) {
+        int delta = v->output_intervals[i] - last;
+        last = v->output_intervals[i];
+        v->output_intervals[i] = delta;
+    }
+
+    int cycle_start = v->output_intervals_repeat_after;
+    int n = v->number_of_output_intervals - cycle_start;
+    if (v->output_intervals_repeat_after > 0 && n > 0) {
+        // eliminate extra repetitions within the repeating range.
+        for (int i = 1; i <= n / 2; ++i) {
+            if ((n % i) != 0)
+                continue;
+            bool repeating = true;
+            for (int j = 0; j < n; ++j) {
+                if (v->output_intervals[cycle_start + j] != v->output_intervals[cycle_start + (j % i)]) {
+                    repeating = false;
                     break;
                 }
             }
-        }
-
-        // during measurement, the intervals are actually absolute cycles.  fix that
-        // up here as a post-processing pass.
-        int last = 0;
-        for (int i = 0; i < v->number_of_output_intervals; ++i) {
-            int delta = v->output_intervals[i] - last;
-            last = v->output_intervals[i];
-            v->output_intervals[i] = delta;
-        }
-
-        int cycle_start = v->output_intervals_repeat_after;
-        int n = v->number_of_output_intervals - cycle_start;
-        if (v->output_intervals_repeat_after > 0 && n > 0) {
-            // eliminate extra repetitions within the repeating range.
-            for (int i = 1; i <= n / 2; ++i) {
-                if ((n % i) != 0)
-                    continue;
-                bool repeating = true;
-                for (int j = 0; j < n; ++j) {
-                    if (v->output_intervals[cycle_start + j] != v->output_intervals[cycle_start + (j % i)]) {
-                        repeating = false;
-                        break;
-                    }
-                }
-                if (repeating) {
-                    v->number_of_output_intervals = cycle_start + i;
-                    n = i;
-                    break;
-                }
+            if (repeating) {
+                v->number_of_output_intervals = cycle_start + i;
+                n = i;
+                break;
             }
-            // eliminate extra repetitions before the repeating range.
-            while (v->number_of_output_intervals > 0 && v->output_intervals_repeat_after > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
-                v->output_intervals_repeat_after--;
-                v->number_of_output_intervals--;
-            }
+        }
+        // eliminate extra repetitions before the repeating range.
+        while (v->number_of_output_intervals > 0 && v->output_intervals_repeat_after > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
+            v->output_intervals_repeat_after--;
+            v->number_of_output_intervals--;
         }
     }
     check_wrong_output_and_destroy(v, &solution, &board);

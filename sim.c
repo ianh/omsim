@@ -1643,7 +1643,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
         io->maximum_feed_rate = maximum_feed_rate;
 }
 
-static bool is_ignored_output_position(struct input_output *io, struct vector pos)
+static bool is_ignored_output_position(struct input_output *io, struct vector pos, int32_t monomer_count)
 {
     pos = polymer_position_from_global_position(io, pos);
     // atoms cannot appear outside the vertical bounds of the
@@ -1654,7 +1654,9 @@ static bool is_ignored_output_position(struct input_output *io, struct vector po
     // product.  the row_min_v and row_max_v arrays track the
     // disallowed range of positions for each row.
     size_t row = pos.v - io->min_v;
-    return pos.u < io->row_min_u[row] || pos.u > io->row_max_u[row];
+    // max u is offset by the number of extra monomers past the first, to get the u coordinate of the rightmost atom in the rightmost monomer.
+    // we skip doing this in the case where max u is INT32_MAX to avoid overflow - this case indicates that the row is entirely empty and should never be ignored.
+    return pos.u < io->row_min_u[row] || (io->row_max_u[row] != INT32_MAX && pos.u > (io->row_max_u[row] + (monomer_count-1) * io->monomer_width));
 }
 
 static void consume_single_output(struct solution *solution, struct board *board, struct input_output *io, int output_index, bool fail_on_wrong_output, bool fail_on_wrong_bonds, struct mechanism m, struct molecule *molecule)
@@ -1713,88 +1715,93 @@ static void check_repeating_output(struct solution *solution, struct board *boar
     bool wrong_bonds = false;
 
     // How many repetitions of the polymer we're matching against
-    // TODO repeatedly increase until we fail to match, then set output count to highest successful match
-    uint32_t monomer_count = REPEATING_OUTPUT_REPETITIONS;
+    // Current highest number of validated monomers is equal to io->number_of_outputs / io->outputs_per_repetition
+    // we start checking from one above the current highest validated count
+    uint32_t monomer_count = 1 + io->number_of_outputs / io->outputs_per_repetition;
 
-    // The number of atoms above the target molecule size
-    // we decrement if an atom isn't part of the target molecule, and if it's ever below 0 then the molecule is too small
-    int ignorable_atoms = molecule->size - monomer_count*(io->number_of_original_atoms - 1);
-    if (ignorable_atoms < 0)
-        return;
+    // match looping chains for infinite polymers if the first 6 products have been completed
+    // TODO does checking this every cycle degrade performance? also does not checking this on the first cycle a polymer completes cause any issues?
+    if (monomer_count >= 7 && board->chain_mode == EXTEND_CHAIN)
+        match_repeating_output_with_chain_atoms(board, io);
 
-    struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
-    int32_t monomer_width_in_polymer_space = polymer_position_from_global_position(io, placeholder.position).u;
+    // Repeatedly check increasing number of monomers until a match fails
+    // This currently doesn't handle an edge case in surg polymer validation
+    // where the game will run all of the first 6 monomer checks even if some fail, resulting in surg polymers validating in-game when they otherwise wouldn't
+    for(;; monomer_count++) {
+        // The number of atoms above the target molecule size
+        // we decrement if an atom isn't part of the target molecule, and if it's ever below 0 then the molecule is too small
+        int ignorable_atoms = molecule->size - monomer_count*(io->number_of_original_atoms - 1);
+        if (ignorable_atoms < 0)
+            return;
 
-    for (uint32_t i = 0; i < molecule->size; ++i) {
-        struct atom_ref_at_position a = molecule->atoms[i];
-        if (is_ignored_output_position(io, a.position)) { // TODO ignored output position depends on monomer count; currently assumes 6
-            --ignorable_atoms;
-            if (ignorable_atoms < 0)
-                return;
-            continue;
-        }
-        atom target = 0;
-        for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
-            // look at the atom in the second monomer so the bonds are correct.
-            // relies on io->atoms and io->original_atoms having the same order.
-            struct atom_at_position monomer_atom = io->atoms[j + (io->number_of_original_atoms - 1)];
+        for (uint32_t i = 0; i < molecule->size; ++i) {
+            struct atom_ref_at_position a = molecule->atoms[i];
+            if (is_ignored_output_position(io, a.position, monomer_count)) {
+                --ignorable_atoms;
+                if (ignorable_atoms < 0)
+                    return;
+                continue;
+            }
+            atom target = 0;
+            for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
+                // look at the atom in the second monomer so the bonds are correct.
+                // relies on io->atoms and io->original_atoms having the same order.
+                struct atom_at_position monomer_atom = io->atoms[j + (io->number_of_original_atoms - 1)];
 
-            struct vector atom_position_polymer_space = polymer_position_from_global_position(io, a.position);
-            struct vector monomer_atom_position_polymer_space = polymer_position_from_global_position(io, monomer_atom.position);
+                struct vector atom_position_polymer_space = polymer_position_from_global_position(io, a.position);
+                struct vector monomer_atom_position_polymer_space = polymer_position_from_global_position(io, monomer_atom.position);
 
-            // Compare horizontal position (in polymer space) modulo the monomer width, so we match any possible position of a monomer within the polymer
-            // (Vertical position is compared as normal)
-            if ((atom_position_polymer_space.u - monomer_atom_position_polymer_space.u) % monomer_width_in_polymer_space == 0 && atom_position_polymer_space.v == monomer_atom_position_polymer_space.v) {
-                // which monomer the current atom is in
-                // index is offset by 1 since we're comparing against the second monomer in the output molecule, and we want index relative to the first monomer
-                int32_t monomer_index = 1 + (atom_position_polymer_space.u - monomer_atom_position_polymer_space.u) / monomer_width_in_polymer_space;
-                // Check that this atom is actually part of a monomer in the n-mer that we're considering, and not a future monomer, or before the first monomer.
-                // This check should only fail in surg polymers, where an atom from monomer `n+1` appears directly to the left of an atom from monomer `n`.
-                // In all other cases out-of-bounds monomers will already be ignored by the is_ignored_output_position check.
-                if (monomer_index >= 0 && monomer_index < monomer_count) {
-                    target = monomer_atom.atom;
-                    break;
+                // Compare horizontal position (in polymer space) modulo the monomer width, so we match any possible position of a monomer within the polymer
+                // (Vertical position is compared as normal)
+                if ((atom_position_polymer_space.u - monomer_atom_position_polymer_space.u) % io->monomer_width == 0 && atom_position_polymer_space.v == monomer_atom_position_polymer_space.v) {
+                    // which monomer the current atom is in
+                    // index is offset by 1 since we're comparing against the second monomer in the output molecule, and we want index relative to the first monomer
+                    int32_t monomer_index = 1 + (atom_position_polymer_space.u - monomer_atom_position_polymer_space.u) / io->monomer_width;
+                    // Check that this atom is actually part of a monomer in the n-mer that we're considering, and not a future monomer, or before the first monomer.
+                    // This check should only fail in surg polymers, where an atom from monomer `n+1` appears directly to the left of an atom from monomer `n`.
+                    // In all other cases out-of-bounds monomers will already be ignored by the is_ignored_output_position check.
+                    if (monomer_index >= 0 && monomer_index < monomer_count) {
+                        target = monomer_atom.atom;
+                        break;
+                    }
                 }
             }
-        }
-        if (!target)
-            return;
-        atom differences = *a.atom ^ target;
+            if (!target)
+                return;
+            atom differences = *a.atom ^ target;
 
-        if ((differences & REAL_BONDS) && !wrong_bonds) {
-            // bonds that lead to an ignored position are allowed
-            // This currently doesn't validate surg polymers properly, since we incorrectly expect floating bonds to empty but non-ignored positions
-            // (corresponding to atoms in monomers before and after the first and last expected monomer)
-            for (int dir = 0; dir < 6; ++dir) {
-                struct vector d = u_offset_for_direction(dir);
-                struct vector neighbor = { a.position.u + d.u, a.position.v + d.v };
-                if (is_ignored_output_position(io, neighbor))
-                    differences &= ~(BOND_LOW_BITS << dir);
+            if ((differences & REAL_BONDS) && !wrong_bonds) {
+                // bonds that lead to an ignored position are allowed
+                // This currently doesn't validate surg polymers properly, since we incorrectly expect floating bonds to empty but non-ignored positions
+                // (corresponding to atoms in monomers before and after the first and last expected monomer)
+                for (int dir = 0; dir < 6; ++dir) {
+                    struct vector d = u_offset_for_direction(dir);
+                    struct vector neighbor = { a.position.u + d.u, a.position.v + d.v };
+                    if (is_ignored_output_position(io, neighbor, monomer_count))
+                        differences &= ~(BOND_LOW_BITS << dir);
+                }
             }
+
+            wrong_output = wrong_output || ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT));
+            wrong_bonds = wrong_bonds || (differences & REAL_BONDS);
+            if (!(fail_on_wrong_output || fail_on_wrong_bonds) && (wrong_output || wrong_bonds))
+                return;
         }
 
-        wrong_output = wrong_output || ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT));
-        wrong_bonds = wrong_bonds || (differences & REAL_BONDS);
-        if (!(fail_on_wrong_output || fail_on_wrong_bonds) && (wrong_output || wrong_bonds))
+        if (fail_on_wrong_output && wrong_output) {
+            report_collision(board, io->atoms[0].position, "output didn't match");
+            board->wrong_output_index = output_index;
+        }
+        if (fail_on_wrong_bonds && wrong_bonds) {
+            report_collision(board, io->atoms[0].position, "output bonds didn't match");
+            board->wrong_output_index = output_index;
+        }
+        if (wrong_output || wrong_bonds)
             return;
-    }
 
-    if (fail_on_wrong_output && wrong_output) {
-        report_collision(board, io->atoms[0].position, "output didn't match");
-        board->wrong_output_index = output_index;
+        // if we validated an extra monomer, set the output count
+        io->number_of_outputs = monomer_count * io->outputs_per_repetition;
     }
-    if (fail_on_wrong_bonds && wrong_bonds) {
-        report_collision(board, io->atoms[0].position, "output bonds didn't match");
-        board->wrong_output_index = output_index;
-    }
-    if (wrong_output || wrong_bonds)
-        return;
-
-    // if the polymer output is fully matched (all 6 monomers) set the output count to the target output count
-    io->number_of_outputs = REPEATING_OUTPUT_REPETITIONS * io->outputs_per_repetition;
-    // and match looping chains for infinite polymers
-    if (board->chain_mode == EXTEND_CHAIN)
-        match_repeating_output_with_chain_atoms(board, io);
 }
 
 static void consume_output(struct solution *solution, struct board *board, struct input_output *io, int output_index)
