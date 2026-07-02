@@ -803,13 +803,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
         }
         uint32_t mechanism_type = decode_mechanism_type(sf->parts[i].name);
         if (mechanism_type & ANY_ARM) {
-            if (sf->parts[i].size > 3) {
-                *error = "solution contains a too-long arm";
-                return false;
-            } else if (sf->parts[i].size < 1) {
-                *error = "solution contains a zero-length arm";
-                return false;
-            }
+            if (sf->parts[i].size > 3)
+                sf->parts[i].size = 3;
+            else if (sf->parts[i].size < 1)
+                sf->parts[i].size = 1;
             number_of_arms++;
         } else if (mechanism_type & ANY_GLYPH)
             number_of_glyphs++;
