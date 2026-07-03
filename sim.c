@@ -1588,7 +1588,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
         // relies on io->atoms and io->original_atoms having the same order.
         struct atom_at_position output = io->atoms[i + io->number_of_original_atoms - 1];
         uint32_t repeats_after = UINT32_MAX;
-        for (uint32_t j = REPEATING_OUTPUT_REPETITIONS; j < repeats_after; ++j) {
+        for (uint32_t j = 0; j < repeats_after; ++j) {
             struct vector p = output.position;
             p.u += j * offset.u;
             p.v += j * offset.v;
