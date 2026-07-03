@@ -1782,9 +1782,9 @@ static void check_repeating_output(struct board *board, struct input_output *io,
     // we start checking from one above the current highest validated count
     uint32_t monomer_count = 1 + io->number_of_outputs / io->outputs_per_repetition;
 
-    // match looping chains for infinite polymers if the first 6 products have been completed and are present this cycle
-    // TODO does checking this every cycle degrade performance? also does not checking this on the first cycle a polymer completes cause any issues?
-    if (board->chain_mode == EXTEND_CHAIN && monomer_count >= REPEATING_OUTPUT_REPETITIONS+1 && check_repeating_output_at_monomer_count(board, io, molecule, REPEATING_OUTPUT_REPETITIONS))
+    // match looping chains for infinite polymers
+    // TODO does checking this every cycle degrade performance?
+    if (board->chain_mode == EXTEND_CHAIN)
         match_repeating_output_with_chain_atoms(board, io);
 
     // Repeatedly check increasing number of monomers until a match fails
