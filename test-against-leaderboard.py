@@ -52,7 +52,7 @@ leaderboard_metrics = {
 }
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
-lv = cdll.LoadLibrary("libverify.so")
+lv = cdll.LoadLibrary("./libverify.so")
 lv.verifier_create.restype = c_void_p
 lv.verifier_error.restype = c_char_p
 lv.verifier_evaluate_approximate_metric.restype = c_double
