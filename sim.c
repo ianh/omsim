@@ -2040,7 +2040,7 @@ uint8_t cabinet_for_position(struct solution *solution, struct vector position)
 
 void initial_setup(struct solution *solution, struct board *board, uint32_t initial_board_size)
 {
-    board->overlap = solution->track_self_overlap;
+    board->overlap = solution->track_overlap;
     board->half_cycle = 1;
     board->wrong_output_index = SIZE_MAX;
     // initialize the board array / hash table.

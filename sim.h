@@ -364,6 +364,9 @@ struct solution {
 
     // overlapping track is impossible to detect after a solution is decoded, so
     // the decoder sets this flag if it sees any.
+    uint64_t track_overlap;
+    // track self-overlap is specifically when a single track part has two hexes
+    // at the same location.
     uint64_t track_self_overlap;
 
     struct conduit *conduits;

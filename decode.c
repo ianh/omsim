@@ -928,9 +928,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             bool end_overlapped = false;
             for (int32_t j = part.number_of_track_hexes - 1; part.number_of_track_hexes > 0 && j >= -1; --j) {
                 struct solution_hex_offset hex;
-                if (j != -1)
+                if (j != -1) {
                     hex = part.track_hexes[j];
-                else {
+                    for (int32_t k = j + 1; k < part.number_of_track_hexes; ++k) {
+                        if (hex.offset[0] == part.track_hexes[k].offset[0] && hex.offset[1] == part.track_hexes[k].offset[1])
+                            solution->track_self_overlap++;
+                    }
+                } else {
                     hex = part.track_hexes[part.number_of_track_hexes - 1];
                     int32_t du = hex.offset[0] - part.track_hexes[0].offset[0];
                     int32_t dv = hex.offset[1] - part.track_hexes[0].offset[1];
@@ -952,7 +956,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                 if (j != -1 || !end_overlapped) {
                     lookup_track(solution, p, &index);
                     if (j >= 0 && (solution->track_positions[index].u != INT32_MIN || solution->track_positions[index].v != INT32_MIN))
-                        solution->track_self_overlap++;
+                        solution->track_overlap++;
                     solution->track_positions[index] = p;
                     solution->track_plus_motions[index] = (struct vector){ last_position.u - p.u, last_position.v - p.v };
                 }

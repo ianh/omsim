@@ -965,6 +965,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         } else {
             return 1;
         }
+    } else if (!strcmp(metric, "track self-overlap")) {
+        int track_self_overlap = solution.track_self_overlap;
+        destroy(&solution, &board);
+        return track_self_overlap;
     }
     initial_setup(&solution, &board, v->sf->area);
     if (!v->disable_limits)
