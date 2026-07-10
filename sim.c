@@ -508,8 +508,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case PROJECTION: {
             struct atom_ref_at_position q = get_atom(board, m, 0, 0);
             struct atom_ref_at_position a = get_atom(board, m, 1, 0);
-            bool works = ANY_METAL(*a.atom) && (*a.atom & ATOM_TYPES) != GOLD;
-            if (works && !(*q.atom & ALL_BONDS) && !(*q.atom & HAS_DISJOINT_BOND) && !(*q.atom & GRABBED) && (*q.atom & ATOM_TYPES) == QUICKSILVER) {
+            if ((*a.atom & ATOM_TYPES) >= SILVER && (*a.atom & ATOM_TYPES) <= LEAD && !(*q.atom & ALL_BONDS) && !(*q.atom & HAS_DISJOINT_BOND) && !(*q.atom & GRABBED) && (*q.atom & ATOM_TYPES) == QUICKSILVER) {
                 atom metal = (*a.atom & ATOM_TYPES);
                 remove_atom(board, q);
                 transform_atom(a.atom, metal + METALLICITY);
@@ -540,8 +539,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
                 struct atom_ref_at_position b = conversion_input(board, m, 1, 0);
-                bool works = ANY_METAL(*a.atom) && ANY_METAL(*b.atom) && (*a.atom & ATOM_TYPES) == (*b.atom & ATOM_TYPES) && (*a.atom & ATOM_TYPES) != GOLD;
-                if (works && conversion_output(board, m, 0, 1)) {
+                if ((*a.atom & ATOM_TYPES) >= SILVER && (*a.atom & ATOM_TYPES) <= LEAD && (*a.atom & ATOM_TYPES) == (*b.atom & ATOM_TYPES) && conversion_output(board, m, 0, 1)) {
                     atom metal = (*a.atom & ATOM_TYPES);
                     remove_atom(board, a);
                     remove_atom(board, b);
@@ -555,8 +553,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case DUPLICATION: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
             struct atom_ref_at_position b = get_atom(board, m, 1, 0);
-            bool elemental = ANY_ELEMENTAL(*a.atom);
-            if (elemental && ((*b.atom & ATOM_TYPES) == SALT) && !(*b.atom & WHEEL_ATOM))
+            if (ANY_ELEMENTAL(*a.atom) && ((*b.atom & ATOM_TYPES) == SALT) && !(*b.atom & WHEEL_ATOM))
                 transform_atom(b.atom, *a.atom & ATOM_TYPES);
             break;
         }
@@ -654,8 +651,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case REJECTION: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            bool works = ANY_METAL(*a.atom) && (*a.atom & ATOM_TYPES) != LEAD;
-            if (works && conversion_output(board, m, 1, 0)) {
+            if ((*a.atom & ATOM_TYPES) >= GOLD && (*a.atom & ATOM_TYPES) <= TIN && conversion_output(board, m, 1, 0)) {
                 atom metal = (*a.atom & ATOM_TYPES);
                 insert_atom(board, mechanism_relative_position(m, 1, 0, 1), QUICKSILVER | VALID);
                 transform_atom(a.atom, metal - METALLICITY);
@@ -665,8 +661,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case DIVISION: {
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
-                bool works = ANY_METAL(*a.atom) && (*a.atom & ATOM_TYPES) != LEAD;
-                if (works && conversion_output(board, m, 1, 0) && conversion_output(board, m, -1, 0)) {
+                if ((*a.atom & ATOM_TYPES) >= GOLD && (*a.atom & ATOM_TYPES) <= TIN && conversion_output(board, m, 1, 0) && conversion_output(board, m, -1, 0)) {
                     atom metal = (*a.atom & ATOM_TYPES);
                     remove_atom(board, a);
                     solution->glyphs[i].conversion = metal;
@@ -688,8 +683,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = get_atom(board, m, -1, 1);
                 struct atom_ref_at_position q = conversion_input(board, m, 1, 1);
-                bool works = ANY_METAL(*a.atom);
-                if (works && (*q.atom & ATOM_TYPES) == QUICKSILVER && conversion_output(board, m, 1, -1)) {
+                if ((*a.atom & ATOM_TYPES) >= GOLD && (*a.atom & ATOM_TYPES) <= LEAD && (*q.atom & ATOM_TYPES) == QUICKSILVER && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, q);
                     solution->glyphs[i].conversion = *a.atom & ATOM_TYPES;
                 }

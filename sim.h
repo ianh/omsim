@@ -99,8 +99,6 @@ typedef uint64_t atom;
  (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) | (1ULL << TRIPLEX_BOND_K))
 
 #define ANY_ELEMENTAL(atom) ((atom & ATOM_TYPES) >= AIR && (atom & ATOM_TYPES) <= WATER)
-#define ANY_METAL(atom) ((atom & ATOM_TYPES) >= GOLD && (atom & ATOM_TYPES) <= LEAD)
-
 #define RECENT_BONDS (0x3FULL << RECENT_BOND)
 #define NORMAL_BONDS (0x3FULL << NORMAL_BOND)
 #define TRIPLEX_R_BONDS (0x3FULL << TRIPLEX_BOND_R)
