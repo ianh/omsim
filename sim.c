@@ -144,7 +144,7 @@ static inline bool remove_atom(struct board *board, struct atom_ref_at_position 
 
 static inline void transform_atom(atom *a, atom new_type)
 {
-    *a &= ~ANY_ATOM;
+    *a &= ~ATOM_TYPES;
     *a |= new_type;
 }
 
@@ -483,7 +483,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         switch (m.type & ANY_GLYPH) {
         case CALCIFICATION: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            if (*a.atom & ANY_ELEMENTAL)
+            if (ANY_ELEMENTAL(*a.atom))
                 transform_atom(a.atom, SALT);
             break;
         }
@@ -491,7 +491,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
                 struct atom_ref_at_position b = conversion_input(board, m, 1, 0);
-                if ((*a.atom & *b.atom & SALT)
+                if ((*a.atom & ATOM_TYPES) == SALT && (*b.atom & ATOM_TYPES) == SALT
                         && conversion_output(board, m, 0, 1)
                         && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, a);
@@ -508,17 +508,18 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case PROJECTION: {
             struct atom_ref_at_position q = get_atom(board, m, 0, 0);
             struct atom_ref_at_position a = get_atom(board, m, 1, 0);
-            atom metal = *a.atom & ANY_METAL & ~GOLD;
-            if (metal && !(*q.atom & ALL_BONDS) && !(*q.atom & HAS_DISJOINT_BOND) && !(*q.atom & GRABBED) && (*q.atom & QUICKSILVER)) {
+            bool works = ANY_METAL(*a.atom) && (*a.atom & ATOM_TYPES) != GOLD;
+            if (works && !(*q.atom & ALL_BONDS) && !(*q.atom & HAS_DISJOINT_BOND) && !(*q.atom & GRABBED) && (*q.atom & ATOM_TYPES) == QUICKSILVER) {
+                atom metal = (*a.atom & ATOM_TYPES);
                 remove_atom(board, q);
-                transform_atom(a.atom, metal >> 1);
+                transform_atom(a.atom, metal + METALLICITY);
             }
             break;
         }
         case DISPERSION: {
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
-                if ((*a.atom & QUINTESSENCE)
+                if ((*a.atom & ATOM_TYPES) == QUINTESSENCE
                         && conversion_output(board, m, 1, 0)
                         && conversion_output(board, m, 1, -1)
                         && conversion_output(board, m, 0, -1)
@@ -539,11 +540,12 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
                 struct atom_ref_at_position b = conversion_input(board, m, 1, 0);
-                atom metal = *a.atom & *b.atom & ANY_METAL & ~GOLD;
-                if (metal && conversion_output(board, m, 0, 1)) {
+                bool works = ANY_METAL(*a.atom) && ANY_METAL(*b.atom) && (*a.atom & ATOM_TYPES) == (*b.atom & ATOM_TYPES) && (*a.atom & ATOM_TYPES) != GOLD;
+                if (works && conversion_output(board, m, 0, 1)) {
+                    atom metal = (*a.atom & ATOM_TYPES);
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    solution->glyphs[i].conversion = metal >> 1;
+                    solution->glyphs[i].conversion = metal + METALLICITY;
                 }
             }
             if (m.conversion)
@@ -553,9 +555,9 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         case DUPLICATION: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
             struct atom_ref_at_position b = get_atom(board, m, 1, 0);
-            atom elemental = *a.atom & ANY_ELEMENTAL;
-            if (elemental && (*b.atom & SALT) && !(*b.atom & WHEEL_ATOM))
-                transform_atom(b.atom, elemental);
+            bool elemental = ANY_ELEMENTAL(*a.atom);
+            if (elemental && ((*b.atom & ATOM_TYPES) == SALT) && !(*b.atom & WHEEL_ATOM))
+                transform_atom(b.atom, *a.atom & ATOM_TYPES);
             break;
         }
         case UNIFICATION: {
@@ -564,7 +566,8 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 struct atom_ref_at_position b = conversion_input(board, m, -1, 1);
                 struct atom_ref_at_position c = conversion_input(board, m, 0, -1);
                 struct atom_ref_at_position d = conversion_input(board, m, 1, -1);
-                if (((*a.atom | *b.atom | *c.atom | *d.atom) & ANY_ELEMENTAL) == ANY_ELEMENTAL
+                uint64_t elements = (1ULL << (*a.atom & ATOM_TYPES)) | (1ULL << (*b.atom & ATOM_TYPES)) | (1ULL << (*c.atom & ATOM_TYPES)) | (1ULL << (*d.atom & ATOM_TYPES));
+                if (elements == ((1ULL << AIR) | (1ULL << EARTH) | (1ULL << FIRE) | (1ULL << WATER))
                         && conversion_output(board, m, 0, 0)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
@@ -622,11 +625,11 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             struct atom_ref_at_position ky = get_atom(board, m, 0, 0);
             struct atom_ref_at_position yr = get_atom(board, m, 0, 1);
             struct atom_ref_at_position rk = get_atom(board, m, 1, 0);
-            if (*ky.atom && *yr.atom && (*ky.atom & *yr.atom & FIRE))
+            if (*ky.atom && *yr.atom && (*ky.atom & ATOM_TYPES) == FIRE && (*yr.atom & ATOM_TYPES) == FIRE)
                 add_bond(m, ky.atom, yr.atom, 0, 1, TRIPLEX_Y_BONDS, NORMAL_BONDS);
-            if (*yr.atom && *rk.atom && (*yr.atom & *rk.atom & FIRE))
+            if (*yr.atom && *rk.atom && (*yr.atom & ATOM_TYPES) == FIRE && (*rk.atom & ATOM_TYPES) == FIRE)
                 add_bond(m, yr.atom, rk.atom, 1, -1, TRIPLEX_R_BONDS, NORMAL_BONDS);
-            if (*rk.atom && *ky.atom && (*rk.atom & *ky.atom & FIRE))
+            if (*rk.atom && *ky.atom && (*rk.atom & ATOM_TYPES) == FIRE && (*ky.atom & ATOM_TYPES) == FIRE)
                 add_bond(m, rk.atom, ky.atom, -1, 0, TRIPLEX_K_BONDS, NORMAL_BONDS);
             break;
         }
@@ -651,28 +654,30 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         }
         case REJECTION: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
-            atom metal = *a.atom & ANY_METAL & ~LEAD;
-            if (metal && conversion_output(board, m, 1, 0)) {
+            bool works = ANY_METAL(*a.atom) && (*a.atom & ATOM_TYPES) != LEAD;
+            if (works && conversion_output(board, m, 1, 0)) {
+                atom metal = (*a.atom & ATOM_TYPES);
                 insert_atom(board, mechanism_relative_position(m, 1, 0, 1), QUICKSILVER | VALID);
-                transform_atom(a.atom, metal << 1);
+                transform_atom(a.atom, metal - METALLICITY);
             }
             break;
         }
         case DIVISION: {
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = conversion_input(board, m, 0, 0);
-                atom metal = *a.atom & ANY_METAL & ~LEAD;
-                if (metal && conversion_output(board, m, 1, 0) && conversion_output(board, m, -1, 0)) {
+                bool works = ANY_METAL(*a.atom) && (*a.atom & ATOM_TYPES) != LEAD;
+                if (works && conversion_output(board, m, 1, 0) && conversion_output(board, m, -1, 0)) {
+                    atom metal = (*a.atom & ATOM_TYPES);
                     remove_atom(board, a);
                     solution->glyphs[i].conversion = metal;
                 }
             }
             if (m.conversion) {
-                atom a = m.conversion << 1;
+                atom a = m.conversion - METALLICITY;
                 atom b = LEAD;
                 while (a < b) {
-                    a <<= 1;
-                    b >>= 1;
+                    a -= METALLICITY;
+                    b += METALLICITY;
                 }
                 produce_atom(board, m, 1, 0, a);
                 produce_atom(board, m, -1, 0, b);
@@ -683,10 +688,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
             if (board->half_cycle == 1) {
                 struct atom_ref_at_position a = get_atom(board, m, -1, 1);
                 struct atom_ref_at_position q = conversion_input(board, m, 1, 1);
-                atom metal = *a.atom & ANY_METAL;
-                if (metal && (*q.atom & QUICKSILVER) && conversion_output(board, m, 1, -1)) {
+                bool works = ANY_METAL(*a.atom);
+                if (works && (*q.atom & ATOM_TYPES) == QUICKSILVER && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, q);
-                    solution->glyphs[i].conversion = metal;
+                    solution->glyphs[i].conversion = *a.atom & ATOM_TYPES;
                 }
             }
             if (m.conversion)
@@ -1634,7 +1639,7 @@ static void match_repeating_output_with_chain_atoms(struct board *board, struct 
                 if (!found_chain_atom)
                     return;
             }
-            if ((a & (ANY_ATOM | REAL_BONDS)) != output.atom)
+            if ((a & (ATOM_TYPES | REAL_BONDS)) != output.atom)
                 return;
         }
     }
@@ -1684,7 +1689,7 @@ static void consume_single_output(struct board *board, struct input_output *io, 
             return;
         atom differences = *a.atom ^ target;
 
-        wrong_output = wrong_output || ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT));
+        wrong_output = wrong_output || ((differences & ATOM_TYPES) && !(target & VARIABLE_OUTPUT));
         wrong_bonds = wrong_bonds || (differences & REAL_BONDS);
         if (!(fail_on_wrong_output || fail_on_wrong_bonds) && (wrong_output || wrong_bonds))
             return;
@@ -1767,7 +1772,7 @@ static bool check_repeating_output_at_monomer_count(struct board *board, struct 
             }
         }
 
-        if ((differences & ANY_ATOM) && !(target & VARIABLE_OUTPUT))
+        if ((differences & ATOM_TYPES) && !(target & VARIABLE_OUTPUT))
             return false;
         if (differences & REAL_BONDS)
             return false;

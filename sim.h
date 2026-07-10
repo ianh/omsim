@@ -9,27 +9,32 @@
 typedef uint64_t atom;
 
 #define NUMBER_OF_ATOM_TYPES 16
-#define ATOM_OF_TYPE(type) (1ULL << ((type) + 1))
+#define ATOM_OF_TYPE(type) ((uint64_t) (type + 1) << 1)
 
 #define VALID (1ULL << 0)
 
-// these shift amounts must match the atom bytes in the puzzle file format.
+// bits 1-5 store the atom type.
+// these values must match the atom bytes in the puzzle file format.
+
 #define SALT (1ULL << 1)
-#define AIR (1ULL << 2)
-#define EARTH (1ULL << 3)
-#define FIRE (1ULL << 4)
-#define WATER (1ULL << 5)
-#define QUICKSILVER (1ULL << 6)
-#define GOLD (1ULL << 7)
-#define SILVER (1ULL << 8)
-#define COPPER (1ULL << 9)
-#define IRON (1ULL << 10)
-#define TIN (1ULL << 11)
-#define LEAD (1ULL << 12)
-#define VITAE (1ULL << 13)
-#define MORS (1ULL << 14)
-#define REPEATING_OUTPUT_PLACEHOLDER (1ULL << 15)
-#define QUINTESSENCE (1ULL << 16)
+#define AIR (2ULL << 1)
+#define EARTH (3ULL << 1)
+#define FIRE (4ULL << 1)
+#define WATER (5ULL << 1)
+#define QUICKSILVER (6ULL << 1)
+#define GOLD (7ULL << 1)
+#define SILVER (8ULL << 1)
+#define COPPER (9ULL << 1)
+#define IRON (10ULL << 1)
+#define TIN (11ULL << 1)
+#define LEAD (12ULL << 1)
+#define VITAE (13ULL << 1)
+#define MORS (14ULL << 1)
+#define REPEATING_OUTPUT_PLACEHOLDER (15ULL << 1)
+#define QUINTESSENCE (16ULL << 1)
+
+#define ATOM_TYPES (0x1FULL << 1)
+#define METALLICITY (-(1LL << 1))
 
 // an output which accepts any molecule of the proper shape.  used for
 // computation puzzles.
@@ -93,10 +98,9 @@ typedef uint64_t atom;
 #define BOND_LOW_BITS ((1ULL << RECENT_BOND) | (1ULL << NORMAL_BOND) | \
  (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) | (1ULL << TRIPLEX_BOND_K))
 
-#define ANY_ELEMENTAL (WATER | FIRE | EARTH | AIR)
-#define ANY_METAL (LEAD | TIN | IRON | COPPER | SILVER | GOLD)
-#define ANY_ATOM (SALT | ANY_ELEMENTAL | QUICKSILVER | ANY_METAL | \
- VITAE | MORS | QUINTESSENCE)
+#define ANY_ELEMENTAL(atom) ((atom & ATOM_TYPES) >= AIR && (atom & ATOM_TYPES) <= WATER)
+#define ANY_METAL(atom) ((atom & ATOM_TYPES) >= GOLD && (atom & ATOM_TYPES) <= LEAD)
+
 #define RECENT_BONDS (0x3FULL << RECENT_BOND)
 #define NORMAL_BONDS (0x3FULL << NORMAL_BOND)
 #define TRIPLEX_R_BONDS (0x3FULL << TRIPLEX_BOND_R)
