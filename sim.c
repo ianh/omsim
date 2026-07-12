@@ -1089,7 +1089,7 @@ static void perform_arm_instructions(struct solution *solution, struct board *bo
                 continue;
             if (inst == 'f' && !(*a.atom & REMOVED)) {
                 for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i) {
-                    if (*a.atom & ATOM_OF_TYPE(i)) {
+                    if ((*a.atom & ATOM_TYPES) == ATOM_OF_TYPE(i)) {
                         board->atom_grabs[i]++;
                         break;
                     }
