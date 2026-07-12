@@ -897,7 +897,10 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
     size_t io_index = solution->number_of_inputs_and_outputs - 1;
     for (uint32_t i = sf->number_of_parts - 1; i < sf->number_of_parts; --i) {
         struct solution_part part = sf->parts[i];
-        part.rotation = part.rotation % 6;
+        if (byte_string_is(part.name, "track"))
+            part.rotation = 0;
+        else
+            part.rotation = part.rotation % 6;
         struct mechanism m = {
             .type = decode_mechanism_type(part.name),
             .position = { part.position[0], part.position[1] },
@@ -928,13 +931,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             bool end_overlapped = false;
             for (int32_t j = part.number_of_track_hexes - 1; part.number_of_track_hexes > 0 && j >= -1; --j) {
                 struct solution_hex_offset hex;
-                if (j != -1) {
-                    hex = part.track_hexes[j];
-                    for (int32_t k = j + 1; k < part.number_of_track_hexes; ++k) {
-                        if (hex.offset[0] == part.track_hexes[k].offset[0] && hex.offset[1] == part.track_hexes[k].offset[1])
-                            solution->track_self_overlap++;
-                    }
-                } else {
+                if (j == -1) {
                     hex = part.track_hexes[part.number_of_track_hexes - 1];
                     int32_t du = hex.offset[0] - part.track_hexes[0].offset[0];
                     int32_t dv = hex.offset[1] - part.track_hexes[0].offset[1];
@@ -947,6 +944,13 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
                         lookup_track(solution, last_position, &index);
                         solution->track_minus_motions[index] = (struct vector){ 0, 0 };
                         break;
+                    } else
+                        solution->number_of_track_loops++;
+                } else {
+                    hex = part.track_hexes[j];
+                    for (int32_t k = j + 1; k < part.number_of_track_hexes; ++k) {
+                        if (hex.offset[0] == part.track_hexes[k].offset[0] && hex.offset[1] == part.track_hexes[k].offset[1])
+                            solution->track_self_overlap++;
                     }
                 }
                 struct vector p = mechanism_relative_position(m, hex.offset[0], hex.offset[1], 1);
