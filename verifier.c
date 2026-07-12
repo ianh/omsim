@@ -969,6 +969,10 @@ int verifier_evaluate_metric(void *verifier, const char *metric)
         int track_self_overlap = solution.track_self_overlap;
         destroy(&solution, &board);
         return track_self_overlap;
+    } else if (!strcmp(metric, "track loops")) {
+        int loops = solution.number_of_track_loops;
+        destroy(&solution, &board);
+        return loops;
     }
     initial_setup(&solution, &board, v->sf->area);
     if (!v->disable_limits)

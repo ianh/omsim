@@ -368,6 +368,8 @@ struct solution {
     // track self-overlap is specifically when a single track part has two hexes
     // at the same location.
     uint64_t track_self_overlap;
+    // the number of track parts that have their ends connected in a loop.
+    uint64_t number_of_track_loops;
 
     struct conduit *conduits;
     size_t number_of_conduits;
