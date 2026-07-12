@@ -480,6 +480,7 @@ static void apply_glyphs(struct solution *solution, struct board *board)
     size_t n = solution->number_of_glyphs;
     for (size_t i = 0; i < n; ++i) {
         struct mechanism m = solution->glyphs[i];
+        atom *conversion = &solution->glyphs[i].conversion;
         switch (m.type & ANY_GLYPH) {
         case CALCIFICATION: {
             struct atom_ref_at_position a = get_atom(board, m, 0, 0);
@@ -496,10 +497,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                         && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    solution->glyphs[i].conversion = true;
+                    *conversion = true;
                 }
             }
-            if (m.conversion) {
+            if (*conversion) {
                 produce_atom(board, m, 0, 1, VITAE);
                 produce_atom(board, m, 1, -1, MORS);
             }
@@ -524,10 +525,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                         && conversion_output(board, m, 0, -1)
                         && conversion_output(board, m, -1, 0)) {
                     remove_atom(board, a);
-                    solution->glyphs[i].conversion = true;
+                    *conversion = true;
                 }
             }
-            if (m.conversion) {
+            if (*conversion) {
                 produce_atom(board, m, 1, 0, EARTH);
                 produce_atom(board, m, 1, -1, WATER);
                 produce_atom(board, m, 0, -1, FIRE);
@@ -543,11 +544,11 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 if (metal && conversion_output(board, m, 0, 1)) {
                     remove_atom(board, a);
                     remove_atom(board, b);
-                    solution->glyphs[i].conversion = metal >> 1;
+                    *conversion = metal >> 1;
                 }
             }
-            if (m.conversion)
-                produce_atom(board, m, 0, 1, m.conversion);
+            if (*conversion)
+                produce_atom(board, m, 0, 1, *conversion);
             break;
         }
         case DUPLICATION: {
@@ -570,10 +571,10 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                     remove_atom(board, b);
                     remove_atom(board, c);
                     remove_atom(board, d);
-                    solution->glyphs[i].conversion = true;
+                    *conversion = true;
                 }
             }
-            if (m.conversion)
+            if (*conversion)
                 produce_atom(board, m, 0, 0, QUINTESSENCE);
             break;
         }
@@ -664,11 +665,11 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 atom metal = *a.atom & ANY_METAL & ~LEAD;
                 if (metal && conversion_output(board, m, 1, 0) && conversion_output(board, m, -1, 0)) {
                     remove_atom(board, a);
-                    solution->glyphs[i].conversion = metal;
+                    *conversion = metal;
                 }
             }
-            if (m.conversion) {
-                atom a = m.conversion << 1;
+            if (*conversion) {
+                atom a = *conversion << 1;
                 atom b = LEAD;
                 while (a < b) {
                     a <<= 1;
@@ -686,11 +687,11 @@ static void apply_glyphs(struct solution *solution, struct board *board)
                 atom metal = *a.atom & ANY_METAL;
                 if (metal && (*q.atom & QUICKSILVER) && conversion_output(board, m, 1, -1)) {
                     remove_atom(board, q);
-                    solution->glyphs[i].conversion = metal;
+                    *conversion = metal;
                 }
             }
-            if (m.conversion)
-                produce_atom(board, m, 1, -1, m.conversion);
+            if (*conversion)
+                produce_atom(board, m, 1, -1, *conversion);
             break;
         }
         case CONDUIT:
@@ -700,8 +701,8 @@ static void apply_glyphs(struct solution *solution, struct board *board)
         default:
             break;
         }
-        if (m.conversion && board->half_cycle == 2)
-            solution->glyphs[i].conversion = false;
+        if (*conversion && board->half_cycle == 2)
+            *conversion = false;
     }
 }
 
