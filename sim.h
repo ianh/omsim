@@ -38,37 +38,37 @@ typedef uint64_t atom;
 
 // an output which accepts any molecule of the proper shape.  used for
 // computation puzzles.
-#define VARIABLE_OUTPUT (1ULL << 17)
+#define VARIABLE_OUTPUT (1ULL << 16)
 
 // this atom has another atom above it.
 // we can reuse the bit for VARIABLE_OUTPUT because that's only set on output
 // atoms, whereas this bit never is.
-#define OVERLAPS_ATOMS (1ULL << 17)
+#define OVERLAPS_ATOMS (1ULL << 16)
 
 // if this atom and an atom below it are part of molecules unbonded in the
 // same half-cycle, this atom gets to keep its own bonds.
 // without this flag, the bonds "fall down" to the bottom atom, without
 // changing which molecule any atom belongs to (aka disjoint/floating bonds).
-#define DISJOINT_SAFE (1ULL << 18)
+#define DISJOINT_SAFE (1ULL << 17)
 
 // conduits only transport atoms that have just been dropped.
-#define BEING_DROPPED (1ULL << 19)
+#define BEING_DROPPED (1ULL << 18)
 
 // is this atom part of a van berlo's or ravari's wheel?
-#define WHEEL_ATOM (1ULL << 20)
+#define WHEEL_ATOM (1ULL << 19)
 
 // the motion of this atom is being tracked in a side table.  the flag and the
 // atom's motion data will be cleared if the atom enters the board's bounding
 // box.
-#define IS_CHAIN_ATOM (1ULL << 21)
+#define IS_CHAIN_ATOM (1ULL << 20)
 
 // does this atom have disjoint bonds which must be looked up?
-#define HAS_DISJOINT_BOND (1ULL << 22)
+#define HAS_DISJOINT_BOND (1ULL << 21)
 
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
-#define GRABBED_ONCE (1ULL << 23)
+#define GRABBED_ONCE (1ULL << 22)
 #define GRABBED (0x1FULL * GRABBED_ONCE)
 
 #define REMOVED (1ULL << 27)
