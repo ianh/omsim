@@ -29,7 +29,7 @@ static char decode_instruction(char inst)
 
 static atom decode_atom(uint32_t atom)
 {
-    return 1ULL << atom;
+    return atom << 1;
 }
 
 static atom decode_bond_type(unsigned char bond_type)
@@ -674,7 +674,7 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     io->min_v = INT32_MAX;
     io->max_v = INT32_MIN;
     for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
-        if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
+        if ((io->atoms[i].atom & ATOM_TYPES) == REPEATING_OUTPUT_PLACEHOLDER)
             continue;
         struct vector p = polymer_position_from_global_position(io, io->atoms[i].position);
         if (p.v < io->min_v)
@@ -695,10 +695,10 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     }
     // Fix up bonds between adjacent atoms in different monomers
     for (uint32_t i = 0; i < io->number_of_atoms; ++i) {
-        if (io->atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
+        if ((io->atoms[i].atom & ATOM_TYPES) == REPEATING_OUTPUT_PLACEHOLDER)
             continue;
         for (uint32_t j = i + 1; j < io->number_of_atoms; ++j) {
-            if (io->atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            if ((io->atoms[j].atom & ATOM_TYPES) == REPEATING_OUTPUT_PLACEHOLDER)
                 continue;
             struct vector d = { io->atoms[j].position.u - io->atoms[i].position.u, io->atoms[j].position.v - io->atoms[i].position.v };
             int direction = direction_for_offset(d);
@@ -711,10 +711,10 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     }
     // Determine min/max u within the first monomer for each row
     for (uint32_t i = 0; i < io->number_of_original_atoms-1; ++i) {
-        if (io->original_atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER)
+        if ((io->original_atoms[i].atom & ATOM_TYPES) == REPEATING_OUTPUT_PLACEHOLDER)
             continue;
         for (uint32_t j = i + 1; j < io->number_of_original_atoms-1; ++j) {
-            if (io->original_atoms[j].atom & REPEATING_OUTPUT_PLACEHOLDER)
+            if ((io->original_atoms[j].atom & ATOM_TYPES) == REPEATING_OUTPUT_PLACEHOLDER)
                 continue;
             struct vector d = { io->original_atoms[j].position.u - io->original_atoms[i].position.u, io->original_atoms[j].position.v - io->original_atoms[i].position.v };
             int direction = direction_for_offset(d);
@@ -1023,14 +1023,14 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             }
             struct atom_at_position *placeholder = &io->original_atoms[io->number_of_original_atoms - 1];
             for (uint32_t i = 0; i < io->number_of_original_atoms; ++i) {
-                if (!(io->original_atoms[i].atom & REPEATING_OUTPUT_PLACEHOLDER))
+                if ((io->original_atoms[i].atom & ATOM_TYPES) != REPEATING_OUTPUT_PLACEHOLDER)
                     continue;
                 struct atom_at_position a = io->original_atoms[i];
                 io->original_atoms[i] = *placeholder;
                 *placeholder = a;
                 break;
             }
-            if (!(placeholder->atom & REPEATING_OUTPUT_PLACEHOLDER)) {
+            if ((placeholder->atom & ATOM_TYPES) != REPEATING_OUTPUT_PLACEHOLDER) {
                 *error = "solution contains an infinite product without a repetition placeholder";
                 destroy(solution, 0);
                 return false;
