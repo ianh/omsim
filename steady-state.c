@@ -389,6 +389,9 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 if (repeating_periods % 2 == 0)
                     result.pivot_parity = false;
             }
+            if (repeating_periods != 0 && result.number_of_outputs % repeating_periods != 0) {
+                additional_cycles_to_run = result.number_of_cycles * (repeating_periods - result.number_of_outputs % repeating_periods);
+            }
             if (board->area_growth_order == GROWTH_LINEAR) {
                 uint64_t linear_area_growth = 0;
                 uint64_t linear_area_growth_periods = 1;
