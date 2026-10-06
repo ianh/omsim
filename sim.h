@@ -286,7 +286,6 @@ struct input_output {
 
     struct atom_at_position *atoms;
     uint32_t number_of_atoms;
-    uint32_t number_of_placeholders;
     uint32_t center_atom_index;
 
     struct disjoint_bond *disjoint_bonds;
