@@ -609,14 +609,14 @@ static bool repeat_molecule(struct input_output *io, const char **error)
         *error = "puzzle contains an empty infinite product";
         return false;
     }
-    struct atom_at_position placeholder = io->original_atoms[io->number_of_original_atoms - 1];
 
-    io->monomer_width = polymer_position_from_global_position(io, placeholder.position).u;
-
-    struct vector offset = placeholder.position;
+    struct vector offset = io->original_atoms[io->number_of_original_atoms - 1].position;
+    io->monomer_width = polymer_position_from_global_position(io, offset).u;
     offset.u -= io->repetition_origin.u;
     offset.v -= io->repetition_origin.v;
+
     // figure out where placeholders should go.
+    uint32_t number_of_placeholders = 0;
     struct vector *placeholders = calloc(io->number_of_original_atoms * 6, sizeof(struct vector));
     for (uint32_t i = 0; i < io->number_of_original_atoms - 1; ++i) {
         struct vector p = io->original_atoms[i].position;
@@ -630,24 +630,24 @@ static bool repeat_molecule(struct input_output *io, const char **error)
                 if (vectors_equal(target_position, q)) {
                     q.u += offset.u * REPEATING_OUTPUT_REPETITIONS;
                     q.v += offset.v * REPEATING_OUTPUT_REPETITIONS;
-                    placeholders[io->number_of_placeholders++] = q;
+                    placeholders[number_of_placeholders++] = q;
                     break;
                 }
             }
         }
     }
     // remove duplicates from the placeholders list.
-    qsort(placeholders, io->number_of_placeholders, sizeof(struct vector), compare_vectors);
+    qsort(placeholders, number_of_placeholders, sizeof(struct vector), compare_vectors);
     uint32_t removed_duplicates = 0;
-    for (uint32_t i = 0; i < io->number_of_placeholders; ++i) {
+    for (uint32_t i = 0; i < number_of_placeholders; ++i) {
         if (i > 0 && vectors_equal(placeholders[i - 1], placeholders[i]))
             removed_duplicates++;
         else
             placeholders[i - removed_duplicates] = placeholders[i];
     }
-    io->number_of_placeholders -= removed_duplicates;
+    number_of_placeholders -= removed_duplicates;
     struct atom_at_position *atoms = calloc((io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS +
-     io->number_of_placeholders, sizeof(io->atoms[0]));
+     number_of_placeholders, sizeof(io->atoms[0]));
     for (uint32_t i = 0; i < REPEATING_OUTPUT_REPETITIONS; ++i) {
         for (uint32_t j = 0; j < io->number_of_original_atoms - 1; ++j) {
             struct atom_at_position *a = &atoms[(io->number_of_original_atoms - 1) * i + j];
@@ -657,7 +657,7 @@ static bool repeat_molecule(struct input_output *io, const char **error)
             a->atom = io->original_atoms[j].atom;
         }
     }
-    for (uint32_t i = 0; i < io->number_of_placeholders; ++i) {
+    for (uint32_t i = 0; i < number_of_placeholders; ++i) {
         struct atom_at_position *a = &atoms[(io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + i];
         a->atom = REPEATING_OUTPUT_PLACEHOLDER;
         a->position = placeholders[i];
@@ -665,7 +665,7 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     free(placeholders);
     free(io->atoms);
     io->atoms = atoms;
-    io->number_of_atoms = (io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + io->number_of_placeholders;
+    io->number_of_atoms = (io->number_of_original_atoms - 1) * REPEATING_OUTPUT_REPETITIONS + number_of_placeholders;
 
     io->min_v = INT32_MAX;
     io->max_v = INT32_MIN;
