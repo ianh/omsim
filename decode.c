@@ -678,10 +678,6 @@ static bool repeat_molecule(struct input_output *io, const char **error)
         if (p.v > io->max_v)
             io->max_v = p.v;
     }
-    if ((int64_t)io->max_v - (int64_t)io->min_v > 99999) {
-        *error = "solution contains an infinite product with too many rows";
-        return false;
-    }
     size_t rows = io->max_v - io->min_v + 1;
     io->row_min_u = realloc(io->row_min_u, rows * sizeof(int32_t));
     io->row_max_u = realloc(io->row_max_u, rows * sizeof(int32_t));
