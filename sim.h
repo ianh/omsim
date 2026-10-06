@@ -57,13 +57,10 @@ typedef uint64_t atom;
 // box.
 #define IS_CHAIN_ATOM (1ULL << 21)
 
-// does this atom have disjoint bonds which must be looked up?
-#define HAS_DISJOINT_BOND (1ULL << 22)
-
 // is this atom being grabbed?  prevents output and consumption by glyphs.  the
 // full 5-bit value is the number of times the atom has been grabbed (this is
 // necessary to keep track of multiple simultaneous grabs).
-#define GRABBED_ONCE (1ULL << 23)
+#define GRABBED_ONCE (1ULL << 22)
 #define GRABBED (0x1FULL * GRABBED_ONCE)
 
 #define REMOVED (1ULL << 27)
@@ -81,14 +78,14 @@ typedef uint64_t atom;
 #define TRIPLEX_BOND_Y 47
 #define TRIPLEX_BOND_K 53
 
-// rotating can touch the 5 bits after the bonds (59-63), so make sure the
-// following flags are clear before rotating a molecule.
-
 // marks atoms inside a region of interest.  used for conduits.
 #define CONDUIT_SHAPE (1ULL << 59)
 
 // used for molecule flood fills.
 #define VISITED (1ULL << 60)
+
+// does this atom have disjoint bonds which must be looked up?
+#define HAS_DISJOINT_BOND (1ULL << 61)
 
 #define BOND_LOW_BITS ((1ULL << RECENT_BOND) | (1ULL << NORMAL_BOND) | \
  (1ULL << TRIPLEX_BOND_R) | (1ULL << TRIPLEX_BOND_Y) | (1ULL << TRIPLEX_BOND_K))
