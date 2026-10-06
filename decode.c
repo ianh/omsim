@@ -616,12 +616,8 @@ static bool repeat_molecule(struct input_output *io, const char **error)
     struct vector offset = placeholder.position;
     offset.u -= io->repetition_origin.u;
     offset.v -= io->repetition_origin.v;
-    placeholder.position.u += offset.u * (REPEATING_OUTPUT_REPETITIONS - 1);
-    placeholder.position.v += offset.v * (REPEATING_OUTPUT_REPETITIONS - 1);
     // figure out where placeholders should go.
     struct vector *placeholders = calloc(io->number_of_original_atoms * 6, sizeof(struct vector));
-    io->number_of_placeholders = 1;
-    placeholders[0] = placeholder.position;
     for (uint32_t i = 0; i < io->number_of_original_atoms - 1; ++i) {
         struct vector p = io->original_atoms[i].position;
         for (int j = 0; j < 6; ++j) {
