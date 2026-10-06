@@ -110,7 +110,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
         atom b = *lookup_atom_in_grid(&snapshot->grid, board->grid.atoms_at_positions[i].position);
         if (!(b & VALID) || (b & REMOVED))
             return false;
-        if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM | GRABBED)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ANY_ATOM | GRABBED)))
+        if ((a & (NORMAL_BONDS | TRIPLEX_BONDS | ATOM_TYPES | GRABBED)) != (b & (NORMAL_BONDS | TRIPLEX_BONDS | ATOM_TYPES | GRABBED)))
             return false;
         number_of_atoms++;
     }
