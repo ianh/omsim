@@ -131,23 +131,22 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
             number_of_atoms++;
         }
     }
-    uint32_t solution_outputs = UINT32_MAX;
-    uint32_t snapshot_outputs = UINT32_MAX;
-    uint32_t repetition_outputs = UINT32_MAX;
     for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
-        struct input_output *io = &solution->inputs_and_outputs[i];
-        if (io->type & INPUT)
+        struct input_output *io_a = &solution->inputs_and_outputs[i];
+        if (io_a->type & INPUT)
             continue;
-        int32_t difference = io->number_of_outputs - snapshot->output_count[i];
-        if (solution_outputs > io->number_of_outputs)
-            solution_outputs = io->number_of_outputs;
-        if (snapshot_outputs > snapshot->output_count[i])
-            snapshot_outputs = snapshot->output_count[i];
-        if (repetition_outputs > difference)
-            repetition_outputs = difference;
+        int32_t diff_a = io_a->number_of_outputs - snapshot->output_count[i];
+        for (uint32_t j = i+1; j < solution->number_of_inputs_and_outputs; ++j) {
+            struct input_output *io_b = &solution->inputs_and_outputs[j];
+            if (io_b->type & INPUT)
+                continue;
+            int32_t diff_b = io_b->number_of_outputs - snapshot->output_count[j];
+            if (diff_a > diff_b && io_b->number_of_outputs >= snapshot->output_count[i])
+                return false;
+            if (diff_b > diff_a && io_a->number_of_outputs >= snapshot->output_count[j])
+                return false;
+        }
     }
-    if (repetition_outputs != solution_outputs - snapshot_outputs)
-        return false;
     if (number_of_atoms != snapshot->number_of_atoms)
         return false;
     return true;
