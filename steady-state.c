@@ -379,6 +379,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 continue;
             }
             uint64_t repeating_outputs = 1;
+            uint64_t repeating_outputs_without_multiplier = 1;
             uint64_t repeating_periods = 0;
             for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
                 struct input_output *io = &solution->inputs_and_outputs[i];
@@ -387,17 +388,19 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 int32_t divisor = polymer_feed_rate_divisor(io);
                 if (divisor <= 0) {
                     repeating_outputs = 0;
+                    repeating_outputs_without_multiplier = 0;
                     repeating_periods = 1;
                     break;
                 }
-                if ((uint64_t)io->maximum_feed_rate * repeating_periods < repeating_outputs * (uint64_t)divisor) {
-                    repeating_outputs = (uint64_t)io->maximum_feed_rate;
+                if ((uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate * repeating_periods < repeating_outputs * (uint64_t)divisor) {
+                    repeating_outputs = (uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate;
+                    repeating_outputs_without_multiplier = (uint64_t)io->maximum_feed_rate;
                     repeating_periods = divisor;
                 }
             }
             uint64_t additional_cycles_to_run = 0;
-            if (repeating_outputs < result.number_of_outputs * repeating_periods) {
-                uint64_t d = gcd(repeating_outputs, repeating_periods);
+            if (repeating_outputs <= result.number_of_outputs * repeating_periods) {
+                uint64_t d = gcd(repeating_outputs_without_multiplier, repeating_periods);
                 repeating_outputs /= d;
                 repeating_periods /= d;
                 result.number_of_outputs = repeating_outputs;
