@@ -138,7 +138,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
         struct input_output *io = &solution->inputs_and_outputs[i];
         if (io->type & INPUT)
             continue;
-        int32_t difference = snapshot->output_count[i] - io->number_of_outputs;
+        int32_t difference = io->number_of_outputs - snapshot->output_count[i];
         if (solution_outputs > io->number_of_outputs)
             solution_outputs = io->number_of_outputs;
         if (snapshot_outputs > snapshot->output_count[i])
@@ -146,7 +146,7 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
         if (repetition_outputs > difference)
             repetition_outputs = difference;
     }
-    if (repetition_outputs != snapshot_outputs - solution_outputs)
+    if (repetition_outputs != solution_outputs - snapshot_outputs)
         return false;
     if (number_of_atoms != snapshot->number_of_atoms)
         return false;
