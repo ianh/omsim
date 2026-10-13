@@ -131,6 +131,23 @@ static bool check_snapshot(struct solution *solution, struct board *board, struc
             number_of_atoms++;
         }
     }
+    uint32_t solution_outputs = UINT32_MAX;
+    uint32_t snapshot_outputs = UINT32_MAX;
+    uint32_t repetition_outputs = UINT32_MAX;
+    for (uint32_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        if (io->type & INPUT)
+            continue;
+        int32_t difference = snapshot->output_count[i] - io->number_of_outputs;
+        if (solution_outputs > io->number_of_outputs)
+            solution_outputs = io->number_of_outputs;
+        if (snapshot_outputs > snapshot->output_count[i])
+            snapshot_outputs = snapshot->output_count[i];
+        if (repetition_outputs > difference)
+            repetition_outputs = difference;
+    }
+    if (repetition_outputs != snapshot_outputs - solution_outputs)
+        return false;
     if (number_of_atoms != snapshot->number_of_atoms)
         return false;
     return true;
@@ -373,8 +390,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                     repeating_periods = 1;
                     break;
                 }
-                if ((uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate * repeating_periods < repeating_outputs * (uint64_t)divisor) {
-                    repeating_outputs = (uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate;
+                if ((uint64_t)io->maximum_feed_rate * repeating_periods < repeating_outputs * (uint64_t)divisor) {
+                    repeating_outputs = (uint64_t)io->maximum_feed_rate;
                     repeating_periods = divisor;
                 }
             }
