@@ -636,6 +636,14 @@ static bool repeat_molecule(struct input_output *io, const char **error)
             }
         }
     }
+    // ensure there is at least one placeholder
+    if (number_of_placeholders == 0) {
+        struct vector placeholder_position = io->original_atoms[io->number_of_original_atoms - 1].position;
+        placeholder_position.u += offset.u * (REPEATING_OUTPUT_REPETITIONS - 1);
+        placeholder_position.v += offset.v * (REPEATING_OUTPUT_REPETITIONS - 1);
+        placeholders[0] = placeholder_position;
+        number_of_placeholders = 1;
+    }
     // remove duplicates from the placeholders list.
     qsort(placeholders, number_of_placeholders, sizeof(struct vector), compare_vectors);
     uint32_t removed_duplicates = 0;
