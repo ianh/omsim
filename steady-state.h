@@ -27,6 +27,14 @@ struct steady_state {
     uint64_t linear_area_growth;
     double quadratic_area_growth;
 
+    double linear_height_0_growth;
+    double linear_height_60_growth;
+    double linear_height_120_growth;
+    double linear_width2_0_growth;
+    double linear_width2_60_growth;
+    double linear_width2_120_growth;
+    double linear_minimum_hexagon_growth;
+
     // is there a visual difference between the start and end of the loop due to
     // arm grabbers pivoting?
     bool pivot_parity;
