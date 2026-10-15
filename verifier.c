@@ -644,30 +644,23 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.throughput_waste = 0;
         m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
         m.steady_state.cycles = -1;
-        for (uint32_t i = 0; i < board.number_of_chain_atoms; ++i) {
-            struct chain_atom ca = board.chain_atoms[i];
-            if (ca.prev_in_list && !vectors_equal(ca.original_position, ca.current_position)) {
-                struct vector delta = {
-                    ca.current_position.u - ca.original_position.u,
-                    ca.current_position.v - ca.original_position.v,
-                };
-                bool swings = ca.flags & CHAIN_ATOM_SWING_SEXTANTS;
-                if (swings || delta.v != 0)
-                    m.steady_state.height_0 = -1;
-                if (swings || delta.u != 0)
-                    m.steady_state.height_60 = -1;
-                if (swings || delta.u + delta.v != 0)
-                    m.steady_state.height_120 = -1;
-                if (swings || delta.u + 2 * delta.v != 0)
-                    m.steady_state.width2_0 = -1;
-                if (swings || 2 * delta.u + delta.v != 0)
-                    m.steady_state.width2_60 = -1;
-                if (swings || delta.u - delta.v != 0)
-                    m.steady_state.width2_120 = -1;
-                m.steady_state.minimum_hexagon = -1;
-                m.steady_state.area = -1;
-                m.throughput_waste = 1;
-            }
+        if (m.throughput_linear_height_0 > 0)
+            m.steady_state.height_0 = -1;
+        if (m.throughput_linear_height_60 > 0)
+            m.steady_state.height_60 = -1;
+        if (m.throughput_linear_height_120 > 0)
+            m.steady_state.height_120 = -1;
+        if (m.throughput_linear_width2_0 > 0)
+            m.steady_state.width2_0 = -1;
+        if (m.throughput_linear_width2_60 > 0)
+            m.steady_state.width2_60 = -1;
+        if (m.throughput_linear_width2_120 > 0)
+            m.steady_state.width2_120 = -1;
+        if (m.throughput_linear_minimum_hexagon > 0)
+            m.steady_state.minimum_hexagon = -1;
+        if (m.area_growth_order != GROWTH_NONE) {
+            m.steady_state.area = -1;
+            m.throughput_waste = 1;
         }
         m.steady_state.executed_instructions = solution_instructions(&solution);
         for (uint32_t i = 0; i < solution.number_of_arms; ++i) {

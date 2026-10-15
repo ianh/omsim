@@ -444,8 +444,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 if (result.linear_height_120_growth / 2.0 > result.linear_minimum_hexagon_growth)
                     result.linear_minimum_hexagon_growth = result.linear_height_120_growth / 2.0;
 
-                double maxs = (growth_maxes[0] + growth_maxes[1] + growth_maxes[2]) / 3;
-                double mins = (-growth_mins[0] - growth_mins[1] - growth_mins[2]) / 3;
+                double maxs = (growth_maxes[0] + growth_maxes[1] + growth_maxes[2]) / 3.0;
+                double mins = (-growth_mins[0] - growth_mins[1] - growth_mins[2]) / 3.0;
 
                 if (maxs > result.linear_minimum_hexagon_growth)
                     result.linear_minimum_hexagon_growth = maxs;
