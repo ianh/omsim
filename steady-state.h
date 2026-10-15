@@ -9,6 +9,15 @@ enum eventual_behavior {
     EVENTUALLY_REACHES_CYCLE_LIMIT,
 };
 
+static const struct vector growth_directions[12] = {
+    { 1, 0 }, { 1, 1 },
+    { 0, 1 }, { -1, 2 },
+    { -1, 1 }, { -2, 1 },
+    { -1, 0 }, { -1, -1 },
+    { 0, -1 }, { 1, -2 },
+    { 1, -1 }, { 2, -1 },
+};
+
 struct steady_state {
     // what type of overall behavior does the solution have in the limit?
     enum eventual_behavior eventual_behavior;
@@ -27,13 +36,8 @@ struct steady_state {
     uint64_t linear_area_growth;
     double quadratic_area_growth;
 
-    double linear_height_0_growth;
-    double linear_height_60_growth;
-    double linear_height_120_growth;
-    double linear_width2_0_growth;
-    double linear_width2_60_growth;
-    double linear_width2_120_growth;
-    double linear_minimum_hexagon_growth;
+    // how much is the solve growing in each of the 12 growth_directions?
+    double directional_growth[12];
 
     // is there a visual difference between the start and end of the loop due to
     // arm grabbers pivoting?

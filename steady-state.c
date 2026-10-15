@@ -28,15 +28,6 @@ struct chain_swing {
 #endif
 #define M_PI 3.14159265358979323846
 
-static void update_bounds_with_cross_product(const struct vector p, const struct vector growth_direction, double *max, double *min) 
-{
-    int64_t value = growth_direction.u * p.u - growth_direction.v * p.v;
-    if (value > *max)
-        *max = (double)value;
-    else if (value < *min)
-        *min = (double)value;
-}
-
 static void take_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
 {
     snapshot->arms = realloc(snapshot->arms, sizeof(struct mechanism) * solution->number_of_arms);
@@ -152,6 +143,21 @@ static void destroy_snapshot(struct snapshot *snapshot)
     free(snapshot->output_count);
 }
 
+static double max(double a, double b)
+{
+    return a > b ? a : b;
+}
+
+static double dot(struct vector p, struct vector q)
+{
+    return p.u * (q.u + 0.5 * (double)q.v) + p.v * (q.v + 0.5 * (double)q.u);
+}
+
+static int32_t length_squared(struct vector p)
+{
+    return p.u * p.u + p.v * p.v + p.v * p.u;
+}
+
 static uint64_t gcd(uint64_t a, uint64_t b)
 {
     while (b != 0) {
@@ -162,12 +168,19 @@ static uint64_t gcd(uint64_t a, uint64_t b)
     return a;
 }
 
+static struct vector chain_atom_motion(struct chain_atom *ca)
+{
+    return (struct vector){
+        ca->current_position.u - ca->original_position.u,
+        ca->current_position.v - ca->original_position.v,
+    };
+}
+
 static struct vector chain_atom_direction(struct chain_atom *ca)
 {
-    int32_t u = ca->current_position.u - ca->original_position.u;
-    int32_t v = ca->current_position.v - ca->original_position.v;
-    int32_t divisor = gcd(labs(u), labs(v));
-    return (struct vector){ u / divisor, v / divisor };
+    struct vector motion = chain_atom_motion(ca);
+    int32_t divisor = gcd(labs(motion.u), labs(motion.v));
+    return (struct vector){ motion.u / divisor, motion.v / divisor };
 }
 
 static int compare_chain_atoms_by_direction(const void *a, const void *b)
@@ -177,13 +190,6 @@ static int compare_chain_atoms_by_direction(const void *a, const void *b)
     if (a_dir.u - b_dir.u)
         return a_dir.u - b_dir.u;
     return a_dir.v - b_dir.v;
-}
-
-static int32_t chain_atom_motion_length_squared(struct chain_atom *ca)
-{
-    int32_t u = ca->current_position.u - ca->original_position.u;
-    int32_t v = ca->current_position.v - ca->original_position.v;
-    return u * u + u * v + v * v;
 }
 
 static int compare_chain_swings_by_direction(struct chain_swing a, struct chain_swing b)
@@ -372,74 +378,35 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
             }
             
             if (board->area_growth_order != GROWTH_NONE) {
-
-                // height, width, bounding hex growth at infinity
-                const struct vector growth_directions[] = { {0, -1}, {1, 0}, {-1, 1}, {1, -2}, {-2, 1}, {1, 1} };
-                const struct vector growth_normals[] = { {-2, 1}, {1, -2}, {1, 1}, {0, -1}, {1, 0}, {-1, 1} };
-
-                double growth_maxes[sizeof(growth_directions)/sizeof(growth_directions[0])] = { 0 };
-                double growth_mins[sizeof(growth_directions)/sizeof(growth_directions[0])] = { 0 };
+                // compute directional growth.
                 for (uint32_t i = 0; i < board->number_of_chain_atoms; ++i) {
                     struct chain_atom *ca = &board->chain_atoms[i];
                     if (!ca->prev_in_list)
                         continue;
-                    struct vector p = {ca->current_position.u - ca->original_position.u, ca->current_position.v - ca->original_position.v};
-                    // growth for linear chains
-                    for (uint32_t j = 0; j < sizeof(growth_maxes)/sizeof(growth_maxes[0]); ++j) {
-                        update_bounds_with_cross_product(p, growth_directions[j], &growth_maxes[j], &growth_mins[j]);
-                    }
-                    if (ca->flags & CHAIN_ATOM_SWING_SEXTANTS) {
-                        // calculate length of swing for later
-                        double swing_length = sqrt((double)chain_atom_motion_length_squared(ca));
-                        for (uint32_t sextant = 0; sextant < 6; ++sextant) {
-                            struct vector q = {-p.v, p.u + p.v};
-                            if (ca->flags & (1u << (CHAIN_ATOM_SWING_SEXTANTS_SHIFT + sextant))) {
-                                for (uint32_t j = 0; j < sizeof(growth_maxes)/sizeof(growth_maxes[0]); ++j) {
-                                    update_bounds_with_cross_product(p, growth_directions[j], &growth_maxes[j], &growth_mins[j]);
-                                    update_bounds_with_cross_product(q, growth_directions[j], &growth_maxes[j], &growth_mins[j]);
-                                    // if p and q are on opposite sides of the normal line, we swung through it
-                                    int64_t direction = (growth_normals[j].u * p.u - growth_normals[j].v * p.v) * (growth_normals[j].u * q.u - growth_normals[j].v * q.v);
-                                    if (direction < 0) {
-                                        double swing_value;
-                                        if (j < 3) 
-                                            swing_value = swing_length/SQRT3_2;
-                                        else
-                                            swing_value = swing_length*2;
-                                        if (growth_directions[j].u * p.u - growth_directions[j].v * p.v < 0)
-                                            swing_value *= -1;
-                                        if (swing_value > growth_maxes[j])
-                                            growth_maxes[j] = swing_value;
-                                        else if (swing_value < growth_mins[j])
-                                            growth_mins[j] = swing_value;
-                                    }
+                    struct vector p = chain_atom_motion(ca);
+                    // project the chain atom's per-repetition motion onto each direction.
+                    for (int j = 0; j < 12; ++j)
+                        result.directional_growth[j] = max(result.directional_growth[j], dot(growth_directions[j], p));
+                    if (!(ca->flags & CHAIN_ATOM_SWING_SEXTANTS))
+                        continue;
+                    // project the beginning and end directions of each swing onto each direction.
+                    // if the swing passes over a direction, project the length of the chain atom onto that direction as well.
+                    for (uint32_t sextant = 0; sextant < 6; ++sextant) {
+                        struct vector q = { -p.v, p.u + p.v };
+                        if (ca->flags & (1u << (CHAIN_ATOM_SWING_SEXTANTS_SHIFT + sextant))) {
+                            for (int j = 0; j < 12; ++j) {
+                                struct vector growth_direction = growth_directions[j];
+                                result.directional_growth[j] = max(result.directional_growth[j], max(dot(growth_direction, p), dot(growth_direction, q)));
+                                // if p is clockwise of the growth direction and q counterclockwise of it, we passed over it during the swing.
+                                if (growth_direction.v * p.u - growth_direction.u * p.v > 0 && growth_direction.v * q.u - growth_direction.u * q.v < 0) {
+                                    double length_in_direction = sqrt((double)length_squared(p) * (double)length_squared(growth_direction));
+                                    result.directional_growth[j] = max(result.directional_growth[j], length_in_direction);
                                 }
-                            } 
-                            p = q;
+                            }
                         }
+                        p = q;
                     }
-                } 
-
-                result.linear_height_0_growth = growth_maxes[0] - growth_mins[0];
-                result.linear_height_60_growth = growth_maxes[1] - growth_mins[1];
-                result.linear_height_120_growth = growth_maxes[2] - growth_mins[2];
-                result.linear_width2_0_growth = growth_maxes[3] - growth_mins[3];
-                result.linear_width2_60_growth = growth_maxes[4] - growth_mins[4];
-                result.linear_width2_120_growth = growth_maxes[5] - growth_mins[5];
-
-                result.linear_minimum_hexagon_growth = result.linear_height_0_growth / 2;
-                if (result.linear_height_60_growth / 2 > result.linear_minimum_hexagon_growth)
-                    result.linear_minimum_hexagon_growth = result.linear_height_60_growth / 2;
-                if (result.linear_height_120_growth / 2 > result.linear_minimum_hexagon_growth)
-                    result.linear_minimum_hexagon_growth = result.linear_height_120_growth / 2;
-
-                double maxs = (growth_maxes[0] + growth_maxes[1] + growth_maxes[2]) / 3;
-                double mins = (-growth_mins[0] - growth_mins[1] - growth_mins[2]) / 3;
-
-                if (maxs > result.linear_minimum_hexagon_growth)
-                    result.linear_minimum_hexagon_growth = maxs;
-                if (mins > result.linear_minimum_hexagon_growth)
-                    result.linear_minimum_hexagon_growth = mins;
-
+                }
             }
 
             uint64_t repeating_outputs = 1;
@@ -467,13 +434,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 result.number_of_outputs = repeating_outputs;
                 additional_cycles_to_run = result.number_of_cycles * (repeating_periods - 1);
                 result.number_of_cycles *= repeating_periods;
-                result.linear_height_0_growth *= repeating_periods;
-                result.linear_height_60_growth *= repeating_periods;
-                result.linear_height_120_growth *= repeating_periods;
-                result.linear_width2_0_growth *= repeating_periods;
-                result.linear_width2_60_growth *= repeating_periods;
-                result.linear_width2_120_growth *= repeating_periods;
-                result.linear_minimum_hexagon_growth *= repeating_periods;
+                for (int i = 0; i < 12; ++i)
+                    result.directional_growth[i] *= repeating_periods;
                 if (repeating_periods % 2 == 0)
                     result.pivot_parity = false;
             }
@@ -500,13 +462,8 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 linear_area_growth_periods /= d;
                 result.number_of_outputs *= linear_area_growth_periods;
                 result.number_of_cycles *= linear_area_growth_periods;
-                result.linear_height_0_growth *= linear_area_growth_periods;
-                result.linear_height_60_growth *= linear_area_growth_periods;
-                result.linear_height_120_growth *= linear_area_growth_periods;
-                result.linear_width2_0_growth *= linear_area_growth_periods;
-                result.linear_width2_60_growth *= linear_area_growth_periods;
-                result.linear_width2_120_growth *= linear_area_growth_periods;
-                result.linear_minimum_hexagon_growth *= linear_area_growth_periods;
+                for (int i = 0; i < 12; ++i)
+                    result.directional_growth[i] *= linear_area_growth_periods;
                 result.linear_area_growth = linear_area_growth;
             } else if (board->area_growth_order == GROWTH_QUADRATIC) {
                 struct chain_swing *chain_swings = calloc(number_of_swinging_chain_atoms * 6 * 2, sizeof(struct chain_swing));
@@ -517,7 +474,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                         continue;
                     struct chain_swing swing = {
                         .direction = chain_atom_direction(ca),
-                        .length_squared = chain_atom_motion_length_squared(ca),
+                        .length_squared = length_squared(chain_atom_motion(ca)),
                     };
                     while (swing.direction.u <= 0 || swing.direction.v < 0) {
                         swing.sextant++;

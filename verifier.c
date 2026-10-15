@@ -73,12 +73,8 @@ static int instruction_index(char instruction)
 struct per_cycle_measurements {
     int cycles;
     int area;
-    int height_0;
-    int height_60;
-    int height_120;
-    int width2_0;
-    int width2_60;
-    int width2_120;
+    int height;
+    int width2;
     int minimum_hexagon;
     int executed_instructions;
     int instruction_executions[NUMBER_OF_INSTRUCTIONS];
@@ -93,13 +89,9 @@ struct throughput_measurements {
     int64_t throughput_outputs;
     int64_t throughput_linear_area;
     double throughput_quadratic_area;
-    double throughput_linear_height_0;
-    double throughput_linear_height_60;
-    double throughput_linear_height_120;
-    double throughput_linear_width2_0;
-    double throughput_linear_width2_60;
-    double throughput_linear_width2_120;
-    double throughput_linear_minimum_hexagon;
+    double throughput_height;
+    double throughput_width;
+    double throughput_minimum_hexagon;
     enum growth_order area_growth_order;
     int throughput_waste;
     int pivot_parity;
@@ -334,12 +326,8 @@ struct area_dimension {
 static const struct per_cycle_measurements unset_measurements = {
     .cycles = -1,
     .area = -1,
-    .height_0 = -1,
-    .height_60 = -1,
-    .height_120 = -1,
-    .width2_0 = -1,
-    .width2_60 = -1,
-    .width2_120 = -1,
+    .height = -1,
+    .width2 = -1,
     .minimum_hexagon = -1,
     .executed_instructions = -1,
     .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
@@ -413,17 +401,21 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
         m.atom_grabs[i] = (int)board->atom_grabs[i];
     if (has_atoms) {
-        m.height_0 = dimensions[0].max - dimensions[0].min + 1;
-        m.height_60 = dimensions[1].max - dimensions[1].min + 1;
-        m.height_120 = dimensions[2].max - dimensions[2].min + 1;
-        m.width2_0 = dimensions[3].max - dimensions[3].min + 2;
-        m.width2_60 = dimensions[4].max - dimensions[4].min + 2;
-        m.width2_120 = dimensions[5].max - dimensions[5].min + 2;
-        m.minimum_hexagon = m.height_0 / 2;
-        if (m.height_60 / 2 > m.minimum_hexagon)
-            m.minimum_hexagon = m.height_60 / 2;
-        if (m.height_120 / 2 > m.minimum_hexagon)
-            m.minimum_hexagon = m.height_120 / 2;
+        int height_0 = dimensions[0].max - dimensions[0].min + 1;
+        int height_60 = dimensions[1].max - dimensions[1].min + 1;
+        int height_120 = dimensions[2].max - dimensions[2].min + 1;
+
+        m.height = height_0;
+        if (m.height < 0 || (height_60 >= 0 && height_60 < m.height))
+            m.height = height_60;
+        if (m.height < 0 || (height_120 >= 0 && height_120 < m.height))
+            m.height = height_120;
+
+        m.minimum_hexagon = height_0 / 2;
+        if (height_60 / 2 > m.minimum_hexagon)
+            m.minimum_hexagon = height_60 / 2;
+        if (height_120 / 2 > m.minimum_hexagon)
+            m.minimum_hexagon = height_120 / 2;
         int32_t maxs = (dimensions[0].max + dimensions[1].max + dimensions[2].max + 2) / 3;
         int32_t mins = (-dimensions[0].min - dimensions[1].min - dimensions[2].min + 2) / 3;
         if (maxs > m.minimum_hexagon)
@@ -431,6 +423,16 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
         if (mins > m.minimum_hexagon)
             m.minimum_hexagon = mins;
         m.minimum_hexagon += 1;
+
+        int width2_0 = dimensions[3].max - dimensions[3].min + 2;
+        int width2_60 = dimensions[4].max - dimensions[4].min + 2;
+        int width2_120 = dimensions[5].max - dimensions[5].min + 2;
+
+        m.width2 = width2_0;
+        if (m.width2 < 0 || (width2_60 >= 0 && width2_60 < m.width2))
+            m.width2 = width2_60;
+        if (m.width2 < 0 || (width2_120 >= 0 && width2_120 < m.width2))
+            m.width2 = width2_120;
     }
     if (solution) {
         for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
@@ -510,33 +512,11 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
         return measurements->cycles;
     else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
         return measurements->area;
-    else if (!strcmp(metric, "height at 0 degrees"))
-        return measurements->height_0;
-    else if (!strcmp(metric, "height at 60 degrees"))
-        return measurements->height_60;
-    else if (!strcmp(metric, "height at 120 degrees"))
-        return measurements->height_120;
-    else if (!strcmp(metric, "width*2 at 0 degrees"))
-        return measurements->width2_0;
-    else if (!strcmp(metric, "width*2 at 60 degrees"))
-        return measurements->width2_60;
-    else if (!strcmp(metric, "width*2 at 120 degrees"))
-        return measurements->width2_120;
-    else if (!strcmp(metric, "height")) {
-        int height = measurements->height_0;
-        if (height < 0 || (measurements->height_60 >= 0 && measurements->height_60 < height))
-            height = measurements->height_60;
-        if (height < 0 || (measurements->height_120 >= 0 && measurements->height_120 < height))
-            height = measurements->height_120;
-        return height;
-    } else if (!strcmp(metric, "width*2")) {
-        int width2 = measurements->width2_0;
-        if (width2 < 0 || (measurements->width2_60 >= 0 && measurements->width2_60 < width2))
-            width2 = measurements->width2_60;
-        if (width2 < 0 || (measurements->width2_120 >= 0 && measurements->width2_120 < width2))
-            width2 = measurements->width2_120;
-        return width2;
-    } else if (!strcmp(metric, "minimum hexagon"))
+    else if (!strcmp(metric, "height"))
+        return measurements->height;
+    else if (!strcmp(metric, "width*2"))
+        return measurements->width2;
+    else if (!strcmp(metric, "minimum hexagon"))
         return measurements->minimum_hexagon;
     else if (!strcmp(metric, "executed instructions"))
         return measurements->executed_instructions;
@@ -631,32 +611,36 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.throughput_outputs = steady_state.number_of_outputs;
         m.throughput_linear_area = steady_state.linear_area_growth;
         m.throughput_quadratic_area = steady_state.quadratic_area_growth;
-        m.throughput_linear_height_0 = steady_state.linear_height_0_growth;
-        m.throughput_linear_height_60 = steady_state.linear_height_60_growth;
-        m.throughput_linear_height_120 = steady_state.linear_height_120_growth;
-        m.throughput_linear_width2_0 = steady_state.linear_width2_0_growth;
-        m.throughput_linear_width2_60 = steady_state.linear_width2_60_growth;
-        m.throughput_linear_width2_120 = steady_state.linear_width2_120_growth;
-        m.throughput_linear_minimum_hexagon = steady_state.linear_minimum_hexagon_growth;
         m.area_growth_order = steady_state.area_growth_order;
+        m.throughput_height = 1e100;
+        m.throughput_width = 1e100;
+        m.throughput_minimum_hexagon = 0;
+        for (int i = 0; i < 6; i += 2) {
+            double width_growth = steady_state.directional_growth[i] + steady_state.directional_growth[i + 6];
+            if (width_growth < m.throughput_width)
+                m.throughput_width = width_growth;
+            double height_growth = (steady_state.directional_growth[i + 1] + steady_state.directional_growth[i + 7]) / 1.5;
+            if (height_growth < m.throughput_height)
+                m.throughput_height = height_growth;
+            if (height_growth / 2 > m.throughput_minimum_hexagon)
+                m.throughput_minimum_hexagon = height_growth / 2;
+        }
+        double triangle1 = (steady_state.directional_growth[1] + steady_state.directional_growth[5] + steady_state.directional_growth[9]) / 4.5;
+        double triangle2 = (steady_state.directional_growth[3] + steady_state.directional_growth[7] + steady_state.directional_growth[11]) / 4.5;
+        if (triangle1 > m.throughput_minimum_hexagon)
+            m.throughput_minimum_hexagon = triangle1;
+        if (triangle2 > m.throughput_minimum_hexagon)
+            m.throughput_minimum_hexagon = triangle2;
         m.pivot_parity = steady_state.pivot_parity;
         m.steady_state_start_cycle = steady_state.outputs_repeat_after_cycle;
         m.throughput_waste = 0;
         m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
         m.steady_state.cycles = -1;
-        if (m.throughput_linear_height_0 > 0)
-            m.steady_state.height_0 = -1;
-        if (m.throughput_linear_height_60 > 0)
-            m.steady_state.height_60 = -1;
-        if (m.throughput_linear_height_120 > 0)
-            m.steady_state.height_120 = -1;
-        if (m.throughput_linear_width2_0 > 0)
-            m.steady_state.width2_0 = -1;
-        if (m.throughput_linear_width2_60 > 0)
-            m.steady_state.width2_60 = -1;
-        if (m.throughput_linear_width2_120 > 0)
-            m.steady_state.width2_120 = -1;
-        if (m.throughput_linear_minimum_hexagon > 0)
+        if (m.throughput_height > 0)
+            m.steady_state.height = -1;
+        if (m.throughput_width > 0)
+            m.steady_state.width2 = -1;
+        if (m.throughput_minimum_hexagon > 0)
             m.steady_state.minimum_hexagon = -1;
         if (m.area_growth_order != GROWTH_NONE) {
             m.steady_state.area = -1;
@@ -1087,67 +1071,25 @@ double verifier_evaluate_approximate_metric(void *verifier, const char *metric)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_quadratic_area;
-    } else if (!strcmp(metric, "width")) {
-        return verifier_evaluate_metric(verifier, "width*2") / 2.0;
-    } else if (!strcmp(metric, "steady state width")) {
-        return verifier_evaluate_metric(verifier, "steady state width*2") / 2.0;
-    } else if (!strcmp(metric, "per repetition height at 0 degrees")) {
+    } else if (!strcmp(metric, "width"))
+        return verifier_evaluate_metric(verifier, "width*2") / 2;
+    else if (!strcmp(metric, "steady state width"))
+        return verifier_evaluate_metric(verifier, "steady state width*2") / 2;
+    else if (!strcmp(metric, "per repetition height")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_height_0;
-    } else if (!strcmp(metric, "per repetition height at 60 degrees")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_height_60;
-    } else if (!strcmp(metric, "per repetition height at 120 degrees")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_height_120;
-    } else if (!strcmp(metric, "per repetition width*2 at 0 degrees")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_width2_0;
-    } else if (!strcmp(metric, "per repetition width*2 at 60 degrees")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_width2_60;
-    } else if (!strcmp(metric, "per repetition width*2 at 120 degrees")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_width2_120;
-    } else if (!strcmp(metric, "per repetition height")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        double height = v->throughput_measurements.throughput_linear_height_0;
-        if (height < 0 || (v->throughput_measurements.throughput_linear_height_60 >= 0 && v->throughput_measurements.throughput_linear_height_60 < height))
-            height = v->throughput_measurements.throughput_linear_height_60;
-        if (height < 0 || (v->throughput_measurements.throughput_linear_height_120 >= 0 && v->throughput_measurements.throughput_linear_height_120 < height))
-            height = v->throughput_measurements.throughput_linear_height_120;
-        return height;
-    } else if (!strcmp(metric, "per repetition width*2")) {
-        if (!v->throughput_measurements.valid)
-            v->throughput_measurements = measure_throughput(v);
-        v->error = v->throughput_measurements.error;
-        double width2 = v->throughput_measurements.throughput_linear_width2_0;
-        if (width2 < 0 || (v->throughput_measurements.throughput_linear_width2_60 >= 0 && v->throughput_measurements.throughput_linear_width2_60 < width2))
-            width2 = v->throughput_measurements.throughput_linear_width2_60;
-        if (width2 < 0 || (v->throughput_measurements.throughput_linear_width2_120 >= 0 && v->throughput_measurements.throughput_linear_width2_120 < width2))
-            width2 = v->throughput_measurements.throughput_linear_width2_120;
-        return width2;
+        return v->throughput_measurements.throughput_height;
     } else if (!strcmp(metric, "per repetition width")) {
-        return verifier_evaluate_approximate_metric(verifier, "per repetition width*2") / 2.0;
+        if (!v->throughput_measurements.valid)
+            v->throughput_measurements = measure_throughput(v);
+        v->error = v->throughput_measurements.error;
+        return v->throughput_measurements.throughput_width;
     } else if (!strcmp(metric, "per repetition minimum hexagon")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
         v->error = v->throughput_measurements.error;
-        return v->throughput_measurements.throughput_linear_minimum_hexagon;
+        return v->throughput_measurements.throughput_minimum_hexagon;
     } else
         return verifier_evaluate_metric(verifier, metric);
 }
