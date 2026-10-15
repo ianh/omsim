@@ -28,6 +28,9 @@ struct chain_swing {
 #endif
 #define M_PI 3.14159265358979323846
 
+struct vector growth_directions[] = { {0, -1}, {1, 0}, {-1, 1}, {1, -2}, {-2, 1}, {1, 1} };
+struct vector growth_normals[] = { {-2, 1}, {1, -2}, {1, 1}, {0, -1}, {1, 0}, {-1, 1} };
+
 static void take_snapshot(struct solution *solution, struct board *board, struct snapshot *snapshot)
 {
     snapshot->arms = realloc(snapshot->arms, sizeof(struct mechanism) * solution->number_of_arms);
@@ -361,6 +364,96 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 disable_check_until_next_snapshot = true;
                 continue;
             }
+            
+            if (board->area_growth_order != GROWTH_NONE) {
+                // height, width, bounding hex growth at infinity
+                double growth_maxes[sizeof(growth_directions)/sizeof(growth_directions[0])];
+                double growth_mins[sizeof(growth_directions)/sizeof(growth_directions[0])];
+                for (uint32_t i = 0; i < sizeof(growth_maxes)/sizeof(growth_maxes[0]); ++i) {
+                    growth_maxes[i] = 0.0;
+                    growth_mins[i] = 0.0;
+                }
+                for (uint32_t i = 0; i < board->number_of_chain_atoms; ++i) {
+                    struct chain_atom *ca = &board->chain_atoms[i];
+                    if (!ca->prev_in_list)
+                        continue;
+                    struct vector p = {ca->current_position.u - ca->original_position.u, ca->current_position.v - ca->original_position.v};
+                    // growth for linear chains
+                    for (uint32_t j = 0; j < sizeof(growth_maxes)/sizeof(growth_maxes[0]); ++j) {
+                        int64_t value = growth_directions[j].u * p.u - growth_directions[j].v * p.v;   
+                        if (value > growth_maxes[j])
+                            growth_maxes[j] = (double)value;
+                        else if (value < growth_mins[j])
+                            growth_mins[j] = (double)value;
+                    }
+                    if (ca->flags & CHAIN_ATOM_SWING_SEXTANTS) {
+                        // calculate length of swing for later
+                        double swing_length = sqrt((double)chain_atom_motion_length_squared(ca));
+                        bool last_sextant_checked = true;
+                        for (uint32_t sextant = 0; sextant < 6; ++sextant) {
+                            struct vector q = {-p.v, p.u + p.v};
+                            if (ca->flags & (1u << (CHAIN_ATOM_SWING_SEXTANTS_SHIFT + sextant))) {
+                                for (uint32_t j = 0; j < sizeof(growth_maxes)/sizeof(growth_maxes[0]); ++j) {
+                                    if (!last_sextant_checked) {
+                                        int64_t value_p = growth_directions[j].u * p.u - growth_directions[j].v * p.v;
+                                        if (value_p > growth_maxes[j])
+                                            growth_maxes[j] = (double)value_p;
+                                        else if (value_p < growth_mins[j])
+                                            growth_mins[j] = (double)value_p;
+                                    }
+                                    int64_t value_q = growth_directions[j].u * q.u - growth_directions[j].v * q.v;
+                                    if (value_q > growth_maxes[j])
+                                        growth_maxes[j] = (double)value_q;
+                                    else if (value_q < growth_mins[j])
+                                        growth_mins[j] = (double)value_q;
+                                    // if p and q are on opposite sides of the normal line, we swung through it
+                                    int64_t direction = (growth_normals[j].u * p.u - growth_normals[j].v * p.v) * (growth_normals[j].u * q.u - growth_normals[j].v * q.v);
+                                    if (direction < 0) {
+                                        double swing_value;
+                                        if (j < 3) 
+                                            swing_value = swing_length/SQRT3_2;
+                                        else
+                                            swing_value = swing_length*2;
+                                        if (value_q < 0)
+                                            swing_value *= -1;
+                                        if (swing_value > growth_maxes[j])
+                                            growth_maxes[j] = (double)swing_value;
+                                        else if (swing_value < growth_mins[j])
+                                            growth_mins[j] = (double)swing_value;
+                                    }
+                                }
+                                last_sextant_checked = true;
+                            } else {
+                                last_sextant_checked = false;
+                            }
+                            p = q;
+                        }
+                    }
+                } 
+
+                result.linear_height_0_growth = growth_maxes[0] - growth_mins[0];
+                result.linear_height_60_growth = growth_maxes[1] - growth_mins[1];
+                result.linear_height_120_growth = growth_maxes[2] - growth_mins[2];
+                result.linear_width2_0_growth = growth_maxes[3] - growth_mins[3];
+                result.linear_width2_60_growth = growth_maxes[4] - growth_mins[4];
+                result.linear_width2_120_growth = growth_maxes[5] - growth_mins[5];
+
+                result.linear_minimum_hexagon_growth = result.linear_height_0_growth / 2.0;
+                if (result.linear_height_60_growth / 2.0 > result.linear_minimum_hexagon_growth)
+                    result.linear_minimum_hexagon_growth = result.linear_height_60_growth / 2.0;
+                if (result.linear_height_120_growth / 2.0 > result.linear_minimum_hexagon_growth)
+                    result.linear_minimum_hexagon_growth = result.linear_height_120_growth / 2.0;
+
+                double maxs = (growth_maxes[0] + growth_maxes[1] + growth_maxes[2]) / 3;
+                double mins = (-growth_mins[0] - growth_mins[1] - growth_mins[2]) / 3;
+
+                if (maxs > result.linear_minimum_hexagon_growth)
+                    result.linear_minimum_hexagon_growth = maxs;
+                if (mins > result.linear_minimum_hexagon_growth)
+                    result.linear_minimum_hexagon_growth = mins;
+
+            }
+
             uint64_t repeating_outputs = 1;
             uint64_t repeating_periods = 0;
             for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
@@ -386,6 +479,13 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 result.number_of_outputs = repeating_outputs;
                 additional_cycles_to_run = result.number_of_cycles * (repeating_periods - 1);
                 result.number_of_cycles *= repeating_periods;
+                result.linear_height_0_growth *= repeating_periods;
+                result.linear_height_60_growth *= repeating_periods;
+                result.linear_height_120_growth *= repeating_periods;
+                result.linear_width2_0_growth *= repeating_periods;
+                result.linear_width2_60_growth *= repeating_periods;
+                result.linear_width2_120_growth *= repeating_periods;
+                result.linear_minimum_hexagon_growth *= repeating_periods;
                 if (repeating_periods % 2 == 0)
                     result.pivot_parity = false;
             }
@@ -412,6 +512,13 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                 linear_area_growth_periods /= d;
                 result.number_of_outputs *= linear_area_growth_periods;
                 result.number_of_cycles *= linear_area_growth_periods;
+                result.linear_height_0_growth *= linear_area_growth_periods;
+                result.linear_height_60_growth *= linear_area_growth_periods;
+                result.linear_height_120_growth *= linear_area_growth_periods;
+                result.linear_width2_0_growth *= linear_area_growth_periods;
+                result.linear_width2_60_growth *= linear_area_growth_periods;
+                result.linear_width2_120_growth *= linear_area_growth_periods;
+                result.linear_minimum_hexagon_growth *= linear_area_growth_periods;
                 result.linear_area_growth = linear_area_growth;
             } else if (board->area_growth_order == GROWTH_QUADRATIC) {
                 struct chain_swing *chain_swings = calloc(number_of_swinging_chain_atoms * 6 * 2, sizeof(struct chain_swing));
