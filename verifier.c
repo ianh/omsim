@@ -73,9 +73,8 @@ static int instruction_index(char instruction)
 struct per_cycle_measurements {
     int cycles;
     int area;
-    int height;
-    int width2;
-    int minimum_hexagon;
+    bool has_max_direction[12];
+    int max_direction[12];
     int executed_instructions;
     int instruction_executions[NUMBER_OF_INSTRUCTIONS];
     int atom_grabs[NUMBER_OF_ATOM_TYPES];
@@ -316,19 +315,20 @@ static void check_wrong_output_and_destroy(struct verifier *v, struct solution *
         destroy(solution, board);
 }
 
-struct area_dimension {
-    int64_t u;
-    int64_t v;
-    int64_t max;
-    int64_t min;
-};
+static int max(int a, int b)
+{
+    return a > b ? a : b;
+}
+
+static int32_t dot2(struct vector p, struct vector q)
+{
+    return p.u * (2 * q.u + q.v) + p.v * (2 * q.v + q.u);
+}
 
 static const struct per_cycle_measurements unset_measurements = {
     .cycles = -1,
     .area = -1,
-    .height = -1,
-    .width2 = -1,
-    .minimum_hexagon = -1,
+    .max_direction = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, },
     .executed_instructions = -1,
     .instruction_executions = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
     .atom_grabs = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 },
@@ -358,39 +358,18 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     struct per_cycle_measurements m = {
         .cycles = (int)board->cycle,
         .area = used_area(board),
+        .has_max_direction = { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 },
+        .max_direction = { INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN, INT_MIN },
         .executed_instructions = 0,
         .valid = true,
     };
-    struct area_dimension dimensions[] = {
-        // height
-        { 0, -1, INT32_MIN, INT32_MAX },
-        { 1, 0, INT32_MIN, INT32_MAX },
-        { -1, 1, INT32_MIN, INT32_MAX },
-
-        // width
-        { -1, 2, INT32_MIN, INT32_MAX },
-        { -2, 1, INT32_MIN, INT32_MAX },
-        { 1, 1, INT32_MIN, INT32_MAX },
-    };
-    bool has_atoms = false;
     for (uint32_t i = 0; i < BOARD_CAPACITY(board); ++i) {
         atom a = board->grid.atoms_at_positions[i].atom;
         if (!(a & VALID))
             continue;
-        has_atoms = true;
         struct vector p = board->grid.atoms_at_positions[i].position;
-        for (int j = 0; j < sizeof(dimensions)/sizeof(dimensions[0]); ++j) {
-            int64_t value = dimensions[j].u * p.u - dimensions[j].v * p.v;
-            if (value < dimensions[j].min)
-                dimensions[j].min = value;
-            if (value > dimensions[j].max)
-                dimensions[j].max = value;
-            if (dimensions[j].max - dimensions[j].min + 2 > INT_MAX) {
-                error_measurements.error.description = "solution bounding box is too large to compute width and height";
-                error_measurements.error.source = verifier_error_source_simulation;
-                return error_measurements;
-            }
-        }
+        for (int j = 0; j < 12; ++j)
+            m.max_direction[j] = max(m.max_direction[j], dot2(growth_directions[j], p));
         if (!(a & REMOVED) && !(a & WHEEL_ATOM)) {
             for (int j = 0; j < NUMBER_OF_ATOM_TYPES; ++j) {
                 if (board->grid.atoms_at_positions[i].atom & ATOM_OF_TYPE(j))
@@ -400,40 +379,6 @@ static struct per_cycle_measurements measure_at_current_cycle(struct verifier *v
     }
     for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
         m.atom_grabs[i] = (int)board->atom_grabs[i];
-    if (has_atoms) {
-        int height_0 = dimensions[0].max - dimensions[0].min + 1;
-        int height_60 = dimensions[1].max - dimensions[1].min + 1;
-        int height_120 = dimensions[2].max - dimensions[2].min + 1;
-
-        m.height = height_0;
-        if (m.height < 0 || (height_60 >= 0 && height_60 < m.height))
-            m.height = height_60;
-        if (m.height < 0 || (height_120 >= 0 && height_120 < m.height))
-            m.height = height_120;
-
-        m.minimum_hexagon = height_0 / 2;
-        if (height_60 / 2 > m.minimum_hexagon)
-            m.minimum_hexagon = height_60 / 2;
-        if (height_120 / 2 > m.minimum_hexagon)
-            m.minimum_hexagon = height_120 / 2;
-        int32_t maxs = (dimensions[0].max + dimensions[1].max + dimensions[2].max + 2) / 3;
-        int32_t mins = (-dimensions[0].min - dimensions[1].min - dimensions[2].min + 2) / 3;
-        if (maxs > m.minimum_hexagon)
-            m.minimum_hexagon = maxs;
-        if (mins > m.minimum_hexagon)
-            m.minimum_hexagon = mins;
-        m.minimum_hexagon += 1;
-
-        int width2_0 = dimensions[3].max - dimensions[3].min + 2;
-        int width2_60 = dimensions[4].max - dimensions[4].min + 2;
-        int width2_120 = dimensions[5].max - dimensions[5].min + 2;
-
-        m.width2 = width2_0;
-        if (m.width2 < 0 || (width2_60 >= 0 && width2_60 < m.width2))
-            m.width2 = width2_60;
-        if (m.width2 < 0 || (width2_120 >= 0 && width2_120 < m.width2))
-            m.width2 = width2_120;
-    }
     if (solution) {
         for (uint32_t i = 0; i < solution->number_of_arms; ++i) {
             if (board->cycle < solution->arm_tape_start_cycle[i])
@@ -512,13 +457,39 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
         return measurements->cycles;
     else if (!strcmp(metric, "area (approximate)") || !strcmp(metric, "area"))
         return measurements->area;
-    else if (!strcmp(metric, "height"))
-        return measurements->height;
-    else if (!strcmp(metric, "width*2"))
-        return measurements->width2;
-    else if (!strcmp(metric, "minimum hexagon"))
-        return measurements->minimum_hexagon;
-    else if (!strcmp(metric, "executed instructions"))
+    else if (!strcmp(metric, "height")) {
+        int height = -1;
+        for (int i = 1; i < 6; i += 2) {
+            if (!measurements->has_max_direction[i] || !measurements->has_max_direction[i + 6])
+                continue;
+            int height_in_direction = (measurements->max_direction[i] + measurements->max_direction[i + 6]) / 3 + 1;
+            if (height < 0 || height_in_direction < height)
+                height = height_in_direction;
+        }
+        return height;
+    } else if (!strcmp(metric, "width*2")) {
+        int width2 = -1;
+        for (int i = 0; i < 6; i += 2) {
+            if (!measurements->has_max_direction[i] || !measurements->has_max_direction[i + 6])
+                continue;
+            int width2_in_direction = measurements->max_direction[i] + measurements->max_direction[i + 6] + 2;
+            if (width2 < 0 || width2_in_direction < width2)
+                width2 = width2_in_direction;
+        }
+        return width2;
+    } else if (!strcmp(metric, "minimum hexagon")) {
+        int minimum_hexagon = -1;
+        for (int i = 1; i < 6; i += 2) {
+            if (!measurements->has_max_direction[i] || !measurements->has_max_direction[i + 6])
+                return -1;
+            minimum_hexagon = max(minimum_hexagon, ((measurements->max_direction[i] + measurements->max_direction[i + 6]) / 3 + 1) / 2);
+        }
+        minimum_hexagon = max(minimum_hexagon, ((measurements->max_direction[1] + measurements->max_direction[5] + measurements->max_direction[9]) / 3 + 2) / 3);
+        minimum_hexagon = max(minimum_hexagon, ((measurements->max_direction[3] + measurements->max_direction[7] + measurements->max_direction[11]) / 3 + 2) / 3);
+        if (minimum_hexagon >= 0)
+            minimum_hexagon += 1;
+        return minimum_hexagon;
+    } else if (!strcmp(metric, "executed instructions"))
         return measurements->executed_instructions;
     else if (!strcmp(metric, "instruction executions")) {
         int value = 0;
@@ -636,12 +607,10 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.throughput_waste = 0;
         m.steady_state = measure_at_current_cycle(v, &solution, &board, false);
         m.steady_state.cycles = -1;
-        if (m.throughput_height > 0)
-            m.steady_state.height = -1;
-        if (m.throughput_width > 0)
-            m.steady_state.width2 = -1;
-        if (m.throughput_minimum_hexagon > 0)
-            m.steady_state.minimum_hexagon = -1;
+        for (int i = 0; i < 12; ++i) {
+            if (steady_state.directional_growth[i] > 0)
+                m.steady_state.has_max_direction[i] = false;
+        }
         if (m.area_growth_order != GROWTH_NONE) {
             m.steady_state.area = -1;
             m.throughput_waste = 1;
