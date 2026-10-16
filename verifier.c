@@ -528,9 +528,14 @@ static int lookup_per_cycle_metric(const struct per_cycle_measurements *measurem
         *error = (struct error){ .description = "unknown atom type", .source = verifier_error_source_metric };
         return -1;
     } else if (!strcmp(metric, "number of atoms")) {
-        int value = 0;
-        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
-            value += measurements->number_of_atoms[i];
+        int value = -1;
+        for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i) {
+            if (measurements->number_of_atoms[i] >= 0) {
+                if (value < 0)
+                    value = 0;
+                value += measurements->number_of_atoms[i];
+            }
+        }
         return value;
     } else if (!strncmp("number of atoms of type ", metric, strlen("number of atoms of type "))) {
         metric += strlen("number of atoms of type ");
@@ -614,6 +619,8 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         if (m.area_growth_order != GROWTH_NONE) {
             m.steady_state.area = -1;
             m.throughput_waste = 1;
+            for (int i = 0; i < NUMBER_OF_ATOM_TYPES; ++i)
+                m.steady_state.number_of_atoms[i] = -1;
         }
         m.steady_state.executed_instructions = solution_instructions(&solution);
         for (uint32_t i = 0; i < solution.number_of_arms; ++i) {
