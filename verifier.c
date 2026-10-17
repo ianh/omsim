@@ -1048,9 +1048,9 @@ double verifier_evaluate_approximate_metric(void *verifier, const char *metric)
         v->error = v->throughput_measurements.error;
         return v->throughput_measurements.throughput_quadratic_area;
     } else if (!strcmp(metric, "width"))
-        return verifier_evaluate_metric(verifier, "width*2") / 2;
+        return verifier_evaluate_metric(verifier, "width*2") / 2.0;
     else if (!strcmp(metric, "steady state width"))
-        return verifier_evaluate_metric(verifier, "steady state width*2") / 2;
+        return verifier_evaluate_metric(verifier, "steady state width*2") / 2.0;
     else if (!strcmp(metric, "per repetition height")) {
         if (!v->throughput_measurements.valid)
             v->throughput_measurements = measure_throughput(v);
