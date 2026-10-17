@@ -93,14 +93,23 @@ int verifier_evaluate_metric(void *verifier, const char *metric);
 double verifier_evaluate_approximate_metric(void *verifier, const char *metric);
 
 // used to compute the lexicographic cycles metric.  the first interval is
-// the cycle on which the first output is dropped; the second interval is the
-// difference between the cycles on which the second and the first outputs are
-// dropped; the third interval is the difference between the third and the
-// second; and so on through verifier_number_of_output_intervals().
+// the cycle on which the first product set is dropped; the second interval is
+// the difference between the cycles on which the second and the first product
+// sets are dropped; the third interval is the difference between the third and
+// the second; and so on through verifier_number_of_output_intervals().
 // if the index returned by verifier_output_intervals_repeat_after() is
 // non-negative, the output intervals from that index onward repeat cyclically.
 int verifier_number_of_output_intervals(void *verifier);
 int verifier_output_interval(void *verifier, int which_interval);
 int verifier_output_intervals_repeat_after(void *verifier);
+
+// intervals for individual outputs rather than product sets.  the outputs are
+// specified using their index in the puzzle file.
+int verifier_number_of_output_intervals_for_output(void *verifier, int output);
+int verifier_output_interval_for_output(void *verifier, int output, int which_interval);
+int verifier_output_intervals_for_output_repeat_after(void *verifier, int output);
+
+// returns the number of outputs in the puzzle file.
+int verifier_number_of_outputs(void *verifier);
 
 #endif

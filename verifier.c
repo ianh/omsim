@@ -100,6 +100,125 @@ struct throughput_measurements {
     bool valid;
 };
 
+struct output_intervals {
+    int *intervals;
+    int number_of_intervals;
+    int intervals_repeat_after;
+};
+
+static int max(int a, int b)
+{
+    return a > b ? a : b;
+}
+
+static int gcd(int a, int b)
+{
+    while (b != 0) {
+        int t = b;
+        b = a % b;
+        a = t;
+    }
+    return a;
+}
+
+static int lcm(int a, int b)
+{
+    if (a == 0 || b == 0)
+        return 0;
+    return a * b / gcd(a, b);
+}
+
+static void normalize_output_intervals(struct output_intervals *oi)
+{
+    int cycle_start = oi->intervals_repeat_after;
+    int n = oi->number_of_intervals - cycle_start;
+    if (oi->intervals_repeat_after <= 0 || n == 0)
+        return;
+    // eliminate extra repetitions within the repeating range.
+    for (int i = 1; i <= n / 2; ++i) {
+        if ((n % i) != 0)
+            continue;
+        bool repeating = true;
+        for (int j = 0; j < n; ++j) {
+            if (oi->intervals[cycle_start + j] != oi->intervals[cycle_start + (j % i)]) {
+                repeating = false;
+                break;
+            }
+        }
+        if (repeating) {
+            oi->number_of_intervals = cycle_start + i;
+            n = i;
+            break;
+        }
+    }
+    // eliminate extra repetitions before the repeating range.
+    while (oi->number_of_intervals > 0 && oi->intervals_repeat_after > 0 && oi->intervals[oi->number_of_intervals - 1] == oi->intervals[oi->intervals_repeat_after - 1]) {
+        oi->intervals_repeat_after--;
+        oi->number_of_intervals--;
+    }
+}
+
+static int output_interval_at(struct output_intervals *oi, int index)
+{
+    int repeat_after = oi->intervals_repeat_after < 0 ? oi->number_of_intervals : oi->intervals_repeat_after;
+    if (index < repeat_after)
+        return oi->intervals[index];
+    if (repeat_after == oi->number_of_intervals)
+        return -1;
+    return oi->intervals[repeat_after + (index - repeat_after) % (oi->number_of_intervals - repeat_after)];
+}
+
+// combines intervals for two different outputs into intervals for their
+// combined product set.  replaces the intervals for `dst` while leaving `src`
+// unchanged.
+static void combine_output_intervals(struct output_intervals *dst, struct output_intervals *src)
+{
+    int dst_repeat_after = dst->intervals_repeat_after < 0 ? dst->number_of_intervals : dst->intervals_repeat_after;
+    int src_repeat_after = src->intervals_repeat_after < 0 ? src->number_of_intervals : src->intervals_repeat_after;
+    int initial_length = max(dst_repeat_after, src_repeat_after);
+    int lcm_repeat = lcm(dst->number_of_intervals - dst_repeat_after, src->number_of_intervals - src_repeat_after);
+    int dst_total = 0;
+    int src_total = 0;
+    for (int i = 0; i < lcm_repeat; ++i) {
+        dst_total += output_interval_at(dst, initial_length + i);
+        src_total += output_interval_at(src, initial_length + i);
+    }
+    int dst_output_cycle = 0;
+    int src_output_cycle = 0;
+    int repeats_to_overtake = 0;
+    for (int i = 0; i < initial_length + lcm_repeat; ++i) {
+        int dst_interval = output_interval_at(dst, i);
+        int src_interval = output_interval_at(src, i);
+        if (dst_interval < 0 || src_interval < 0) {
+            initial_length = i;
+            break;
+        }
+        dst_output_cycle += dst_interval;
+        src_output_cycle += src_interval;
+        if (i >= initial_length) {
+            if (dst_total > src_total)
+                repeats_to_overtake = max(repeats_to_overtake, (src_output_cycle - dst_output_cycle + dst_total - src_total - 1) / (dst_total - src_total) + 1);
+            else if (src_total > dst_total)
+                repeats_to_overtake = max(repeats_to_overtake, (dst_output_cycle - src_output_cycle + src_total - dst_total - 1) / (src_total - dst_total) + 1);
+        }
+    }
+    dst_output_cycle = 0;
+    src_output_cycle = 0;
+    int number_of_result_intervals = initial_length + lcm_repeat * (repeats_to_overtake + 1);
+    int *result_intervals = calloc(number_of_result_intervals, sizeof(int));
+    int last_max = 0;
+    for (int i = 0; i < number_of_result_intervals; ++i) {
+        dst_output_cycle += output_interval_at(dst, i);
+        src_output_cycle += output_interval_at(src, i);
+        result_intervals[i] = max(dst_output_cycle, src_output_cycle) - last_max;
+        last_max += result_intervals[i];
+    }
+    free(dst->intervals);
+    dst->intervals = result_intervals;
+    dst->number_of_intervals = number_of_result_intervals;
+    dst->intervals_repeat_after = initial_length + lcm_repeat * repeats_to_overtake;
+}
+
 struct verifier {
     struct puzzle_file *pf;
     struct solution_file *sf;
@@ -118,9 +237,8 @@ struct verifier {
 
     struct per_cycle_measurements completion;
 
-    int *output_intervals;
-    int number_of_output_intervals;
-    int output_intervals_repeat_after;
+    struct output_intervals *output_intervals_for_output;
+    struct output_intervals output_intervals;
 
     uint64_t collision_check_limit;
     bool disable_limits;
@@ -238,10 +356,15 @@ void verifier_error_clear(void *verifier)
 void verifier_destroy(void *verifier)
 {
     struct verifier *v = verifier;
+    if (v->output_intervals_for_output && v->pf) {
+        for (uint32_t i = 0; i < v->pf->number_of_outputs; ++i)
+            free(v->output_intervals_for_output[i].intervals);
+    }
+    free(v->output_intervals_for_output);
+    free(v->output_intervals.intervals);
     free_puzzle_file(v->pf);
     free_solution_file(v->sf);
     verifier_wrong_output_clear(v);
-    free(v->output_intervals);
     free(v);
 }
 
@@ -313,11 +436,6 @@ static void check_wrong_output_and_destroy(struct verifier *v, struct solution *
         destroy(solution, 0);
     } else
         destroy(solution, board);
-}
-
-static int max(int a, int b)
-{
-    return a > b ? a : b;
 }
 
 static int32_t dot2(struct vector p, struct vector q)
@@ -562,7 +680,11 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         .throughput_quadratic_area = -1,
         .throughput_waste = -1,
     };
-    v->output_intervals_repeat_after = -1;
+    if (!v->output_intervals_for_output)
+        v->output_intervals_for_output = calloc(v->pf->number_of_outputs, sizeof(struct output_intervals));
+    for (uint32_t i = 0; i < v->pf->number_of_outputs; ++i)
+        v->output_intervals_for_output[i] = (struct output_intervals){ .intervals_repeat_after = -1 };
+    v->output_intervals = (struct output_intervals){ .intervals_repeat_after = -1 };
     struct solution solution = { 0 };
     struct board board = { 0 };
     if (!decode_solution(&solution, v->pf, v->sf, &m.error.description)) {
@@ -638,94 +760,105 @@ static struct throughput_measurements measure_throughput(struct verifier *v)
         m.error.source = verifier_error_source_simulation;
     }
 
-    v->output_intervals = calloc(board.number_of_output_cycles, sizeof(uint64_t));
-    for (uint64_t i = 0; i < board.number_of_output_cycles; ++i)
-        v->output_intervals[i] = board.output_cycles[i];
-    v->number_of_output_intervals = board.number_of_output_cycles;
-
-    // if the solution enters a steady state, outputs repeat during the steady state period.
-    if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
-        for (size_t i = 0; i < v->number_of_output_intervals; ++i) {
-            if (v->output_intervals[i] > steady_state.outputs_repeat_after_cycle) {
-                v->output_intervals_repeat_after = i;
-                break;
-            }
-        }
-    }
-
-    // during measurement, the intervals are actually absolute cycles.  fix that
-    // up here as a post-processing pass.
-    int last = 0;
-    for (int i = 0; i < v->number_of_output_intervals; ++i) {
-        int delta = v->output_intervals[i] - last;
-        last = v->output_intervals[i];
-        v->output_intervals[i] = delta;
-    }
-
-    int cycle_start = v->output_intervals_repeat_after;
-    int n = v->number_of_output_intervals - cycle_start;
-    if (v->output_intervals_repeat_after > 0 && n > 0) {
-        // eliminate extra repetitions within the repeating range.
-        for (int i = 1; i <= n / 2; ++i) {
-            if ((n % i) != 0)
-                continue;
-            bool repeating = true;
-            for (int j = 0; j < n; ++j) {
-                if (v->output_intervals[cycle_start + j] != v->output_intervals[cycle_start + (j % i)]) {
-                    repeating = false;
+    for (size_t i = 0; i < solution.number_of_inputs_and_outputs; ++i) {
+        struct input_output *io = &solution.inputs_and_outputs[i];
+        if (!(io->type & OUTPUT))
+            continue;
+        struct output_intervals *oi = &v->output_intervals_for_output[io->puzzle_index];
+        oi->intervals = calloc(io->number_of_output_cycles, sizeof(int));
+        for (uint64_t j = 0; j < io->number_of_output_cycles; ++j)
+            oi->intervals[j] = io->output_cycles[j];
+        oi->number_of_intervals = io->number_of_output_cycles;
+        // if the solution enters a steady state, outputs repeat during the steady state period.
+        if (steady_state.eventual_behavior == EVENTUALLY_ENTERS_STEADY_STATE) {
+            for (size_t j = 0; j < oi->number_of_intervals; ++j) {
+                if (oi->intervals[j] > steady_state.outputs_repeat_after_cycle) {
+                    oi->intervals_repeat_after = j;
                     break;
                 }
             }
-            if (repeating) {
-                v->number_of_output_intervals = cycle_start + i;
-                n = i;
-                break;
-            }
         }
-        // eliminate extra repetitions before the repeating range.
-        while (v->number_of_output_intervals > 0 && v->output_intervals_repeat_after > 0 && v->output_intervals[v->number_of_output_intervals - 1] == v->output_intervals[v->output_intervals_repeat_after - 1]) {
-            v->output_intervals_repeat_after--;
-            v->number_of_output_intervals--;
+        // during measurement, the intervals are actually absolute cycles.  fix that
+        // up here as a post-processing pass.
+        int last = 0;
+        for (int j = 0; j < oi->number_of_intervals; ++j) {
+            oi->intervals[j] -= last;
+            last += oi->intervals[j];
         }
+        normalize_output_intervals(oi);
     }
     check_wrong_output_and_destroy(v, &solution, &board);
     return m;
 }
 
-static void ensure_output_intervals(struct verifier *v)
+static struct output_intervals *measure_output_intervals(struct verifier *v, int output)
 {
-    if (v->throughput_measurements.valid)
-        return;
-    v->throughput_measurements = measure_throughput(v);
+    if (!v || !v->sf || !v->pf)
+        return NULL;
+    if (output >= 0 && output >= v->pf->number_of_outputs)
+        return NULL;
+    if (!v->throughput_measurements.valid)
+        v->throughput_measurements = measure_throughput(v);
+    if (output < 0) {
+        if (!v->output_intervals.intervals) {
+            v->output_intervals.intervals = calloc(1, sizeof(int));
+            v->output_intervals.number_of_intervals = 1;
+            v->output_intervals.intervals_repeat_after = 0;
+            for (uint32_t i = 0; i < v->pf->number_of_outputs; ++i) {
+                combine_output_intervals(&v->output_intervals, &v->output_intervals_for_output[i]);
+                normalize_output_intervals(&v->output_intervals);
+            }
+        }
+        return &v->output_intervals;
+    }
+    return &v->output_intervals_for_output[output];
 }
 
 int verifier_number_of_output_intervals(void *verifier)
 {
-    struct verifier *v = verifier;
-    if (!v->sf)
-        return 0;
-    ensure_output_intervals(v);
-    return v->number_of_output_intervals;
+    return verifier_number_of_output_intervals_for_output(verifier, -1);
 }
 
 int verifier_output_interval(void *verifier, int which_interval)
 {
-    struct verifier *v = verifier;
-    if (!v->sf)
-        return -1;
-    ensure_output_intervals(v);
-    if (which_interval < 0 || which_interval >= v->number_of_output_intervals)
-        return -1;
-    return v->output_intervals[which_interval];
+    return verifier_output_interval_for_output(verifier, -1, which_interval);
 }
 
 int verifier_output_intervals_repeat_after(void *verifier)
 {
-    struct verifier *v = verifier;
-    if (!v->sf)
+    return verifier_output_intervals_for_output_repeat_after(verifier, -1);
+}
+
+int verifier_number_of_output_intervals_for_output(void *verifier, int output)
+{
+    struct output_intervals *oi = measure_output_intervals(verifier, output);
+    if (!oi)
         return -1;
-    ensure_output_intervals(v);
-    return v->output_intervals_repeat_after;
+     return oi->number_of_intervals;
+}
+
+int verifier_output_interval_for_output(void *verifier, int output, int which_interval)
+{
+    struct output_intervals *oi = measure_output_intervals(verifier, output);
+    if (!oi || which_interval < 0 || which_interval >= oi->number_of_intervals)
+        return -1;
+    return oi->intervals[which_interval];
+}
+
+int verifier_output_intervals_for_output_repeat_after(void *verifier, int output)
+{
+    struct output_intervals *oi = measure_output_intervals(verifier, output);
+    if (!oi)
+        return -1;
+     return oi->intervals_repeat_after;
+}
+
+int verifier_number_of_outputs(void *verifier)
+{
+    struct verifier *v = verifier;
+    if (!v->pf)
+        return -1;
+    return v->pf->number_of_outputs;
 }
 
 int verifier_evaluate_metric(void *verifier, const char *metric)

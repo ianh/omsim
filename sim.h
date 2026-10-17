@@ -327,6 +327,13 @@ struct input_output {
 
     // size of one monomer on the u axis.
     int32_t monomer_width;
+
+    // records each cycle the output count increases toward completion.
+    // a cycle on which the output count increased multiple times will appear
+    // that number of times in the list.
+    uint64_t *output_cycles;
+    uint64_t number_of_output_cycles;
+    uint64_t output_cycles_capacity;
 };
 
 #define CABINET_MAP_SIZE 32
@@ -541,13 +548,6 @@ struct board {
     uint32_t number_of_area_directions;
 
     struct disjoint_bond_table disjoint_bond_table;
-
-    // records each cycle the output count increases toward completion.
-    // a cycle on which the output count increased multiple times will appear
-    // that number of times in the list.
-    uint64_t *output_cycles;
-    uint64_t number_of_output_cycles;
-    uint64_t output_cycles_capacity;
 
     // how many times a collision check has been performed.
     uint64_t collision_checks;

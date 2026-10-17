@@ -1832,24 +1832,23 @@ static void check_completion(struct solution *solution, struct board *board)
 {
     uint64_t min = UINT64_MAX;
     for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
-        if (!(solution->inputs_and_outputs[i].type & OUTPUT))
+        struct input_output *io = &solution->inputs_and_outputs[i];
+        if (!(io->type & OUTPUT))
             continue;
-        uint64_t count = solution->inputs_and_outputs[i].number_of_outputs;
+        uint64_t count = io->number_of_outputs;
         if (count < min)
             min = count;
+        if (count > io->output_cycles_capacity) {
+            io->output_cycles_capacity = (count * 3) / 2;
+            if (io->output_cycles_capacity < 6)
+                io->output_cycles_capacity = 6;
+            io->output_cycles = realloc(io->output_cycles, io->output_cycles_capacity * sizeof(uint64_t));
+        }
+        for (uint64_t j = io->number_of_output_cycles; j < count; ++j)
+            io->output_cycles[j] = board->cycle;
+        io->number_of_output_cycles = count;
     }
     board->complete = min >= solution->target_number_of_outputs;
-    if (min == UINT64_MAX)
-        return;
-    if (min > board->output_cycles_capacity) {
-        board->output_cycles_capacity = (min * 3) / 2;
-        if (board->output_cycles_capacity < 6)
-            board->output_cycles_capacity = 6;
-        board->output_cycles = realloc(board->output_cycles, board->output_cycles_capacity * sizeof(uint64_t));
-    }
-    for (uint64_t i = board->number_of_output_cycles; i < min; ++i)
-        board->output_cycles[i] = board->cycle;
-    board->number_of_output_cycles = min;
 }
 
 void run(struct solution *solution, struct board *board)
@@ -2155,6 +2154,7 @@ void destroy(struct solution *solution, struct board *board)
             free(solution->inputs_and_outputs[i].atoms);
             free(solution->inputs_and_outputs[i].row_min_u);
             free(solution->inputs_and_outputs[i].row_max_u);
+            free(solution->inputs_and_outputs[i].output_cycles);
         }
         free(solution->inputs_and_outputs);
         memset(solution, 0, sizeof(*solution));
@@ -2167,7 +2167,6 @@ void destroy(struct solution *solution, struct board *board)
         free(board->overlapped_atoms);
         free(board->chain_atoms);
         free(board->chain_atom_table);
-        free(board->output_cycles);
         for (uint32_t i = 0; i < board->number_of_area_directions; ++i)
             free(board->area_directions[i].footprint_at_infinity.atoms_at_positions);
         free(board->disjoint_bond_table.bonds);
