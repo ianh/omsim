@@ -204,7 +204,7 @@ static void combine_output_intervals(struct output_intervals *dst, struct output
     }
     dst_output_cycle = 0;
     src_output_cycle = 0;
-    int number_of_result_intervals = initial_length + lcm_repeat * (repeats_to_overtake + 1);
+    uint64_t number_of_result_intervals = initial_length + lcm_repeat * (repeats_to_overtake + 1);
     int *result_intervals = calloc(number_of_result_intervals, sizeof(int));
     int last_max = 0;
     for (int i = 0; i < number_of_result_intervals; ++i) {
