@@ -425,7 +425,7 @@ static void mark_visible_region(struct solution *solution, struct vector p, int3
 static void mark_visible_input_output(struct solution *solution, struct input_output *io)
 {   
     if (io->type & REPEATING_OUTPUT) {
-        for (uint32_t i = 0; i < io->number_of_original_atoms; ++i)
+        for (uint32_t i = 0; i < io->number_of_original_atoms - 1; ++i)
             mark_visible_region(solution, io->atoms[i].position, 0);
     } else {
         for (uint32_t i = 0; i < io->number_of_atoms; ++i)
