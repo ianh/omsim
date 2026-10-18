@@ -426,10 +426,12 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
                     repeating_outputs = (uint64_t)io->outputs_per_repetition * (uint64_t)io->maximum_feed_rate;
                     repeating_periods = divisor;
                 }
-                uint64_t output_interval_periods = divisor / gcd((uint64_t)io->maximum_feed_rate, divisor);
-                io->output_cycles_end = result.outputs_repeat_after_cycle + result.number_of_cycles * output_interval_periods;
-                if (output_interval_periods > periods_to_run)
-                    periods_to_run = output_interval_periods;
+                if (io->maximum_feed_rate > 0) {
+                    uint64_t output_interval_periods = divisor / gcd((uint64_t)io->maximum_feed_rate, divisor);
+                    io->output_cycles_end = result.outputs_repeat_after_cycle + result.number_of_cycles * output_interval_periods;
+                    if (output_interval_periods > periods_to_run)
+                        periods_to_run = output_interval_periods;
+                }
             }
             uint64_t additional_cycles_to_run = result.number_of_cycles * (periods_to_run - 1);
             if (repeating_outputs < result.number_of_outputs * repeating_periods) {
