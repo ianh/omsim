@@ -411,7 +411,7 @@ struct steady_state run_until_steady_state(struct solution *solution, struct boa
 
             uint64_t repeating_outputs = 1;
             uint64_t repeating_periods = 0;
-            uint64_t periods_to_run = 0;
+            uint64_t periods_to_run = 1;
             for (size_t i = 0; i < solution->number_of_inputs_and_outputs; ++i) {
                 struct input_output *io = &solution->inputs_and_outputs[i];
                 if (!(io->type & REPEATING_OUTPUT))
