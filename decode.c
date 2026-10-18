@@ -1004,6 +1004,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->type = SINGLE_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             io->solution_index = i;
+            io->output_cycles_end = -1;
             decode_molecule(c, m, io);
             io_index--;
             mark_visible_input_output(solution, io);
@@ -1013,6 +1014,7 @@ bool decode_solution(struct solution *solution, struct puzzle_file *pf, struct s
             io->type = REPEATING_OUTPUT;
             io->puzzle_index = part.which_input_or_output;
             io->solution_index = i;
+            io->output_cycles_end = -1;
             decode_molecule(c, m, io);
             io->original_atoms = io->atoms;
             io->number_of_original_atoms = io->number_of_atoms;

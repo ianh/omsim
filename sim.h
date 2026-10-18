@@ -334,6 +334,9 @@ struct input_output {
     uint64_t *output_cycles;
     uint64_t number_of_output_cycles;
     uint64_t output_cycles_capacity;
+    
+    // the last cycle output cycles should be recorded on.
+    uint64_t output_cycles_end;
 };
 
 #define CABINET_MAP_SIZE 32

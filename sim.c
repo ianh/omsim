@@ -1838,6 +1838,8 @@ static void check_completion(struct solution *solution, struct board *board)
         uint64_t count = io->number_of_outputs;
         if (count < min)
             min = count;
+        if (io->output_cycles_end != -1 && board->cycle > io->output_cycles_end)
+            continue;
         if (count > io->output_cycles_capacity) {
             io->output_cycles_capacity = (count * 3) / 2;
             if (io->output_cycles_capacity < 6)
