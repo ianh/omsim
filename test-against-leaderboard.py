@@ -34,6 +34,14 @@ def measure_area_at_infinity(m):
         return {'level': 1, 'value': a1}
     return {'level': 0, 'value': m("steady state area")}
 
+def measure_directional_size_at_infinity(m, name):
+    if not measure_rate(m):
+        return None
+    a1 = m(f"per repetition {name}") / m("per repetition outputs")
+    if a1 > 0:
+        return {'level': 1, 'value': a1}
+    return {'level': 0, 'value': m(f"steady state {name}")}
+
 leaderboard_metrics = {
     "cost": lambda m: m("cost"),
     "instructions": lambda m: m("instructions"),
@@ -46,9 +54,9 @@ leaderboard_metrics = {
     "boundingHex": lambda m: m("minimum hexagon"),
     "rate": measure_rate,
     "areaINF": measure_area_at_infinity,
-    "heightINF": lambda m: check_rate_metric(m, m("steady state height")),
-    "widthINF": lambda m: check_rate_metric(m, m("steady state width*2") / 2),
-    "boundingHexINF": lambda m: check_rate_metric(m, m("steady state minimum hexagon")),
+    "heightINF": lambda m: measure_directional_size_at_infinity(m, "height"),
+    "widthINF": lambda m: measure_directional_size_at_infinity(m, "width"),
+    "boundingHexINF": lambda m: measure_directional_size_at_infinity(m, "minimum hexagon"),
 }
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
@@ -74,16 +82,25 @@ for path in leaderboard.rglob('*.json'):
     puzzle_name_string = lv.verifier_find_puzzle_name_in_solution_bytes(c_char_p(solution_bytes), c_int(len(solution_bytes)), byref(puzzle_name_length))
     puzzle_path = puzzles[puzzle_name_string[:puzzle_name_length.value].decode('utf-8')]
     v = lv.verifier_create(c_char_p(bytes(puzzle_path)), c_char_p(bytes(solution_path)))
+    m = lambda sim_metric: lv.verifier_evaluate_approximate_metric(c_void_p(v), c_char_p(sim_metric.encode('utf-8')))
     for metric, expected in metadata["score"].items():
-        # if the leaderboard doesn't track width/height/bestagon for a puzzle, don't validate it.
-        if (metric == "height" or metric == "heightINF") and not metadata["score"]["height"]:
-            continue
-        if (metric == "width" or metric == "widthINF") and not metadata["score"]["width"]:
-            continue
-        if (metric == "boundingHex" or metric == "boundingHexINF") and not metadata["score"]["boundingHex"]:
-            continue
-        f = leaderboard_metrics[metric]
-        measured = f(lambda sim_metric: lv.verifier_evaluate_approximate_metric(c_void_p(v), c_char_p(sim_metric.encode('utf-8'))))
+        if metric == "looping":
+            measured = True
+            for i in range(lv.verifier_number_of_outputs(c_void_p(v))):
+                repeats_after = lv.verifier_output_intervals_for_output_repeat_after(c_void_p(v), c_int(i))
+                if repeats_after != 0 and repeats_after != 1:
+                    measured = False
+                    break
+        else:
+            # if the leaderboard doesn't track width/height/bestagon for a puzzle, don't validate it.
+            if (metric == "height" or metric == "heightINF") and not metadata["score"]["height"]:
+                continue
+            if (metric == "width" or metric == "widthINF") and not metadata["score"]["width"]:
+                continue
+            if (metric == "boundingHex" or metric == "boundingHexINF") and not metadata["score"]["boundingHex"]:
+                continue
+            f = leaderboard_metrics[metric]
+            measured = f(m)
         int_expected = None
         try:
             int_expected = int(expected)
