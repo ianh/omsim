@@ -204,15 +204,16 @@ static inline void add_collider(struct collider_list *list, struct board *board,
     if (!xy_rect_contains_collider(list->bounding_box_up_to_cursor, collider))
         return;
     board->collision_checks += list->cursor;
+    bool collision = false;
     for (size_t i = 0; i < list->cursor; ++i) {
         struct collider other = list->colliders[i];
-        if (!(xy_dist(other.center, collider.center) < other.radius + collider.radius))
-            continue;
+        // using `|` here allows the loop to be auto-vectorized.
+        collision = collision | (xy_dist(other.center, collider.center) < other.radius + collider.radius);
+    }
+    if (collision) {
         list->collision = true;
-        struct vector p = from_xy(collider.center);
         if (list->collision_location)
-            *list->collision_location = p;
-        break;
+            *list->collision_location = from_xy(collider.center);
     }
 }
 
